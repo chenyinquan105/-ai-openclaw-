@@ -319,18 +319,73 @@ function renderSchedule(data) {
                     <div class="absolute left-[11px] top-2 bottom-2 w-[2px] bg-gradient-to-b from-yellow-400 via-blue-400 to-gray-700 opacity-30"></div>
     `;
 
+    // 后端action→真人化文案映射
+    const actionLabels = {
+        'DEPART':          '准备出发',
+        'MOVE_AND_EXEC':   '', // 从 memo 提取
+        'MOVE':            '', // 从 memo 提取
+        'DROP_TASK':       '', // 由 MOVE 合并
+        'START_TASK':      '', // 由 MOVE 合并
+        'PICK_TASK':       '取回',
+        'WAIT':            '等待中',
+        'ARRIVE':          '到达',
+    };
+
+    // 提取店铺名
+    function shopName(memo) {
+        if (!memo) return '';
+        // 匹配 "前往 xxx" 或 "前往执行 xxx" 或 "完成回收: xxx"
+        let m = memo.match(/前往(?:执行)?\s*(.+?)(?: —.*)?$/);
+        if (m) return m[1];
+        m = memo.match(/完成回收:\s*(.+)/);
+        if (m) return m[1];
+        m = memo.match(/放下物品/);
+        if (m) return '← ';
+        return memo;
+    }
+
     for (let i = 0; i < data.timeline.length; i++) {
         const item = data.timeline[i];
         let dotColor = 'bg-yellow-400';
-        if (item.action === 'DROP_TASK' || item.action === 'WAIT') dotColor = 'bg-blue-400';
-        else if (item.action === 'PICK_TASK') dotColor = 'bg-green-400';
+        let label = '';
+
+        if (item.action === 'DEPART') {
+            label = '出发';
+            dotColor = 'bg-yellow-400';
+        } else if (item.action === 'MOVE_AND_EXEC') {
+            // "前往 酷迪宠物三里屯店 — 放下物品，开始后台处理" → "前往 酷迪宠物三里屯店"
+            const name = shopName(item.memo);
+            const hasDrop = item.memo.includes('放下');
+            const hasStart = item.memo.includes('人在场');
+            const hasPick = item.memo.includes('回收');
+            if (hasDrop) {
+                label = `去 ${name}`;
+                dotColor = 'bg-blue-400';
+            } else if (hasPick) {
+                label = `取回 ${name}`;
+                dotColor = 'bg-green-400';
+            } else {
+                label = `前往 ${name}`;
+            }
+        } else if (item.action === 'PICK_TASK') {
+            const name = shopName(item.memo);
+            label = `去 ${name} 接回宠物`;
+            dotColor = 'bg-green-400';
+        } else if (item.action === 'WAIT') {
+            label = '等待中';
+            dotColor = 'bg-blue-400';
+        } else {
+            label = item.memo || '';
+            if (item.action === 'DROP_TASK' || item.action === 'WAIT') dotColor = 'bg-blue-400';
+            else if (item.action === 'PICK_TASK') dotColor = 'bg-green-400';
+        }
 
         html += `
             <div class="flex items-start relative z-10">
                 <div class="w-6 h-6 ${dotColor} rounded-full border-4 border-gray-900 flex-shrink-0"></div>
-                <div class="ml-6 ${i === 0 ? '' : ''}">
+                <div class="ml-6">
                     <p class="text-xs text-yellow-400 font-bold">${item.time}</p>
-                    <p class="text-sm font-bold">${item.memo}</p>
+                    <p class="text-sm font-bold">${label}</p>
                 </div>
             </div>
         `;
