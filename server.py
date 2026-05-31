@@ -289,7 +289,11 @@ def api_set_time():
 
     for cat, sid, sname in session_state["selected_pairs"]:
         info = agent.poi_cache.get(sid, {})
-        coord = f"{info.get('lat', 39.93)},{info.get('lng', 116.45)}"
+        raw = info.get('coord', '')
+        if raw and ',' in raw:
+            coord = raw
+        else:
+            coord = "39.93,116.45"
         human_needed = info.get("human_needed", True)
         task_list.append({
             "task_id": sid,
@@ -337,18 +341,35 @@ def _run_schedule():
 
     elif schedule_res.get("status") == "SUCCESS":
         session_state["phase"] = "done"
-        timeline = []
-        for item in schedule_res["timeline"]:
-            timeline.append({
+        # 修正时间线：MOVE 条目的时间改为后续 DROP/START 的时间，删除后续重复条目
+        raw = schedule_res["timeline"]
+        cleaned = []
+        skip = set()
+        for i in range(len(raw)):
+            if i in skip:
+                continue
+            item = raw[i]
+            if item["action"] == "MOVE" and i + 1 < len(raw):
+                nxt = raw[i + 1]
+                if nxt["action"] in ("DROP_TASK", "START_TASK", "PICK_TASK"):
+                    # 保留 MOVE 条目，时间改为到达时间，memo 添加执行内容
+                    act_label = {"DROP_TASK": "放下", "START_TASK": "开始", "PICK_TASK": "回收"}
+                    tag = act_label.get(nxt["action"], "")
+                    item["time"] = nxt["time"]
+                    item["memo"] = f"{item['memo']} — {nxt['memo']}"
+                    item["action"] = "MOVE_AND_EXEC"
+                    skip.add(i + 1)
+            cleaned.append({
                 "time": item["time"],
                 "memo": item["memo"],
                 "action": item["action"],
             })
+
         return jsonify({
             "phase": "done",
             "departure_time": schedule_res["suggested_departure_time"],
             "total_minutes": schedule_res["total_duration_minutes"],
-            "timeline": timeline,
+            "timeline": cleaned,
         })
 
     else:
