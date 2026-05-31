@@ -17,6 +17,16 @@ CATEGORY_MAP = {
     "干洗": "laundry", "洗衣服": "laundry", "咖啡": "cafe", "健身": "gym"
 }
 
+CATEGORY_NAME_CN = {
+    "hair": "理发",
+    "pet": "宠物洗澡",
+    "cafe": "咖啡",
+    "gym": "健身",
+    "restaurant": "餐饮",
+    "cinema": "电影",
+    "laundry": "干洗",
+}
+
 def find_best_match(query_name: str, poi_cache: dict) -> str:
     """【ID 语义纠偏引擎】保证模型提到的店名能对准数据库 ID"""
     if not poi_cache: return "loc_current"
@@ -58,14 +68,59 @@ class MeituanAgent:
         )
         return response.choices[0].message
 
+    def _show_category_top3_and_choose(self, category: str, top3_text: str) -> str:
+        """
+        展示该品类 top 3 店铺，让用户键盘选择。
+        返回用户选中的 shop_id。
+        如果用户直接回车，返回 None 表示跳过/不选。
+        """
+        shops = self.poi_cache_per_category.get(category, [])
+        if not shops:
+            return None
+        # 按评分降序
+        sorted_shops = sorted(shops, key=lambda s: s.get("rating", 0), reverse=True)
+        top_n = sorted_shops[:3]
+
+        cn = CATEGORY_NAME_CN.get(category, category)
+        print(f"\n  📋 {cn} 推荐（前3家）：")
+        print(f"  {' 店名':<20} {'评分':<5} {'序号'}")
+        print(f"  {'-'*30}")
+        for i, shop in enumerate(top_n, 1):
+            print(f"  {i}. {shop.get('name',''):<18} ★{shop.get('rating','-')}")
+        print(f"  0. 跳过（不选此品类）")
+
+        while True:
+            choice = input(f"  请选择（1/{len(top_n)}/0，直接回车默认第1家）: ").strip()
+            if choice == "":
+                selected = top_n[0]
+                print(f"  → 已选: {selected.get('name')}")
+                return selected["shop_id"]
+            if choice == "0":
+                return None
+            try:
+                idx = int(choice) - 1
+                if 0 <= idx < len(top_n):
+                    selected = top_n[idx]
+                    print(f"  → 已选: {selected.get('name')}")
+                    return selected["shop_id"]
+                else:
+                    print(f"  ⚠️ 请输入 1-{len(top_n)} 或 0")
+            except ValueError:
+                # 允许直接输入店名
+                matched = [s for s in top_n if choice in s.get("name", "")]
+                if matched:
+                    print(f"  → 已选: {matched[0].get('name')}")
+                    return matched[0]["shop_id"]
+                print(f"  ⚠️ 请输入 1-{len(top_n)}、0、或完整店名")
+
     def run(self):
-        print("=== 美团 AI 智能助手：全功能完整版 ===")
+        print("=== 美团 AI 智能助手 ===")
         user_input = input("用户: ")
-        
+
         # --- 阶段 1: 需求解析与 POI 搜索 ---
         system_prompt_1 = {
             "role": "system",
-            "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡→pet，咖啡/饮品/库迪→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry。注意：'库迪'可能是宠物品牌'酷迪宠物'，也可能是咖啡品牌，请同时搜索 pet 和 cafe 品类。"
+            "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。刻画品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡/宠物店→pet，咖啡→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry。"
         }
         self.context_memory.append(system_prompt_1)
         self.context_memory.append({"role": "user", "content": user_input})
@@ -89,7 +144,7 @@ class MeituanAgent:
 
         msg = self._call_llm(self.context_memory, tools=tools_poi)
 
-        # 阶段 1 重试：最多 5 次，强制 LLM 调用 search_poi
+        # 阶段 1 重试
         retry_p1 = 0
         while not msg.tool_calls and retry_p1 < 5:
             retry_p1 += 1
@@ -104,7 +159,6 @@ class MeituanAgent:
         self.context_memory.append(msg)
         for tool_call in msg.tool_calls:
             args = json.loads(tool_call.function.arguments)
-            # 语义映射转换
             raw_cats = args.get("categories", [])
             mapped_cats = list(set([CATEGORY_MAP.get(c, c) for c in raw_cats]))
 
@@ -113,7 +167,7 @@ class MeituanAgent:
                 center_coord=args.get("center_coord", "39.93,116.45"),
                 categories=mapped_cats,
                 radius_meters=args.get("radius_meters", 3000),
-                min_rating=args.get("min_rating", 0)  # 容错：允许搜到所有分数的店
+                min_rating=args.get("min_rating", 0)
             )
 
             if search_res.get("status") == "SUCCESS":
@@ -122,89 +176,96 @@ class MeituanAgent:
                         self.poi_cache[shop["shop_id"]] = shop
             self.context_memory.append({"role": "tool", "tool_call_id": tool_call.id, "content": json.dumps(search_res)})
 
-        # --- 阶段 2: 展示方案（每品类3家） ---
-        readable_data = [{"id": k, "name": v['name'], "rating": v.get('rating')} for k, v in self.poi_cache.items()]
-        self.context_memory.append({
-            "role": "system", 
-            "content": f"真实商户池: {json.dumps(readable_data, ensure_ascii=False)}。请每类推荐3家，严禁编造。请用户选定店铺并确认时间。"
-        })
-        confirm_msg = self._call_llm(self.context_memory)
-        print(f"\nAI: {confirm_msg.content}")
-        
-        user_decision = input("\n用户确认 (例如：去沙宣和萌宠店，3点理发): ")
-        self.context_memory.append({"role": "user", "content": user_decision})
+        # ---------- 按品类分组，供后面交互选择使用 ----------
+        self.poi_cache_per_category = {}
+        for sid, shop in self.poi_cache.items():
+            cat = shop.get("category")
+            self.poi_cache_per_category.setdefault(cat, []).append(shop)
 
-        # --- 阶段 3: 确定方案后，执行排程计算 ---
-        print("[*] 正在解析最终任务并执行并发排程...")
-        
-        scheduler_tools = [{
-            "type": "function",
-            "function": {
-                "name": "calculate_timeline",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_list": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "task_id": {"type": "string"},
-                                    "name": {"type": "string"},
-                                    "location_id": {"type": "string"},
-                                    "duration_minutes": {"type": "integer"},
-                                    "human_needed": {"type": "boolean"},
-                                    "fixed_start_time": {"type": ["string", "null"]}
-                                }
-                            }
-                        }
-                    },
-                    "required": ["task_list"]
-                }
-            }
-        }]
-        
-        pool_info = json.dumps([{"id": k, "name": v["name"], "rating": v.get("rating")} for k, v in self.poi_cache.items()], ensure_ascii=False)
-        self.context_memory.append({"role": "system", "content": f"商户池: {pool_info}。你必须调用 calculate_timeline 工具来规划排程，不要回复文字。规则：理发(hair品类) human_needed=True，宠物洗澡(pet品类) human_needed=False。每个任务 location_id 填商户在商户池中的id。"})
-        final_decision_msg = self._call_llm(self.context_memory, tools=scheduler_tools)
+        # --- 阶段 2: 代码展示 top 3 → 用户选店（替换原来的 LLM 推荐环节） ---
+        # 找出这次实际搜索的品类
+        searched_categories = list(self.poi_cache_per_category.keys())
 
-        # 强制重试：如果 LLM 拒绝调用工具，最多重试 5 次
-        retry_count = 0
-        while not final_decision_msg.tool_calls and retry_count < 5:
-            retry_count += 1
-            self.context_memory.append({"role": "assistant", "content": final_decision_msg.content or ""})
-            self.context_memory.append({"role": "user", "content": "请调用 calculate_timeline 工具，不要用文字回答。"})
-            final_decision_msg = self._call_llm(self.context_memory, tools=scheduler_tools)
+        selected_pairs = []  # [(category, shop_id, shop_name), ...]
+        print("\n--- 请为每个品类选择店铺 ---")
 
-        if not final_decision_msg.tool_calls:
-            print("AI: 排程失败，LLM 连续拒绝调用工具。")
+        for cat in searched_categories:
+            chosen_id = self._show_category_top3_and_choose(cat, "")
+            if chosen_id:
+                shop_info = self.poi_cache[chosen_id]
+                selected_pairs.append((cat, chosen_id, shop_info["name"]))
+                self.context_memory.append({
+                    "role": "system",
+                    "content": f"用户选择了 {cat} 品类店铺: {shop_info['name']}"
+                })
+
+        if not selected_pairs:
+            print("AI: 未选择任何店铺。")
             return
 
-        tool_call = final_decision_msg.tool_calls[0]
-        args = json.loads(tool_call.function.arguments)
-        task_list = args.get("task_list", [])
+        # --- 询问时间 ---
+        # 先看看用户之前有没有提时间
+        print("\n--- 时间确认 ---")
+        has_time = bool(re.search(
+            r"\d{1,2}[：:时点]|\d{1,2}:\d{2}|上午\d|下午\d|明天.*\d|周[一二三四五六日天].*\d|星期.*\d",
+            user_input
+        ))
 
-        # --- 还原：时间正则解析逻辑 ---
-        all_user_text = (user_input + " " + user_decision).lower()
-        has_specific_time = bool(re.search(r"\d{1,2}[：:时点]|\d{1,2}:\d{2}|上午\d|下午\d|明天.*\d|周[一二三四五六日天].*\d|星期.*\d", all_user_text))
-        has_now_keyword = bool(re.search(r"现在|立即|马上|当前|立刻|现在就出发|默认", all_user_text))
+        time_desc = ""
+        if not has_time:
+            time_desc = input("请问预计什么时间去？（直接回车默认现在出发）: ").strip()
+        else:
+            print("已从您之前的输入中识别到时间信息。")
 
-        if has_now_keyword or not has_specific_time:
-            for t in task_list: t["fixed_start_time"] = None
+        time_desc_full = user_input + " " + time_desc
+        # 正则解析
+        has_now = bool(re.search(r"现在|立即|马上|当前|立刻|现在就出发|默认", time_desc_full.lower()))
+        has_specific = bool(re.search(
+            r"\d{1,2}[：:时点]|\d{1,2}:\d{2}|上午\d|下午\d|明天.*\d|周[一二三四五六日天].*\d|星期.*\d",
+            time_desc_full
+        ))
 
-        # 空间矩阵构建
-        spatial_matrix = {"locations": {"loc_current": {"name": "当前起点", "coord": "39.93,116.45"}}, "routes": {}}
-        for t in task_list:
-            if t["location_id"] not in self.poi_cache:
-                t["location_id"] = find_best_match(t["name"], self.poi_cache)
-            shop_info = self.poi_cache.get(t["location_id"], {})
-            spatial_matrix["locations"][t["location_id"]] = {
-                "name": shop_info.get("name", t["name"]),
-                "coord": shop_info.get("coord", "39.93,116.45")
+        fixed_time = None
+        if has_specific and not has_now:
+            m = re.search(r"(\d{1,2})[：:时点](\d{0,2})", time_desc_full)
+            if m:
+                h, mi = int(m.group(1)), int(m.group(2) or 0)
+                fixed_time = f"{h:02d}:{mi:02d}"
+
+        # --- 阶段 3: 执行并发排程 ---
+        print("[*] 正在执行并发排程...")
+
+        # 按品类定默认时长
+        def _duration(cat):
+            return {"hair": 60, "pet": 30, "cafe": 20,
+                    "restaurant": 60, "gym": 60, "cinema": 120, "laundry": 30}.get(cat, 45)
+
+        task_list = []
+        spatial_matrix = {
+            "locations": {"loc_current": {"name": "当前起点", "coord": "39.93,116.45"}},
+            "routes": {}
+        }
+
+        for cat, sid, sname in selected_pairs:
+            info = self.poi_cache.get(sid, {})
+            coord = f"{info.get('lat', 39.93)},{info.get('lng', 116.45)}"
+            human_needed = info.get("human_needed", True)
+
+            task_list.append({
+                "task_id": sid,
+                "name": sname,
+                "location_id": sid,
+                "duration_minutes": _duration(cat),
+                "human_needed": human_needed,
+                "fixed_start_time": fixed_time,
+            })
+            spatial_matrix["locations"][sid] = {
+                "name": sname,
+                "coord": coord
             }
 
-        confirmed_ids, rejected_ids = [], []
         now_str = datetime.now().strftime("%H:%M")
+        confirmed_ids, rejected_ids = [], []
 
         while True:
             schedule_res = skill_scheduler.solve_concurrent_timeline(
@@ -214,8 +275,10 @@ class MeituanAgent:
             if schedule_res.get("status") == "CONFIRM_REQUIRED":
                 print(f"\n⚠️ 冲突预案激活: {schedule_res['message']}")
                 choice = input("AI 请示：1.接受延误 2.任务延后: ")
-                if choice == "1": confirmed_ids.append(schedule_res["conflict_task"]["task_id"])
-                else: rejected_ids.append(schedule_res["conflict_task"]["task_id"])
+                if choice == "1":
+                    confirmed_ids.append(schedule_res["conflict_task"]["task_id"])
+                else:
+                    rejected_ids.append(schedule_res["conflict_task"]["task_id"])
                 continue
             elif schedule_res.get("status") == "SUCCESS":
                 self.format_final_output(schedule_res)
