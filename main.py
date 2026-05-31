@@ -65,7 +65,7 @@ class MeituanAgent:
         # --- 阶段 1: 需求解析与 POI 搜索 ---
         system_prompt_1 = {
             "role": "system",
-            "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。理发映射为hair, 宠物洗澡映射为pet。"
+            "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡→pet，咖啡/饮品/库迪→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry。注意：'库迪'可能是宠物品牌'酷迪宠物'，也可能是咖啡品牌，请同时搜索 pet 和 cafe 品类。"
         }
         self.context_memory.append(system_prompt_1)
         self.context_memory.append({"role": "user", "content": user_input})
