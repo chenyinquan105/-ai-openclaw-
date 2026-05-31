@@ -17,25 +17,66 @@ from typing import List
 # 硬编码 10+ 家不同品类、不同评分、不同经纬度的商户
 # ======================================================================
 _MOCK_POI_DB: List[dict] = [
-    # --- hair (美发) ---
-    {"shop_id": "shop_hair_01", "name": "沙宣三里屯店", "rating": 4.8, "lat": 39.932, "lng": 116.451, "category": "hair"},
-    {"shop_id": "shop_hair_02", "name": "托尼形象设计", "rating": 4.6, "lat": 39.935, "lng": 116.448, "category": "hair"},
-    {"shop_id": "shop_hair_03", "name": "丝颂烫染专门店", "rating": 4.0, "lat": 39.930, "lng": 116.455, "category": "hair"},
-    {"shop_id": "shop_hair_04", "name": "木北造型工体店", "rating": 4.3, "lat": 39.938, "lng": 116.442, "category": "hair"},
-    # --- pet (宠物) ---
-    {"shop_id": "shop_pet_01", "name": "酷迪宠物三里屯店", "rating": 4.9, "lat": 39.931, "lng": 116.453, "category": "pet"},
-    {"shop_id": "shop_pet_02", "name": "宠物家朝阳店", "rating": 4.5, "lat": 39.934, "lng": 116.446, "category": "pet"},
-    {"shop_id": "shop_pet_03", "name": "爱派宠物生活馆", "rating": 4.0, "lat": 39.929, "lng": 116.460, "category": "pet"},
-    # --- restaurant (餐饮) ---
-    {"shop_id": "shop_rest_01", "name": "海底捞三里屯店", "rating": 4.7, "lat": 39.933, "lng": 116.450, "category": "restaurant"},
-    {"shop_id": "shop_rest_02", "name": "鼎泰丰太古里店", "rating": 4.5, "lat": 39.936, "lng": 116.452, "category": "restaurant"},
-    {"shop_id": "shop_rest_03", "name": "麦当劳三里屯站", "rating": 3.8, "lat": 39.937, "lng": 116.445, "category": "restaurant"},
-    # --- cafe (咖啡) ---
-    {"shop_id": "shop_cafe_01", "name": "星巴克臻选三里屯", "rating": 4.4, "lat": 39.932, "lng": 116.454, "category": "cafe"},
-    {"shop_id": "shop_cafe_02", "name": "瑞幸咖啡三里屯店", "rating": 4.1, "lat": 39.934, "lng": 116.449, "category": "cafe"},
-    # --- gym (健身) ---
-    {"shop_id": "shop_gym_01", "name": "超级猩猩三里屯", "rating": 4.8, "lat": 39.931, "lng": 116.447, "category": "gym"},
-    {"shop_id": "shop_gym_02", "name": "乐刻健身工体店", "rating": 4.2, "lat": 39.939, "lng": 116.443, "category": "gym"},
+    # ===================================================================
+    # 距离梯度 ~200m~500m（三里屯太古里核心区）
+    # ===================================================================
+    # --- hair (美发) 需人在场 ---
+    {"shop_id": "shop_hair_01", "name": "沙宣三里屯店", "rating": 4.8, "lat": 39.934, "lng": 116.453, "category": "hair", "category_alias": "美发", "human_needed": True},
+    {"shop_id": "shop_hair_02", "name": "托尼形象设计", "rating": 4.6, "lat": 39.935, "lng": 116.450, "category": "hair", "category_alias": "美发", "human_needed": True},
+    # --- pet (宠物) 可丢下后台做 ---
+    {"shop_id": "shop_pet_01", "name": "酷迪宠物三里屯店", "rating": 4.9, "lat": 39.933, "lng": 116.454, "category": "pet", "category_alias": "宠物店", "human_needed": False},
+    {"shop_id": "shop_pet_02", "name": "宠物家朝阳店", "rating": 4.5, "lat": 39.936, "lng": 116.448, "category": "pet", "category_alias": "宠物店", "human_needed": False},
+    # --- cafe (咖啡) 需人在场 ---
+    {"shop_id": "shop_cafe_01", "name": "星巴克臻选三里屯", "rating": 4.4, "lat": 39.932, "lng": 116.455, "category": "cafe", "category_alias": "咖啡馆", "human_needed": True},
+    # --- gym (健身) 需人在场 ---
+    {"shop_id": "shop_gym_01", "name": "超级猩猩三里屯", "rating": 4.8, "lat": 39.932, "lng": 116.446, "category": "gym", "category_alias": "健身房", "human_needed": True},
+
+    # ===================================================================
+    # 距离梯度 ~500m~900m（工体北路 / 新东路沿线）
+    # ===================================================================
+    # --- hair (美发) 需人在场 ---
+    {"shop_id": "shop_hair_03", "name": "丝颂烫染专门店", "rating": 4.0, "lat": 39.931, "lng": 116.452, "category": "hair", "category_alias": "美发", "human_needed": True},
+    {"shop_id": "shop_hair_04", "name": "木北造型工体店", "rating": 4.3, "lat": 39.939, "lng": 116.446, "category": "hair", "category_alias": "美发", "human_needed": True},
+    # --- pet (宠物) 可丢下后台做 ---
+    {"shop_id": "shop_pet_03", "name": "爱派宠物生活馆", "rating": 4.0, "lat": 39.930, "lng": 116.458, "category": "pet", "category_alias": "宠物店", "human_needed": False},
+    # --- restaurant (餐饮) 需人在场 ---
+    {"shop_id": "shop_rest_01", "name": "海底捞三里屯店", "rating": 4.7, "lat": 39.936, "lng": 116.449, "category": "restaurant", "category_alias": "餐厅", "human_needed": True},
+    {"shop_id": "shop_rest_02", "name": "鼎泰丰太古里店", "rating": 4.5, "lat": 39.937, "lng": 116.451, "category": "restaurant", "category_alias": "餐厅", "human_needed": True},
+    {"shop_id": "shop_rest_03", "name": "麦当劳三里屯站", "rating": 3.8, "lat": 39.938, "lng": 116.443, "category": "restaurant", "category_alias": "餐厅", "human_needed": True},
+    # --- cafe (咖啡) 需人在场 ---
+    {"shop_id": "shop_cafe_02", "name": "瑞幸咖啡三里屯店", "rating": 4.1, "lat": 39.935, "lng": 116.447, "category": "cafe", "category_alias": "咖啡馆", "human_needed": True},
+    # --- gym (健身) 需人在场 ---
+    {"shop_id": "shop_gym_02", "name": "乐刻健身工体店", "rating": 4.2, "lat": 39.940, "lng": 116.441, "category": "gym", "category_alias": "健身房", "human_needed": True},
+
+    # ===================================================================
+    # 距离梯度 ~1000m（东四十条桥 / 工体北路北段）
+    # ===================================================================
+    {"shop_id": "shop_hair_05", "name": "东田造型东四十条店", "rating": 4.5, "lat": 39.942, "lng": 116.444, "category": "hair", "category_alias": "美发", "human_needed": True},
+    {"shop_id": "shop_rest_04", "name": "金鼎轩东直门店", "rating": 4.3, "lat": 39.943, "lng": 116.441, "category": "restaurant", "category_alias": "餐厅", "human_needed": True},
+    {"shop_id": "shop_japanese_01", "name": "鮨然日料居酒屋", "rating": 4.7, "lat": 39.942, "lng": 116.442, "category": "japanese", "category_alias": "日料", "human_needed": True},
+    {"shop_id": "shop_hotpot_01", "name": "楠火锅工体店", "rating": 4.6, "lat": 39.941, "lng": 116.443, "category": "hotpot", "category_alias": "火锅", "human_needed": True},
+    # --- laundry (干洗) 可丢下后台做 ---
+    {"shop_id": "shop_laundry_01", "name": "福奈特洗衣东四十条店", "rating": 4.5, "lat": 39.941, "lng": 116.442, "category": "laundry", "category_alias": "干洗店", "human_needed": False},
+
+    # ===================================================================
+    # 距离梯度 ~2000m（东直门外大街 / 东直门地铁站周边）
+    # ===================================================================
+    {"shop_id": "shop_pet_04", "name": "宠物家东直门店", "rating": 4.2, "lat": 39.948, "lng": 116.432, "category": "pet", "category_alias": "宠物店", "human_needed": False},
+    {"shop_id": "shop_cafe_03", "name": "皮爷咖啡东直门店", "rating": 4.5, "lat": 39.947, "lng": 116.431, "category": "cafe", "category_alias": "咖啡馆", "human_needed": True},
+    {"shop_id": "shop_gym_03", "name": "乐刻健身东直门店", "rating": 4.0, "lat": 39.946, "lng": 116.433, "category": "gym", "category_alias": "健身房", "human_needed": True},
+    {"shop_id": "shop_japanese_02", "name": "鸟贵族烧鸟三里屯店", "rating": 4.4, "lat": 39.948, "lng": 116.430, "category": "japanese", "category_alias": "日料", "human_needed": True},
+    {"shop_id": "shop_cinema_01", "name": "保利国际影城朝阳", "rating": 4.6, "lat": 39.947, "lng": 116.434, "category": "cinema", "category_alias": "电影院", "human_needed": True},
+
+    # ===================================================================
+    # 距离梯度 ~3000m（雍和宫 / 安定门 / 簋街周边）
+    # ===================================================================
+    {"shop_id": "shop_rest_05", "name": "花家怡园簋街店", "rating": 4.6, "lat": 39.951, "lng": 116.428, "category": "restaurant", "category_alias": "餐厅", "human_needed": True},
+    {"shop_id": "shop_cafe_04", "name": "Manner咖啡雍和宫", "rating": 4.3, "lat": 39.950, "lng": 116.426, "category": "cafe", "category_alias": "咖啡馆", "human_needed": True},
+    {"shop_id": "shop_hotpot_02", "name": "卤校长老火锅三里屯店", "rating": 4.5, "lat": 39.950, "lng": 116.429, "category": "hotpot", "category_alias": "火锅", "human_needed": True},
+    {"shop_id": "shop_cinema_02", "name": "万达影城CBD店", "rating": 4.7, "lat": 39.951, "lng": 116.432, "category": "cinema", "category_alias": "电影院", "human_needed": True},
+    # --- laundry (干洗) 可丢下后台做 ---
+    {"shop_id": "shop_laundry_02", "name": "象王洗染东直门店", "rating": 4.3, "lat": 39.949, "lng": 116.431, "category": "laundry", "category_alias": "干洗店", "human_needed": False},
+    {"shop_id": "shop_hair_06", "name": "文峰美发雍和宫店", "rating": 3.9, "lat": 39.951, "lng": 116.426, "category": "hair", "category_alias": "美发", "human_needed": True},
 ]
 
 
@@ -107,8 +148,10 @@ def search_poi_matrix(
     result_map: dict = {cat: [] for cat in categories}
 
     for shop in _MOCK_POI_DB:
-        # 1) 品类过滤
-        if shop["category"] not in categories:
+        # 1) 品类过滤（支持 category 英文编码 + category_alias 中文别名双匹配）
+        shop_cats = [shop["category"], shop.get("category_alias", "")]
+        matched_cat = next((c for c in categories if c in shop_cats), None)
+        if matched_cat is None:
             continue
 
         # 2) 评分过滤
@@ -128,8 +171,10 @@ def search_poi_matrix(
             "rating": shop["rating"],
             "coord": f"{shop['lat']},{shop['lng']}",
             "category": shop["category"],
+            "category_alias": shop.get("category_alias", ""),
+            "human_needed": shop.get("human_needed", True),
         }
-        result_map[shop["category"]].append(entry)
+        result_map[matched_cat].append(entry)
 
     return {
         "status": "SUCCESS",

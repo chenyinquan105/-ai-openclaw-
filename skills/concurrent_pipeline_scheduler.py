@@ -1,23 +1,19 @@
 """
-concurrent_pipeline_scheduler.py —— 工业级全通用排程引擎 V5 (生产版)
+concurrent_pipeline_scheduler.py —— 工业级全通用排程引擎 V5.3 (最终集成版)
 ================================================================
 物理契约:
-  solve_concurrent_timeline(task_list: list, spatial_matrix: dict, current_time_str: str) -> dict
+  solve_concurrent_timeline(task_list, spatial_matrix, current_time_str, ...) -> dict
 
-架构准则:
-  - 全程 int 分钟级运算 (math.ceil 路程取整), 无 timedelta 秒级精度污染
-  - routes.get(key, {}).get('distance_meters', 0) 防崩溃
-  - Timeline 每个动作字典严格包含 target_location_id, next_location_id, task_id 结构化字段
-  - 步骤一: 钉钉子 (fixed_start_time 锚点)
-  - 步骤二: 反向推算推迟出发
-  - 步骤三: 顺向狂飙 DROP -> EXECUTION -> 固定行程 -> PICK
-  - WALK: ceil(dist/80) | TAXI: 5 + ceil(dist/400)
-  - DROP/PICK: 5min
+核心逻辑:
+  1. 空间重心策略: 过滤掉严重绕路的任务，将其推迟到固定行程(锚点)之后。
+  2. 冲突预案模拟: 
+     - 延误 > 15min 或 用户已拒绝: 自动延后。
+     - 0 < 延误 <= 15min 且 未确认: 返回 CONFIRM_REQUIRED 触发 main.py 询问。
+     - 无延误 或 用户已确认: 准许执行。
 """
 
-import math, json
+import math
 from typing import List, Dict, Any, Tuple
-
 
 # ======================================================================
 # 全局常量
@@ -26,10 +22,10 @@ WALK_SPEED = 80
 TAXI_SPEED = 400
 TAXI_WAIT = 5
 DROP_PICK_DURATION = 5
-
+MAX_TOLERABLE_DELAY = 15  # 软冲突容忍上限 (分钟)
 
 # ======================================================================
-# Haversine 回退估算
+# 工具函数
 # ======================================================================
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     R = 6371.0
@@ -40,22 +36,11 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-
 def _parse_coord(coord_str: str) -> Tuple[float, float]:
     parts = coord_str.strip().split(",")
     return float(parts[0].strip()), float(parts[1].strip())
 
-
-# ======================================================================
-# 路由防御性查询 (KeyError 永不当机)
-# ======================================================================
 def _get_route(loc_a: str, loc_b: str, sm: dict) -> Tuple[str, int]:
-    """
-    返回 (transport_mode, distance_meters)
-    1. routes 字典中查找 loc_a->loc_b 或 loc_b->loc_a
-    2. 缺失则回退 Haversine 物理估算
-    3. 纯防御,永不抛 KeyError
-    """
     routes = sm.get("routes", {})
     for key in (f"{loc_a}->{loc_b}", f"{loc_b}->{loc_a}"):
         entry = routes.get(key)
@@ -70,25 +55,23 @@ def _get_route(loc_a: str, loc_b: str, sm: dict) -> Tuple[str, int]:
         return "WALK", int(_haversine_km(lat1, lng1, lat2, lng2) * 1000.0)
     return "WALK", 0
 
-
 def _travel_min(mode: str, dist: int) -> int:
     if mode == "TAXI":
         return TAXI_WAIT + math.ceil(dist / TAXI_SPEED)
     return math.ceil(dist / WALK_SPEED)
 
-
-# ======================================================================
-# 时间工具 (纯 int 分钟级)
-# ======================================================================
 def _parse(t: str) -> int:
     p = t.strip().split(":")
     return int(p[0]) * 60 + int(p[1])
-
 
 def _fmt(m: int) -> str:
     m %= 1440
     return f"{m // 60:02d}:{m % 60:02d}"
 
+def _calculate_detour_score(start_loc: str, anchor_loc: str, task_loc: str, sm: dict) -> int:
+    _, d1 = _get_route(start_loc, task_loc, sm)
+    _, d2 = _get_route(task_loc, anchor_loc, sm)
+    return d1 + d2
 
 # ======================================================================
 # 核心排程引擎
@@ -98,306 +81,189 @@ def solve_concurrent_timeline(
     task_list: list,
     spatial_matrix: dict,
     current_time_str: str,
+    user_confirmed_tasks: list = None,
+    user_rejected_tasks: list = None
 ) -> dict:
-    """
-    【工业级通用排程引擎 I/O 契约桩 - 严禁私自修改任何字段类型】
+    user_confirmed_tasks = user_confirmed_tasks or []
+    user_rejected_tasks = user_rejected_tasks or []
 
-    [EXPECTED INPUT JSON SCHEMA]:
-    {
-        "current_time_str": "14:00",
-        "start_location_id": "loc_current",
-        "task_list": [
-            {
-                "task_id": "str",
-                "name": "str",
-                "location_id": "str",
-                "duration_minutes": int,
-                "human_needed": bool,
-                "fixed_start_time": "str_or_null"
-            }
-        ],
-        "spatial_matrix": {
-            "locations": {"loc_id": {"name": "str", "coord": "str"}},
-            "routes": {"loc_A->loc_B": {"transport_mode": "WALK_or_TAXI", "distance_meters": int}}
-        }
-    }
-
-    [EXPECTED OUTPUT JSON SCHEMA - SUCCESS]:
-    {
-        "status": "SUCCESS",
-        "suggested_departure_time": "str",
-        "total_duration_minutes": int,
-        "timeline": [
-            {
-                "time": "str",
-                "action": "DEPART | MOVE | DROP_TASK | START_TASK | WAIT | PICK_TASK",
-                "target_location_id": "str",
-                "next_location_id": "str_or_null",
-                "task_id": "str_or_null",
-                "memo": "str"
-            }
-        ]
-    }
-
-    [EXPECTED OUTPUT JSON SCHEMA - CONFLICT]:
-    {
-        "status": "CONFLICT",
-        "conflict_task_id": "str",
-        "message": "str"
-    }
-    """
-    # ---------- 入参校验 ----------
-    if not isinstance(task_list, list) or not task_list:
-        return {"status": "CONFLICT", "message": "task_list 必须是非空数组"}
-    if not isinstance(spatial_matrix, dict) or "locations" not in spatial_matrix:
-        return {"status": "CONFLICT", "message": "spatial_matrix 必须包含 locations"}
-    if not isinstance(current_time_str, str) or not current_time_str:
-        return {"status": "CONFLICT", "message": "current_time_str 必须是非空字符串"}
+    # ---------- 1. 入参校验 ----------
+    if not task_list: return {"status": "CONFLICT", "message": "task_list 不能为空"}
     try:
         current_min = _parse(current_time_str)
-    except Exception:
-        return {"status": "CONFLICT", "message": f"current_time_str 格式无效: {current_time_str}"}
-    for t in task_list:
-        for k in ("task_id", "name", "location_id", "duration_minutes", "human_needed"):
-            if k not in t:
-                return {"status": "CONFLICT", "message": f"任务缺少字段: {k}"}
-        if not isinstance(t["duration_minutes"], int) or t["duration_minutes"] <= 0:
-            return {"status": "CONFLICT", "message": f"任务 {t.get('task_id')} duration_minutes 必须为正整数"}
-        if not isinstance(t["human_needed"], bool):
-            return {"status": "CONFLICT", "message": f"任务 {t.get('task_id')} human_needed 必须为布尔值"}
-        if t.get("fixed_start_time") is not None:
-            try:
-                _parse(t["fixed_start_time"])
-            except Exception:
-                return {"status": "CONFLICT", "message": f"任务 {t.get('task_id')} fixed_start_time 格式无效"}
+    except:
+        return {"status": "CONFLICT", "message": "current_time_str 格式无效"}
 
-    # ---------- 任务分类 ----------
+    # ---------- 2. 任务分类与锚点锁定 ----------
     fixed_tasks = sorted(
-        [t for t in task_list if t.get("fixed_start_time") is not None],
-        key=lambda t: _parse(t["fixed_start_time"]),
+        [t for t in task_list if t.get("fixed_start_time")],
+        key=lambda t: _parse(t["fixed_start_time"])
     )
-    nonfixed_drop = [t for t in task_list if t.get("fixed_start_time") is None and not t["human_needed"]]
-    nonfixed_exec = [t for t in task_list if t.get("fixed_start_time") is None and t["human_needed"]]
-
-    # ==================================================================
-    # 步骤一：钉钉子 — 标记固定行程占用分钟段
-    # ==================================================================
-    OCCUPIED = "FIXED"
-    occupied_slots: Dict[int, str] = {}
+    # 初始分类
+    nonfixed_drop = [t for t in task_list if not t.get("fixed_start_time") and not t["human_needed"]]
+    nonfixed_exec = [t for t in task_list if not t.get("fixed_start_time") and t["human_needed"]]
+    
+    occupied_slots = {}
     for ft in fixed_tasks:
         fs_min = _parse(ft["fixed_start_time"])
         for m in range(fs_min, fs_min + ft["duration_minutes"]):
-            occupied_slots[m] = OCCUPIED
+            occupied_slots[m] = "FIXED"
 
-    # ==================================================================
-    # 步骤二：反向推算 suggested_departure_time
-    # ==================================================================
-    suggested_departure = current_min
-    if fixed_tasks:
-        ft = fixed_tasks[0]
-        fs_min = _parse(ft["fixed_start_time"])
-        if fs_min > current_min:
-            mode0, dist0 = _get_route(
-                spatial_matrix.get("start_location_id", "loc_current"),
-                ft["location_id"], spatial_matrix,
-            )
-            base_travel = _travel_min(mode0, dist0)
-            work_total = sum(DROP_PICK_DURATION for _ in nonfixed_drop) + \
-                         sum(t["duration_minutes"] for t in nonfixed_exec)
-            segs = len(nonfixed_drop) + len(nonfixed_exec)
-            if segs > 0:
-                work_total += (segs - 1) * math.ceil(200 / WALK_SPEED)
-            required = work_total + base_travel * 2
-            latest = fs_min - required
-            if latest > current_min:
-                suggested_departure = latest
+    start_loc = spatial_matrix.get("start_location_id", "loc_current")
+    anchor_loc = fixed_tasks[0]["location_id"] if fixed_tasks else None
+    post_anchor_tasks = []
 
-    # ==================================================================
-    # 步骤三：顺向狂飙
-    # ==================================================================
-    cur_min = suggested_departure
-    cur_loc = spatial_matrix.get("start_location_id", "loc_current")
-    bg: Dict[str, int] = {}
-    timeline: List[Dict[str, Any]] = []
+    # ---------- 3. 空间重心过滤 (Spatial Filter) ----------
+    if anchor_loc:
+        _, base_dist = _get_route(start_loc, anchor_loc, spatial_matrix)
+        
+        def spatial_split(tasks):
+            on_way, way_far = [], []
+            for t in tasks:
+                d_score = _calculate_detour_score(start_loc, anchor_loc, t["location_id"], spatial_matrix)
+                # 绕路比 > 2.0 且 绝对绕路 > 3km
+                if d_score > (base_dist * 2) and (d_score - base_dist) > 3000:
+                    way_far.append(t)
+                else:
+                    on_way.append((d_score, t))
+            on_way.sort(key=lambda x: x[0])
+            return [x[1] for x in on_way], way_far
 
-    def push(action: str, time_str: str, target_loc: str = "",
-             next_loc: str = "", task_id: str = "", memo: str = ""):
-        entry: Dict[str, Any] = {
-            "time": time_str,
-            "action": action,
-            "target_location_id": target_loc if target_loc else None,
-            "next_location_id": next_loc if next_loc else None,
-            "task_id": task_id if task_id else None,
-            "memo": memo,
-        }
-        timeline.append(entry)
+        nonfixed_drop, far_drop = spatial_split(nonfixed_drop)
+        nonfixed_exec, far_exec = spatial_split(nonfixed_exec)
+        post_anchor_tasks.extend(far_drop + far_exec)
 
-    # ----- 0. DEPART -----
-    push("DEPART", _fmt(cur_min),
-         target_loc=cur_loc, next_loc=cur_loc, memo="准备出发")
+    # ---------- 4. 冲突预案模拟 (Conflict Simulation) ----------
+    final_on_way_drop = []
+    if anchor_loc:
+        anchor_start_min = _parse(fixed_tasks[0]["fixed_start_time"])
+        sim_min = current_min
+        sim_loc = start_loc
+        
+        for task in nonfixed_drop:
+            # 模拟：当前 -> 任务点 -> 锚点
+            mode1, dist1 = _get_route(sim_loc, task["location_id"], spatial_matrix)
+            arr_task = sim_min + _travel_min(mode1, dist1)
+            
+            mode2, dist2 = _get_route(task["location_id"], anchor_loc, spatial_matrix)
+            arr_anchor = arr_task + DROP_PICK_DURATION + _travel_min(mode2, dist2)
+            
+            delay = arr_anchor - anchor_start_min
+            
+            # 判断逻辑
+            if delay <= 0:
+                final_on_way_drop.append(task)
+                sim_min = arr_task + DROP_PICK_DURATION
+                sim_loc = task["location_id"]
+            elif delay > MAX_TOLERABLE_DELAY or task["task_id"] in user_rejected_tasks:
+                # 延误太久或用户已拒绝：直接延后
+                post_anchor_tasks.append(task)
+            else:
+                # 软冲突 (0-15min)：检查确认状态
+                if task["task_id"] in user_confirmed_tasks:
+                    final_on_way_drop.append(task)
+                    sim_min = arr_task + DROP_PICK_DURATION
+                    sim_loc = task["location_id"]
+                else:
+                    return {
+                        "status": "CONFIRM_REQUIRED",
+                        "conflict_task": task,
+                        "delay_minutes": delay,
+                        "fixed_task_name": fixed_tasks[0]["name"],
+                        "message": f"执行[{task['name']}]将使[{fixed_tasks[0]['name']}]延误{delay}分钟，是否继续？"
+                    }
+        nonfixed_drop = final_on_way_drop
 
-    # ==================================================================
-    # 阶段 A: DROP 所有 human_needed == False 的任务
-    # ==================================================================
+    # ---------- 5. 顺向狂飙执行 (Execution) ----------
+    cur_min = current_min
+    cur_loc = start_loc
+    bg_finish_map = {} # location_id -> finish_time
+    timeline = []
+
+    def push(action, time_m, target_loc=None, next_loc=None, task_id=None, memo=""):
+        timeline.append({
+            "time": _fmt(time_m), "action": action,
+            "target_location_id": target_loc, "next_location_id": next_loc,
+            "task_id": task_id, "memo": memo
+        })
+
+    push("DEPART", cur_min, target_loc=cur_loc, memo="准备出发")
+
+    # 阶段 A: 顺路 DROP
     for task in nonfixed_drop:
-        dest = task["location_id"]
-        mode, dist = _get_route(cur_loc, dest, spatial_matrix)
+        mode, dist = _get_route(cur_loc, task["location_id"], spatial_matrix)
         t_min = _travel_min(mode, dist)
-        dest_name = spatial_matrix.get("locations", {}).get(dest, {}).get("name", dest)
-        arr_min = cur_min + t_min
-
-        move_memo = f"前往 {dest_name}"
-        if mode == "TAXI":
-            move_memo += f"，打车前往，等车5分钟+车程{dist}米"
-        else:
-            move_memo += f"，步行前往，物理距离{dist}米"
-
-        push("MOVE", _fmt(cur_min),
-             target_loc=cur_loc, next_loc=dest,
-             task_id=task["task_id"], memo=move_memo)
-
-        cur_min = arr_min
-        bg_finish = cur_min + task["duration_minutes"]
-        bg[dest] = bg_finish
-
-        push("DROP_TASK", _fmt(cur_min),
-             target_loc=dest, task_id=task["task_id"],
-             memo=f"抵达。放下非在场任务[{task['name']}]，耗时{DROP_PICK_DURATION}分钟。"
-                  f"后台倒计时{task['duration_minutes']}分钟开始（预计{_fmt(bg_finish)}完工）")
-
+        cur_min += t_min
+        bg_finish_map[task["location_id"]] = cur_min + task["duration_minutes"]
+        push("MOVE", cur_min - t_min, target_loc=cur_loc, next_loc=task["location_id"], task_id=task["task_id"], memo=f"前往 {task['name']}")
+        push("DROP_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="放下物品，开始后台处理")
         cur_min += DROP_PICK_DURATION
-        cur_loc = dest
+        cur_loc = task["location_id"]
 
-    # ==================================================================
-    # 阶段 B: 执行 human_needed == True 的自由任务
-    # ==================================================================
+    # 阶段 B: 顺路 EXEC (必须人在场)
     for task in nonfixed_exec:
-        dest = task["location_id"]
-        mode, dist = _get_route(cur_loc, dest, spatial_matrix)
+        mode, dist = _get_route(cur_loc, task["location_id"], spatial_matrix)
         t_min = _travel_min(mode, dist)
-        dest_name = spatial_matrix.get("locations", {}).get(dest, {}).get("name", dest)
         arr_min = cur_min + t_min
-        end_min = arr_min + task["duration_minutes"]
-
-        # --- 冲突检测：检查与固定行程是否有重叠 ---
-        for m in range(arr_min, end_min):
-            if m in occupied_slots:
-                return {
-                    "status": "CONFLICT",
-                    "conflict_task_id": task["task_id"],
-                    "message": f"无法完成排程规划！[{task['name']}] 预计执行时间段"
-                               f"({_fmt(arr_min)}-{_fmt(end_min)})"
-                               f"与您的固定硬行程存在不可调和的时空物理重叠！",
-                }
-
-        move_memo = f"前往 {dest_name}"
-        if mode == "TAXI":
-            move_memo += f"，打车前往，等车5分钟+车程{dist}米"
-        else:
-            move_memo += f"，步行前往，物理距离{dist}米"
-
-        push("MOVE", _fmt(cur_min),
-             target_loc=cur_loc, next_loc=dest,
-             task_id=task["task_id"], memo=move_memo)
-
+        # 二次检查：是否由于前面的延误导致现在与锚点冲突
+        if any(m in occupied_slots for m in range(arr_min, arr_min + task["duration_minutes"])):
+            post_anchor_tasks.append(task)
+            continue
+        push("MOVE", cur_min, target_loc=cur_loc, next_loc=task["location_id"], task_id=task["task_id"], memo=f"前往执行 {task['name']}")
         cur_min = arr_min
-        push("START_TASK", _fmt(cur_min),
-             target_loc=dest, task_id=task["task_id"],
-             memo=f"开始执行在场任务[{task['name']}]，人类必须全程在场，耗时{task['duration_minutes']}分钟")
+        push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="人在场执行中")
+        cur_min += task["duration_minutes"]
+        cur_loc = task["location_id"]
 
-        cur_min = end_min
-        cur_loc = dest
-
-    # ==================================================================
-    # 阶段 C: 固定行程钉钉子
-    # ==================================================================
+    # 阶段 C: 固定行程 (锚点)
     for task in fixed_tasks:
-        dest = task["location_id"]
-        dest_name = spatial_matrix.get("locations", {}).get(dest, {}).get("name", dest)
-        mode, dist = _get_route(cur_loc, dest, spatial_matrix)
+        mode, dist = _get_route(cur_loc, task["location_id"], spatial_matrix)
         t_min = _travel_min(mode, dist)
         arr_min = cur_min + t_min
         fs_min = _parse(task["fixed_start_time"])
-
-        if arr_min > fs_min:
-            return {
-                "status": "CONFLICT",
-                "conflict_task_id": task["task_id"],
-                "message": f"无法在固定时间到达 [{task['name']}]！"
-                           f"预计到达{_fmt(arr_min)}，但行程要求在{task['fixed_start_time']}开始",
-            }
-
-        move_memo = f"前往固定行程地点 {dest_name}"
-        if mode == "TAXI":
-            move_memo += f"，打车前往，等车5分钟+车程{dist}米"
-        else:
-            move_memo += f"，步行前往，物理距离{dist}米"
-
-        push("MOVE", _fmt(cur_min),
-             target_loc=cur_loc, next_loc=dest,
-             task_id=task["task_id"], memo=move_memo)
-
+        
+        push("MOVE", cur_min, target_loc=cur_loc, next_loc=task["location_id"], task_id=task["task_id"], memo=f"前往锚点: {task['name']}")
         if arr_min < fs_min:
-            wait_m = fs_min - arr_min
-            push("WAIT", _fmt(arr_min),
-                 target_loc=dest, task_id=task["task_id"],
-                 memo=f"提前{wait_m}分钟到达固定行程。等待至{task['fixed_start_time']}开始执行（用户可休息）")
+            push("WAIT", arr_min, target_loc=task["location_id"], memo="提前到达，等待开始")
             arr_min = fs_min
-
+        
         cur_min = arr_min
-        push("START_TASK", _fmt(cur_min),
-             target_loc=dest, task_id=task["task_id"],
-             memo=f"硬约束锚点卡位：开始执行固定行程[{task['name']}]，耗时{task['duration_minutes']}分钟")
+        push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo=f"开始固定任务: {task['name']}")
         cur_min += task["duration_minutes"]
-        cur_loc = dest
+        cur_loc = task["location_id"]
 
-    # ==================================================================
-    # 阶段 D: PICK 收尾所有 DROP 的任务
-    # ==================================================================
-    for task in nonfixed_drop:
-        dest = task["location_id"]
-        bg_finish = bg.get(dest)
-        if bg_finish is None:
-            continue
-        mode, dist = _get_route(cur_loc, dest, spatial_matrix)
-        t_min = _travel_min(mode, dist)
-        arr_min = cur_min + t_min
-        dest_name = spatial_matrix.get("locations", {}).get(dest, {}).get("name", dest)
-
-        move_memo = f"前往执行收尾阶段，返回 {dest_name}"
-        if mode == "TAXI":
-            move_memo += f"，打车前往，等车5分钟+车程{dist}米"
+    # 阶段 C.5: 延后任务处理 (Post Anchor)
+    for task in post_anchor_tasks:
+        mode, dist = _get_route(cur_loc, task["location_id"], spatial_matrix)
+        cur_min += _travel_min(mode, dist)
+        if not task["human_needed"]:
+            bg_finish_map[task["location_id"]] = cur_min + task["duration_minutes"]
+            push("DROP_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="延后Drop处理")
+            cur_min += DROP_PICK_DURATION
         else:
-            move_memo += f"，步行前往，物理距离{dist}米"
+            push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="延后人在场执行")
+            cur_min += task["duration_minutes"]
+        cur_loc = task["location_id"]
 
-        push("MOVE", _fmt(cur_min),
-             target_loc=cur_loc, next_loc=dest,
-             task_id=task["task_id"], memo=move_memo)
-
-        cur_min = arr_min
-
-        if cur_min < bg_finish:
-            wait_m = bg_finish - cur_min
-            push("WAIT", _fmt(cur_min),
-                 target_loc=dest, task_id=task["task_id"],
-                 memo=f"算法校验：当前时间{_fmt(cur_min)}未达到完工时间{_fmt(bg_finish)}。"
-                      f"强行插入{wait_m}分钟空闲等待（用户可喝咖啡）")
-            cur_min = bg_finish
-
-        pick_end = cur_min + DROP_PICK_DURATION
-        push("PICK_TASK", _fmt(cur_min),
-             target_loc=dest, task_id=task["task_id"],
-             memo=f"当前时间{_fmt(cur_min)}已远超任务完工时间{_fmt(bg_finish)}（或刚好到达）。"
-                  f"执行PICK，耗时{DROP_PICK_DURATION}分钟，预计{_fmt(pick_end)}完成，全部行程结束")
-        cur_min = pick_end
+    # 阶段 D: PICK 收尾
+    # 按任务列表寻找所有需要回收的地点
+    for task in task_list:
+        if task["human_needed"] or task.get("fixed_start_time"): continue
+        dest = task["location_id"]
+        if dest not in bg_finish_map: continue
+        
+        mode, dist = _get_route(cur_loc, dest, spatial_matrix)
+        cur_min += _travel_min(mode, dist)
+        if cur_min < bg_finish_map[dest]:
+            push("WAIT", cur_min, target_loc=dest, memo=f"等待[{task['name']}]后台处理完成")
+            cur_min = bg_finish_map[dest]
+        push("PICK_TASK", cur_min, target_loc=dest, task_id=task["task_id"], memo=f"完成回收: {task['name']}")
+        cur_min += DROP_PICK_DURATION
         cur_loc = dest
-
-    # ---- 总耗时 ----
-    total = cur_min - current_min
 
     return {
         "status": "SUCCESS",
-        "suggested_departure_time": _fmt(suggested_departure),
-        "total_duration_minutes": total,
-        "timeline": timeline,
+        "suggested_departure_time": _fmt(current_min),
+        "total_duration_minutes": cur_min - current_min,
+        "timeline": timeline
     }
