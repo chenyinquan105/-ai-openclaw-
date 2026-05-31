@@ -162,10 +162,27 @@ def _build_categories_for_frontend(agent_instance) -> list:
         top_n = sorted_shops[:3]
         shops_data = []
         for s in top_n:
+            # 计算到起点的距离
+            dist_m = 0
+            raw_coord = s.get("coord", "")
+            if raw_coord and "," in raw_coord:
+                try:
+                    slat, slng = float(raw_coord.split(",")[0].strip()), float(raw_coord.split(",")[1].strip())
+                    from math import radians, cos, sin, asin, sqrt
+                    R = 6371000
+                    dlat = radians(slat - 39.93)
+                    dlng = radians(slng - 116.45)
+                    a = sin(dlat/2)**2 + cos(radians(39.93))*cos(radians(slat))*sin(dlng/2)**2
+                    c = 2 * asin(sqrt(a))
+                    dist_m = int(R * c)
+                except:
+                    pass
+            dist_str = f"{dist_m}m" if dist_m < 1000 else f"{dist_m/1000:.1f}km"
             shops_data.append({
                 "shop_id": s["shop_id"],
                 "name": s["name"],
                 "rating": s.get("rating", 0),
+                "distance": dist_str,
                 "human_needed": s.get("human_needed", True),
             })
         result.append({
