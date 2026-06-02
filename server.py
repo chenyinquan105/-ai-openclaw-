@@ -411,11 +411,43 @@ def _run_schedule():
                 "sub_task": sub_task_info,
             })
 
+        # 调用防踩坑 Skill
+        from skills import destination_anti_pitfall as skill_pitfall
+        pitfall_input = {
+            "trip_id": f"trip_{int(datetime.now().timestamp())}",
+            "current_node_index": 0,
+            "pipeline_nodes": [],
+            "environmental_context": {
+                "timestamp": int(datetime.now().timestamp()),
+                "weather_summary": "今日多云，傍晚空气湿度较大，体感闷热",
+                "client_platform": "WECHAT"
+            }
+        }
+        for cat, sid, sname in session_state["selected_pairs"]:
+            info = agent.poi_cache.get(sid, {})
+            pitfall_input["pipeline_nodes"].append({
+                "node_id": sid,
+                "node_name": sname,
+                "category": cat,
+                "coordinate": info.get("coord", "39.93,116.45")
+            })
+        pitfall_output = skill_pitfall.execute_anti_pitfall_skill(
+            input_payload=pitfall_input
+        )
+        pending_triggers = skill_pitfall.get_pending_triggers(pitfall_output)
+        # 保存到 session_state 供反射 API 使用
+        session_state["pitfall_global_reminders"] = pitfall_output.get("global_reminders", [])
+        session_state["pitfall_localized_insights"] = pitfall_output.get("localized_insights", [])
+        session_state["pitfall_intent_triggers"] = pending_triggers
+
         return jsonify({
             "phase": "done",
             "departure_time": schedule_res["suggested_departure_time"],
             "total_minutes": schedule_res["total_duration_minutes"],
             "timeline": cleaned,
+            "pitfall_reminders": pitfall_output.get("global_reminders", []),
+            "pitfall_insights": pitfall_output.get("localized_insights", []),
+            "pitfall_triggers": pending_triggers,
         })
 
     else:
@@ -449,6 +481,29 @@ def api_conflict_choice():
 def api_reset():
     _reset_session()
     return jsonify({"phase": "init"})
+
+
+@app.route("/api/reflect_trigger", methods=["POST"])
+def api_reflect_trigger():
+    """前端用户点击 intent_trigger 按钮后，执行反射动作"""
+    from skills import destination_anti_pitfall as skill_pitfall
+    data = request.get_json(silent=True) or {}
+    trigger_id = data.get("trigger_id")
+    if not trigger_id:
+        return jsonify({"error": "缺少 trigger_id"}), 400
+
+    triggers = session_state.get("pitfall_intent_triggers", [])
+    target = None
+    for t in triggers:
+        if t.get("trigger_id") == trigger_id:
+            target = t
+            break
+
+    if not target:
+        return jsonify({"error": "未找到对应 trigger"}), 404
+
+    result = skill_pitfall.dispatch_reflection(target)
+    return jsonify(result)
 
 
 # ======================================================================

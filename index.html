@@ -45,6 +45,43 @@
                 </div>
             </div>
         </main>
+
+        <!-- 执行计划全屏覆盖层（竖向手机格式，纯灰色背景） -->
+        <div id="exec-cover" class="fixed inset-0 z-40 hidden flex justify-center">
+            <div class="relative w-full max-w-md mx-auto bg-gray-100 min-h-screen shadow-2xl flex flex-col">
+                <!-- 顶部：返回按钮 + 标题 + 结束行程 -->
+                <div class="flex items-center justify-between px-4 pt-5 pb-2 bg-white">
+                    <div class="flex items-center">
+                        <button onclick="closeExecCover()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
+                            <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+                        </button>
+                        <span class="ml-3 text-gray-500 text-sm font-medium">执行计划中...</span>
+                    </div>
+                    <button onclick="endTrip()" class="bg-red-500 text-white font-bold text-sm px-4 py-2 rounded-lg hover:bg-red-600 transition">
+                        结束行程
+                    </button>
+                </div>
+                <!-- 内容区：滚动时间线 -->
+                <div class="flex-1 overflow-y-auto px-4 py-6 pb-24" id="exec-plan-content"></div>
+                <!-- 底部固定栏 -->
+                <div class="bg-white border-t border-gray-200 px-3 py-3 flex items-center space-x-3">
+                    <div class="flex-1 flex items-center bg-gray-100 rounded-full px-4 py-2.5 border border-gray-200">
+                        <input type="text" id="exec-chat-input" placeholder="输入消息..." class="flex-1 bg-transparent border-none outline-none text-gray-900 text-sm placeholder-gray-400">
+                        <button onclick="sendExecMessage()" class="ml-2 text-yellow-500 font-bold text-sm hover:text-yellow-400 transition">发送</button>
+                    </div>
+                    <button onclick="alert('语音输入')" class="w-10 h-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition">
+                        <svg class="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M9 22h6"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 返回后可拖动的挂件 -->
+        <div id="plan-widget" class="fixed z-30 hidden cursor-grab active:cursor-grabbing select-none" style="bottom: 24px;">
+            <div class="bg-yellow-400 text-black font-black text-sm px-5 py-3 rounded-2xl shadow-2xl meituan-shadow inline-block" id="plan-widget-btn">
+                您的计划
+            </div>
+        </div>
     </div>
 
 <script>
@@ -301,6 +338,7 @@ async function submitTime() {
 // 阶段: 排程结果
 // ======================================================================
 function renderSchedule(data) {
+    lastScheduleData = data;
     let html = `
         <section class="pb-10">
             <div class="bg-gray-900 rounded-[40px] p-8 text-white shadow-2xl">
@@ -497,8 +535,178 @@ async function resetAll() {
     location.reload();
 }
 
+// ======================================================================
+// 执行计划全屏覆盖
+// ======================================================================
+let execTimelineData = null;
+
 function handleNavigation() {
-    alert('导航功能即将上线');
+    // 从当前已渲染的 schedule 中获取数据
+    const scheduleSection = document.getElementById('schedule-section');
+    if (!scheduleSection) return;
+    // 数据已经在 renderSchedule 时存到 window
+    openExecCover();
+}
+
+let lastScheduleData = null;
+
+function openExecCover() {
+    const cover = document.getElementById('exec-cover');
+    if (!cover) return;
+    const content = document.getElementById('exec-plan-content');
+    const scheduleSection = document.getElementById('schedule-section');
+    if (scheduleSection && content) {
+        content.innerHTML = scheduleSection.innerHTML;
+        const btns = content.querySelector('.mt-8.space-y-3');
+        if (btns) btns.remove();
+        // 追加防踩坑提醒
+        if (lastScheduleData && lastScheduleData.pitfall_reminders) {
+            let extraHtml = '';
+            for (const r of lastScheduleData.pitfall_reminders) {
+                extraHtml += `<div class="bg-gray-800 rounded-[32px] p-6 text-white mt-4"><p class="text-sm font-medium">${r.display_text}</p></div>`;
+            }
+            if (lastScheduleData.pitfall_insights) {
+                for (const ins of lastScheduleData.pitfall_insights) {
+                    extraHtml += `<div class="bg-gray-800 rounded-[32px] p-6 text-white mt-4"><h4 class="text-sm font-bold text-yellow-400 mb-2">${ins.title}</h4><p class="text-xs text-gray-300">${ins.content}</p></div>`;
+                }
+            }
+            content.insertAdjacentHTML('beforeend', extraHtml);
+        }
+        // 追加触发器按钮
+        if (lastScheduleData && lastScheduleData.pitfall_triggers) {
+            for (const trig of lastScheduleData.pitfall_triggers) {
+                if (trig.ui_manifest && trig.ui_manifest.component_type === 'standard_button') {
+                    content.insertAdjacentHTML('beforeend', `
+                        <div class="bg-yellow-50 border border-yellow-300 rounded-[32px] p-5 mt-4">
+                            <p class="text-sm text-gray-800 font-medium mb-3">${trig.ui_manifest.prompt_text}</p>
+                            <button onclick="executeTrigger('${trig.trigger_id}')" class="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl hover:scale-95 transition-transform">
+                                ${trig.ui_manifest.confirm_label}
+                            </button>
+                        </div>
+                    `);
+                }
+            }
+        }
+    }
+    cover.classList.remove('hidden');
+    document.getElementById('plan-widget')?.classList.remove('hidden');
+}
+
+async function executeTrigger(triggerId) {
+    try {
+        const res = await fetch(API_BASE + '/api/reflect_trigger', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({trigger_id: triggerId})
+        });
+        const data = await res.json();
+        if (data.error) { alert('执行失败: ' + data.error); return; }
+        let msg = '✅ 已执行:\n';
+        if (data.executed_tools) {
+            for (const t of data.executed_tools) {
+                msg += `- ${t.tool}: ${t.status}\n`;
+            }
+        }
+        alert(msg);
+    } catch(e) {
+        alert('网络错误: ' + e.message);
+    }
+}
+
+function closeExecCover() {
+    const cover = document.getElementById('exec-cover');
+    if (cover) cover.classList.add('hidden');
+}
+
+function sendExecMessage() {
+    const input = document.getElementById('exec-chat-input');
+    if (!input || !input.value.trim()) return;
+    alert('发送: ' + input.value.trim());
+    input.value = '';
+}
+
+function endTrip() {
+    closeExecCover();
+    // 隐藏"您的计划"挂件
+    document.getElementById('plan-widget')?.classList.add('hidden');
+    // 创建居中白色弹窗
+    const toast = document.createElement('div');
+    toast.className = 'fixed inset-0 z-50 flex items-center justify-center pointer-events-none';
+    toast.innerHTML = '<div class="bg-white rounded-[32px] shadow-2xl px-10 py-6 text-center"><p class="text-gray-900 font-bold text-lg">行程结束</p></div>';
+    document.body.appendChild(toast);
+    // 2秒后渐变消失
+    setTimeout(function() {
+        toast.style.transition = 'opacity 0.6s ease';
+        toast.style.opacity = '0';
+        setTimeout(function() {
+            toast.remove();
+        }, 600);
+    }, 2000);
+}
+
+// ======================================================================
+// 挂件拖动
+// ======================================================================
+function initWidgetDrag() {
+    const widget = document.getElementById('plan-widget');
+    const btn = document.getElementById('plan-widget-btn');
+    if (!widget || !btn) return;
+    let isDragging = false;
+    let didDrag = false;
+    let startX, startY, origX, origY;
+
+    // 点击事件（只有纯点击才触发）
+    btn.addEventListener('click', function(e) {
+        if (didDrag) return; // 拖动过不触发
+        openExecCover();
+    });
+
+    widget.addEventListener('mousedown', function(e) {
+        if (e.target === widget || e.target === btn) {
+            isDragging = true;
+            didDrag = false;
+            const rect = widget.getBoundingClientRect();
+            origX = rect.left;
+            origY = rect.top;
+            startX = e.clientX;
+            startY = e.clientY;
+            widget.style.cursor = 'grabbing';
+        }
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            didDrag = true;
+        }
+        widget.style.left = (origX + dx) + 'px';
+        widget.style.right = 'auto';
+        widget.style.top = (origY + dy) + 'px';
+        widget.style.bottom = 'auto';
+    });
+
+    document.addEventListener('mouseup', function() {
+        isDragging = false;
+        if (widget) widget.style.cursor = 'grab';
+    });
+}
+
+// 响应式挂件位置：右下角固定
+function resetWidgetPosition() {
+    const widget = document.getElementById('plan-widget');
+    if (!widget) return;
+    widget.style.left = 'auto';
+    widget.style.right = 'auto';
+    widget.style.bottom = '24px';
+    widget.style.top = 'auto';
+    // 居中于手机容器
+    const maxW = document.querySelector('.max-w-md');
+    if (maxW) {
+        const rect = maxW.getBoundingClientRect();
+        widget.style.left = (rect.left + rect.width / 2 - widget.offsetWidth / 2) + 'px';
+    }
 }
 
 // ======================================================================
@@ -506,8 +714,7 @@ function handleNavigation() {
 // ======================================================================
 document.addEventListener('DOMContentLoaded', function() {
     bindSearch();
-    // 预设示例文本点击搜索可以自动运行
-    // 用户手动点搜索按钮即可
+    initWidgetDrag();
 });
 </script>
 
