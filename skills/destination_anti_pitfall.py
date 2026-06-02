@@ -274,6 +274,14 @@ def execute_anti_pitfall_skill(input_payload: dict, client=None, model: str = "d
             })
 
         # 4. 动态构建全通用的动作反射触发域
+        # 判断行程中是否包含餐饮品类
+        food_categories = {"hotpot", "restaurant", "japanese"}
+        has_food = any(n.get("category") in food_categories for n in pipeline_nodes)
+        # 取第一个非全局强防呆节点作为叫车目标
+        first_node = pipeline_nodes[0] if pipeline_nodes else {}
+        first_name = first_node.get("node_name", "")
+        first_coord = first_node.get("coordinate", "")
+
         for flow_type, ref_node_name, ref_coordinate, ref_category in activated_action_flows:
             if flow_type == "FOOD_DELIVERY_FLOW":
                 output_response["intent_triggers"].append({
@@ -292,6 +300,25 @@ def execute_anti_pitfall_skill(input_payload: dict, client=None, model: str = "d
                             "request_timestamp": int(time.time())
                         }
                     }
+                })
+
+        # 没有餐饮节点时，弹单按钮叫车
+        if not output_response["intent_triggers"] and first_name:
+            output_response["intent_triggers"].append({
+                "trigger_id": f"trig_taxi_{int(time.time())}",
+                "ui_manifest": {
+                    "component_type": "standard_button",
+                    "prompt_text": f"是否一键呼叫网约车前往 [{first_name}]？",
+                    "confirm_label": "一键叫车"
+                },
+                "action_reflection": {
+                    "target_tools": ["virtual_call_taxi"],
+                    "parameter_mapping": {
+                        "taxi_target_name": first_name,
+                        "taxi_target_coord": first_coord,
+                        "request_timestamp": int(time.time())
+                    }
+                }
                 })
 
     except Exception as err:
