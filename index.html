@@ -348,6 +348,7 @@ function renderSchedule(data) {
         const item = data.timeline[i];
         let dotColor = 'bg-yellow-400';
         let label = '';
+        let subHtml = '';
 
         if (item.action === 'DEPART') {
             label = '出发';
@@ -366,6 +367,27 @@ function renderSchedule(data) {
                 dotColor = 'bg-green-400';
             } else {
                 label = `前往 ${name}`;
+            }
+            // 子任务行：人需要在场执行的任务
+            if (item.sub_task) {
+                // 计算结束时间
+                let endTime = '';
+                if (item.time && item.sub_task.duration_minutes) {
+                    const parts = item.time.split(':');
+                    if (parts.length === 2) {
+                        let h = parseInt(parts[0]), m = parseInt(parts[1]);
+                        m += item.sub_task.duration_minutes;
+                        h += Math.floor(m / 60);
+                        m = m % 60;
+                        endTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                    }
+                }
+                subHtml = `
+                    <p class="text-xs text-gray-400 mt-1 flex justify-between">
+                        <span>── 进行${item.sub_task.action}（预计 ${item.sub_task.duration_minutes} 分钟）</span>
+                        <span class="text-gray-500">${endTime} 结束</span>
+                    </p>
+                `;
             }
         } else if (item.action === 'PICK_TASK') {
             const name = shopName(item.memo);
@@ -386,6 +408,7 @@ function renderSchedule(data) {
                 <div class="ml-6">
                     <p class="text-xs text-yellow-400 font-bold">${item.time}</p>
                     <p class="text-sm font-bold">${label}</p>
+                    ${subHtml}
                 </div>
             </div>
         `;

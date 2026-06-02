@@ -319,6 +319,7 @@ def api_set_time():
             "duration_minutes": _duration(cat),
             "human_needed": human_needed,
             "fixed_start_time": fixed_time if time_mode == "fixed" else None,
+            "category": cat,
         })
         spatial_matrix["locations"][sid] = {"name": sname, "coord": coord}
 
@@ -360,6 +361,18 @@ def _run_schedule():
         session_state["phase"] = "done"
         # 修正时间线：MOVE 条目的时间改为后续 DROP/START 的时间，删除后续重复条目
         raw = schedule_res["timeline"]
+        # 构建 task_id → {name, duration_minutes, human_needed} 映射
+        task_map = {}
+        for t in session_state["task_list"]:
+            tid = t.get("task_id")
+            if tid:
+                cat = t.get("category", "")
+                task_map[tid] = {
+                    "name": t.get("name", ""),
+                    "duration_minutes": t.get("duration_minutes", 45),
+                    "human_needed": t.get("human_needed", True),
+                    "action_name": backend.CATEGORY_NAME_CN.get(cat, t.get("name", "")),
+                }
         cleaned = []
         skip = set()
         for i in range(len(raw)):
@@ -376,10 +389,26 @@ def _run_schedule():
                     item["memo"] = f"{item['memo']} — {nxt['memo']}"
                     item["action"] = "MOVE_AND_EXEC"
                     skip.add(i + 1)
+            # 提取 task_id 对应的子任务信息
+            sub_task_info = None
+            tid = item.get("task_id")
+            if tid and tid in task_map:
+                info = task_map[tid]
+                if info["human_needed"]:
+                    # 只在 MOVE 或 MOVE_AND_EXEC 条目上附加子任务行
+                    if item["action"] in ("MOVE", "MOVE_AND_EXEC"):
+                        sub_task_info = {
+                            "action": info["action_name"],
+                            "duration_minutes": info["duration_minutes"],
+                        }
+            # 清洗 memo：将 "前往锚点: xxx" 统一转为 "前往 xxx"
+            memo = item["memo"]
+            memo = re.sub(r'^前往锚点:\s*', '前往 ', memo)
             cleaned.append({
                 "time": item["time"],
-                "memo": item["memo"],
+                "memo": memo,
                 "action": item["action"],
+                "sub_task": sub_task_info,
             })
 
         return jsonify({
