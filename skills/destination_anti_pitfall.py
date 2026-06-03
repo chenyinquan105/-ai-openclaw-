@@ -211,7 +211,7 @@ _CATEGORY_BEHAVIOR_MATRIX = {
 }
 
 # 平台注册的虚拟底层工具别名定义（对齐事件总线，防止瞎填）
-_VALID_TARGET_TOOLS = {"virtual_call_taxi", "virtual_queue", "virtual_weather_notice", "virtual_delay_warning"}
+_VALID_TARGET_TOOLS = {"virtual_call_taxi", "virtual_queue", "virtual_weather_notice", "virtual_delay_warning", "virtual_navigation"}
 
 
 # ======================================================================
@@ -237,6 +237,7 @@ def execute_anti_pitfall_skill(input_payload: dict, client=None, model: str = "d
         pipeline_nodes = input_payload["pipeline_nodes"]
         env_context = input_payload["environmental_context"]
         weather_summary = env_context.get("weather_summary", "未知天气")
+        user_transport = input_payload.get("transport", "步行")
 
         # 2. 构建全局物理强防呆提醒（100% 触发）
         for rule in _GLOBAL_REMINDER_RULES:
@@ -277,48 +278,92 @@ def execute_anti_pitfall_skill(input_payload: dict, client=None, model: str = "d
         # 判断行程中是否包含餐饮品类
         food_categories = {"hotpot", "restaurant", "japanese"}
         has_food = any(n.get("category") in food_categories for n in pipeline_nodes)
-        # 取第一个非全局强防呆节点作为叫车目标
+        # 取第一个非全局强防呆节点作为导航/叫车目标
         first_node = pipeline_nodes[0] if pipeline_nodes else {}
         first_name = first_node.get("node_name", "")
         first_coord = first_node.get("coordinate", "")
 
+        is_taxi_mode = (user_transport == "打车")
+
         for flow_type, ref_node_name, ref_coordinate, ref_category in activated_action_flows:
             if flow_type == "FOOD_DELIVERY_FLOW":
+                if is_taxi_mode:
+                    output_response["intent_triggers"].append({
+                        "trigger_id": f"trig_flow_{int(time.time())}_{ref_category}",
+                        "ui_manifest": {
+                            "component_type": "standard_button",
+                            "prompt_text": f"行程包含餐饮节点 [{ref_node_name}]，是否需要为您一键餐厅排号和叫车？",
+                            "confirm_label": "执行",
+                            "cancel_label": "不需要"
+                        },
+                        "action_reflection": {
+                            "target_tools": ["virtual_call_taxi", "virtual_queue"],
+                            "parameter_mapping": {
+                                "taxi_target_name": ref_node_name,
+                                "taxi_target_coord": ref_coordinate,
+                                "queue_shop_category": ref_category,
+                                "request_timestamp": int(time.time())
+                            }
+                        }
+                    })
+                else:
+                    output_response["intent_triggers"].append({
+                        "trigger_id": f"trig_nav_flow_{int(time.time())}_{ref_category}",
+                        "ui_manifest": {
+                            "component_type": "standard_button",
+                            "prompt_text": f"行程包含餐饮节点 [{ref_node_name}]，是否需要为您导航前往？",
+                            "confirm_label": "执行",
+                            "cancel_label": "不需要"
+                        },
+                        "action_reflection": {
+                            "target_tools": ["virtual_navigation"],
+                            "parameter_mapping": {
+                                "nav_target_name": ref_node_name,
+                                "nav_target_coord": ref_coordinate,
+                                "nav_transport": user_transport,
+                                "request_timestamp": int(time.time())
+                            }
+                        }
+                    })
+
+        # 没有餐饮节点时，弹单按钮导航/叫车
+        if not output_response["intent_triggers"] and first_name:
+            if is_taxi_mode:
                 output_response["intent_triggers"].append({
-                    "trigger_id": f"trig_flow_{int(time.time())}_{ref_category}",
+                    "trigger_id": f"trig_taxi_{int(time.time())}",
                     "ui_manifest": {
                         "component_type": "standard_button",
-                        "prompt_text": f"行程包含餐饮节点 [{ref_node_name}]，是否一键呼叫网约车并同步开启远程座位预约？",
-                        "confirm_label": "一键托管"
+                        "prompt_text": f"是否需要为您一键叫车前往 [{first_name}]？",
+                        "confirm_label": "执行",
+                        "cancel_label": "不需要"
                     },
                     "action_reflection": {
-                        "target_tools": ["virtual_call_taxi", "virtual_queue"],
+                        "target_tools": ["virtual_call_taxi"],
                         "parameter_mapping": {
-                            "taxi_target_name": ref_node_name,
-                            "taxi_target_coord": ref_coordinate,
-                            "queue_shop_category": ref_category,
+                            "taxi_target_name": first_name,
+                            "taxi_target_coord": first_coord,
                             "request_timestamp": int(time.time())
                         }
                     }
                 })
-
-        # 没有餐饮节点时，弹单按钮叫车
-        if not output_response["intent_triggers"] and first_name:
-            output_response["intent_triggers"].append({
-                "trigger_id": f"trig_taxi_{int(time.time())}",
-                "ui_manifest": {
-                    "component_type": "standard_button",
-                    "prompt_text": f"是否一键呼叫网约车前往 [{first_name}]？",
-                    "confirm_label": "一键叫车"
-                },
-                "action_reflection": {
-                    "target_tools": ["virtual_call_taxi"],
-                    "parameter_mapping": {
-                        "taxi_target_name": first_name,
-                        "taxi_target_coord": first_coord,
-                        "request_timestamp": int(time.time())
+            else:
+                output_response["intent_triggers"].append({
+                    "trigger_id": f"trig_nav_{int(time.time())}",
+                    "ui_manifest": {
+                        "component_type": "standard_button",
+                        "prompt_text": f"是否需要为您导航前往 [{first_name}]？",
+                        "confirm_label": "执行",
+                        "cancel_label": "不需要"
+                    },
+                    "action_reflection": {
+                        "target_tools": ["virtual_navigation"],
+                        "parameter_mapping": {
+                            "nav_target_name": first_name,
+                            "nav_target_coord": first_coord,
+                            "nav_transport": user_transport,
+                            "request_timestamp": int(time.time())
+                        }
                     }
-                }
                 })
 
     except Exception as err:

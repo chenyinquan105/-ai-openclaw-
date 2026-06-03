@@ -261,6 +261,7 @@ def api_choose_shop():
         return jsonify({"error": "选中的店铺无效"}), 400
 
     session_state["selected_pairs"] = selected_pairs
+    session_state["transport"] = data.get("transport", "步行")
     session_state["phase"] = "ask_time"
 
     return jsonify({
@@ -417,6 +418,7 @@ def _run_schedule():
             "trip_id": f"trip_{int(datetime.now().timestamp())}",
             "current_node_index": 0,
             "pipeline_nodes": [],
+            "transport": session_state.get("transport", "步行"),
             "environmental_context": {
                 "timestamp": int(datetime.now().timestamp()),
                 "weather_summary": "今日多云，傍晚空气湿度较大，体感闷热",

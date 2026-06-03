@@ -26,8 +26,11 @@ _MOCK_POI_DB: List[dict] = [
     # --- pet (宠物) 可丢下后台做 ---
     {"shop_id": "shop_pet_01", "name": "酷迪宠物三里屯店", "rating": 4.9, "lat": 39.933, "lng": 116.454, "category": "pet", "category_alias": "宠物店", "human_needed": False},
     {"shop_id": "shop_pet_02", "name": "宠物家朝阳店", "rating": 4.5, "lat": 39.936, "lng": 116.448, "category": "pet", "category_alias": "宠物店", "human_needed": False},
-    # --- cafe (咖啡) 需人在场 ---
+    # --- cafe (咖啡/水吧) 需人在场 ---
     {"shop_id": "shop_cafe_01", "name": "星巴克臻选三里屯", "rating": 4.4, "lat": 39.932, "lng": 116.455, "category": "cafe", "category_alias": "咖啡馆", "human_needed": True},
+    {"shop_id": "shop_cafe_05", "name": "瑞幸咖啡三里屯SOHO", "rating": 4.2, "lat": 39.933, "lng": 116.452, "category": "cafe", "category_alias": "咖啡馆", "human_needed": True},
+    {"shop_id": "shop_cafe_06", "name": "蜜雪冰城三里屯店", "rating": 4.0, "lat": 39.934, "lng": 116.451, "category": "cafe", "category_alias": "水吧", "human_needed": True},
+    {"shop_id": "shop_cafe_07", "name": "茶百道三里屯店", "rating": 4.1, "lat": 39.935, "lng": 116.450, "category": "cafe", "category_alias": "水吧", "human_needed": True},
     # --- gym (健身) 需人在场 ---
     {"shop_id": "shop_gym_01", "name": "超级猩猩三里屯", "rating": 4.8, "lat": 39.932, "lng": 116.446, "category": "gym", "category_alias": "健身房", "human_needed": True},
 

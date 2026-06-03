@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>美团智能助手 - 极简排程</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .meituan-shadow { box-shadow: 0 10px 30px -10px rgba(255, 208, 0, 0.3); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans">
+
+    <div class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative">
+        
+        <header class="p-6 bg-white rounded-b-[40px] shadow-sm sticky top-0 z-10">
+            <h1 class="text-2xl font-black italic text-gray-900 mb-4">Meituan <span class="text-yellow-400">AI</span></h1>
+            <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
+                <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
+                <div class="bg-yellow-400 p-2 rounded-full shadow-lg cursor-pointer">
+                    <svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+            </div>
+        </header>
+
+        <main class="p-6 space-y-8">
+            <!-- 动态内容区，初始空白 -->
+            <div id="dynamic-content"></div>
+
+            <!-- 冲突弹窗 -->
+            <div id="conflict-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+                <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6">
+                    <div class="text-center mb-6">
+                        <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <h3 class="text-lg font-bold">⏰ 时间冲突</h3>
+                        <p id="conflict-message" class="text-sm text-gray-600 mt-2"></p>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button onclick="conflictChoice('postpone')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition">延后执行</button>
+                        <button onclick="conflictChoice('accept')" class="flex-1 bg-yellow-400 text-black font-bold py-3 rounded-2xl hover:bg-yellow-300 transition">接受延误</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 执行计划全屏覆盖层（竖向手机格式，纯灰色背景） -->
+        <div id="exec-cover" class="fixed inset-0 z-40 hidden flex justify-center">
+            <div id="exec-card" class="relative w-full max-w-md mx-auto bg-gray-100 min-h-screen shadow-2xl flex flex-col">
+                <!-- 顶部：返回按钮 + 标题 + 结束行程 -->
+                <div class="flex items-center justify-between px-4 pt-5 pb-2 bg-white">
+                    <div class="flex items-center">
+                        <button onclick="closeExecCover()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
+                            <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+                        </button>
+                        <span class="ml-3 text-gray-500 text-sm font-medium">执行计划中...</span>
+                    </div>
+                    <button onclick="endTrip()" class="bg-red-500 text-white font-bold text-sm px-4 py-2 rounded-lg hover:bg-red-600 transition">
+                        结束行程
+                    </button>
+                </div>
+                <!-- 内容区：滚动时间线 -->
+                <div class="flex-1 overflow-y-auto px-4 py-6 pb-24" id="exec-plan-content"></div>
+                <!-- 底部固定栏 -->
+                <div class="bg-white border-t border-gray-200 px-3 py-3 flex items-center space-x-3">
+                    <div class="flex-1 flex items-center bg-gray-100 rounded-full px-4 py-2.5 border border-gray-200">
+                        <input type="text" id="exec-chat-input" placeholder="输入消息..." class="flex-1 bg-transparent border-none outline-none text-gray-900 text-sm placeholder-gray-400">
+                        <button onclick="sendExecMessage()" class="ml-2 text-yellow-500 font-bold text-sm hover:text-yellow-400 transition">发送</button>
+                    </div>
+                    <button onclick="alert('语音输入')" class="w-10 h-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition">
+                        <svg class="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M9 22h6"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 返回后可拖动的挂件 -->
+        <div id="plan-widget" class="fixed z-30 hidden cursor-grab active:cursor-grabbing select-none" style="bottom: 24px;">
+            <div class="bg-yellow-400 text-black font-black text-sm px-5 py-3 rounded-2xl shadow-2xl meituan-shadow inline-block" id="plan-widget-btn">
+                您的计划
+            </div>
+        </div>
+    </div>
+
+<script>
+// ======================================================================
+// 美团 AI 助手 — 前端交互逻辑
+// 不修改 HTML 骨架，只动态渲染数据
+// ======================================================================
+
+const API_BASE = '';
+
+// --- DOM 引用 ---
+const searchInput = document.querySelector('header input[type="text"]');
+const searchBtn = document.querySelector('header .rounded-full + div, header .bg-yellow-400');
+const mainEl = document.getElementById('dynamic-content');
+
+// 首屏原始内容（硬编码示例），用户输入后会被动态替换
+let firstRun = true;
+
+// --- 状态 ---
+let currentPhase = 'init';
+
+// --- 品类 emoji 映射 ---
+const CATEGORY_EMOJI = {
+    hair: '💇', pet: '🐶', cafe: '☕',
+    restaurant: '🍽️', cinema: '🎬', gym: '💪', laundry: '🧺',
+};
+const CATEGORY_NAME = {
+    hair: '理发', pet: '宠物洗澡', cafe: '咖啡',
+    restaurant: '餐饮', cinema: '电影', gym: '健身', laundry: '干洗',
+};
+
+// ======================================================================
+// 搜索按钮事件
+// ======================================================================
+function bindSearch() {
+    const btn = document.querySelector('header .bg-yellow-400');
+    if (btn) {
+        btn.onclick = doSearch;
+        btn.style.cursor = 'pointer';
+    }
+    if (searchInput) {
+        searchInput.onkeydown = function(e) { if (e.key === 'Enter') doSearch(); };
+    }
+}
+
+async function doSearch() {
+    const text = searchInput ? searchInput.value.trim() : '';
+    if (!text) return;
+
+    firstRun = false;
+
+    // 显示加载状态
+    mainEl.innerHTML = `
+        <div class="p-6 text-center">
+            <div class="animate-pulse text-gray-400">
+                <svg class="w-8 h-8 mx-auto mb-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                <p class="text-sm">正在搜索附近商户...</p>
+            </div>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(API_BASE + '/api/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text})
+        });
+        const data = await res.json();
+        if (data.error) { showError(data.error); return; }
+        if (data.phase === 'choose_shop') {
+            renderCategorySelection(data.categories);
+        }
+    } catch(e) {
+        showError('网络错误: ' + e.message);
+    }
+}
+
+// ======================================================================
+// 阶段: 选择店铺
+// ======================================================================
+function renderCategorySelection(categories) {
+    if (!categories || categories.length === 0) {
+        showError('未搜索到相关商户');
+        return;
+    }
+
+    let html = `
+        <section>
+            <div class="flex justify-between items-end mb-4">
+                <h2 class="text-lg font-bold">请为每个品类选择店铺</h2>
+                <span class="text-[10px] text-gray-400 bg-gray-100 px-2 py-1 rounded">基于三里屯核心区</span>
+            </div>
+    `;
+
+    for (const cat of categories) {
+        const emoji = CATEGORY_EMOJI[cat.category] || '📍';
+        const label = CATEGORY_NAME[cat.category] || cat.label || cat.category;
+        const humanTag = cat.shops.some(s => s.human_needed) ? 'HUMAN NEEDED' : 'BACKGROUND';
+
+        html += `
+            <div class="mb-6" data-category="${cat.category}">
+                <p class="text-xs font-bold text-gray-400 mb-3 tracking-widest">${emoji} ${label} · ${humanTag}</p>
+                <div class="flex space-x-4 overflow-x-auto pb-2 scrollbar-hide shop-scroll">
+        `;
+
+        for (let i = 0; i < cat.shops.length; i++) {
+            const shop = cat.shops[i];
+            const selected = i === 0;
+            const borderClass = selected ? 'border-yellow-400 meituan-shadow' : 'border-transparent';
+            const opacityClass = selected ? '' : 'opacity-60';
+            const tag = shop.human_needed ? '' : '<span class="text-[10px] text-blue-500 ml-1 bg-blue-50 px-1 font-bold">可放下即走</span>';
+
+            html += `
+                <div class="flex-shrink-0 w-44 bg-white p-4 rounded-3xl border-4 ${borderClass} ${opacityClass} shop-card relative cursor-pointer transition-all"
+                     data-shop-id="${shop.shop_id}" data-category="${cat.category}" onclick="toggleShopCard(this)">
+                    ${selected ? '<div class="absolute top-3 right-3 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></div>' : ''}
+                    <h3 class="font-bold text-sm">${shop.name}</h3>
+                    <div class="flex items-center mt-2">
+                        <span class="text-yellow-500 text-xs font-bold">★ ${shop.rating}</span>
+                        <span class="text-[10px] text-gray-400 ml-2">${shop.distance || ''}</span>
+                        ${tag}
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `</div></div>`;
+    }
+
+    // 确认按钮
+    html += `
+        <button onclick="confirmShopSelection()" class="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl mt-4 hover:scale-95 transition-transform">
+            确认选择，继续
+        </button>
+        </section>
+        <div id="time-section"></div>
+        <div id="schedule-section"></div>
+    `;
+
+    mainEl.innerHTML = html;
+    currentPhase = 'choose_shop';
+}
+
+// 点击切换卡片选中状态
+function toggleShopCard(el) {
+    const category = el.dataset.category;
+    // 同品类其他卡片取消选中
+    const siblings = document.querySelectorAll(`.shop-card[data-category="${category}"]`);
+    siblings.forEach(s => {
+        s.classList.remove('border-yellow-400', 'meituan-shadow');
+        s.classList.add('border-transparent', 'opacity-60');
+        // 移除选中勾
+        const check = s.querySelector('.absolute.top-3');
+        if (check) check.remove();
+    });
+
+    // 当前卡片选中
+    el.classList.remove('border-transparent', 'opacity-60');
+    el.classList.add('border-yellow-400', 'meituan-shadow');
+    if (!el.querySelector('.absolute.top-3')) {
+        const div = document.createElement('div');
+        div.className = 'absolute top-3 right-3 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center';
+        div.innerHTML = '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg>';
+        el.appendChild(div);
+    }
+}
+
+// 确认选店
+async function confirmShopSelection() {
+    const cards = document.querySelectorAll('.shop-card.border-yellow-400');
+    const selections = [];
+    cards.forEach(c => {
+        selections.push({
+            category: c.dataset.category,
+            shop_id: c.dataset.shopId
+        });
+    });
+
+    if (selections.length === 0) {
+        showError('请至少选择一家店铺');
+        return;
+    }
+
+    try {
+        const res = await fetch(API_BASE + '/api/choose_shop', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({selections})
+        });
+        const data = await res.json();
+        if (data.error) { showError(data.error); return; }
+        if (data.phase === 'ask_time') {
+            renderTimeInput(data);
+        }
+    } catch(e) {
+        showError('网络错误: ' + e.message);
+    }
+}
+
+// ======================================================================
+// 阶段: 时间输入
+// ======================================================================
+function renderTimeInput(data) {
+    let timeHtml = `
+        <section class="pt-4">
+            <div class="bg-gray-100 rounded-[32px] p-6">
+                <h3 class="text-sm font-bold mb-2">⏰ 预计什么时间去？</h3>
+                <div class="flex space-x-3">
+                    <input type="text" id="time-input" placeholder="例如：下午3点 / 明天上午 / 直接回车=现在出发"
+                           class="flex-1 bg-white rounded-full px-4 py-3 text-sm border-2 border-transparent focus:border-yellow-400 outline-none"
+                           onkeydown="if(event.key==='Enter') submitTime()">
+                    <button onclick="submitTime()" class="bg-yellow-400 text-black font-bold px-6 py-3 rounded-full hover:scale-95 transition-transform">确定</button>
+                </div>
+            </div>
+        </section>
+    `;
+
+    const timeSection = document.getElementById('time-section');
+    if (timeSection) timeSection.innerHTML = timeHtml;
+    else {
+        const dc = document.getElementById('dynamic-content');
+        dc.insertAdjacentHTML('beforeend', timeHtml);
+    }
+
+    // 自动聚焦
+    setTimeout(() => document.getElementById('time-input')?.focus(), 100);
+}
+
+async function submitTime() {
+    const timeInput = document.getElementById('time-input');
+    const time = timeInput ? timeInput.value.trim() : '';
+
+    try {
+        const res = await fetch(API_BASE + '/api/set_time', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({time})
+        });
+        const data = await res.json();
+        if (data.error) { showError(data.error); return; }
+        if (data.phase === 'conflict') {
+            showConflictModal(data);
+        } else if (data.phase === 'done') {
+            renderSchedule(data);
+        } else if (data.phase === 'error') {
+            showError(data.message);
+        }
+    } catch(e) {
+        showError('网络错误: ' + e.message);
+    }
+}
+
+// ======================================================================
+// 阶段: 排程结果
+// ======================================================================
+function renderSchedule(data) {
+    lastScheduleData = data;
+    let html = `
+        <section class="pb-10">
+            <div class="bg-gray-900 rounded-[40px] p-8 text-white shadow-2xl">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h2 class="text-xl font-bold">行程方案</h2>
+                        <p class="text-xs text-gray-400 mt-1">AI 优化 · 步行方案</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-2xl font-black text-yellow-400">${data.departure_time}</p>
+                        <p class="text-[10px] uppercase tracking-widest text-gray-500">出发时间</p>
+                    </div>
+                </div>
+
+                <div class="space-y-8 relative">
+                    <div class="absolute left-[11px] top-2 bottom-2 w-[2px] bg-gradient-to-b from-yellow-400 via-blue-400 to-gray-700 opacity-30"></div>
+    `;
+
+    // 后端action→真人化文案映射
+    const actionLabels = {
+        'DEPART':          '准备出发',
+        'MOVE_AND_EXEC':   '', // 从 memo 提取
+        'MOVE':            '', // 从 memo 提取
+        'DROP_TASK':       '', // 由 MOVE 合并
+        'START_TASK':      '', // 由 MOVE 合并
+        'PICK_TASK':       '取回',
+        'WAIT':            '等待中',
+        'ARRIVE':          '到达',
+    };
+
+    // 提取店铺名
+    function shopName(memo) {
+        if (!memo) return '';
+        // 匹配 "前往 xxx" 或 "前往执行 xxx" 或 "完成回收: xxx"
+        let m = memo.match(/前往(?:执行)?\s*(.+?)(?: —.*)?$/);
+        if (m) return m[1];
+        m = memo.match(/完成回收:\s*(.+)/);
+        if (m) return m[1];
+        m = memo.match(/放下物品/);
+        if (m) return '← ';
+        return memo;
+    }
+
+    for (let i = 0; i < data.timeline.length; i++) {
+        const item = data.timeline[i];
+        let dotColor = 'bg-yellow-400';
+        let label = '';
+        let subHtml = '';
+
+        if (item.action === 'DEPART') {
+            label = '出发';
+            dotColor = 'bg-yellow-400';
+        } else if (item.action === 'MOVE_AND_EXEC') {
+            // "前往 酷迪宠物三里屯店 — 放下物品，开始后台处理" → "前往 酷迪宠物三里屯店"
+            const name = shopName(item.memo);
+            const hasDrop = item.memo.includes('放下');
+            const hasStart = item.memo.includes('人在场');
+            const hasPick = item.memo.includes('回收');
+            if (hasDrop) {
+                label = `去 ${name}`;
+                dotColor = 'bg-blue-400';
+            } else if (hasPick) {
+                label = `取回 ${name}`;
+                dotColor = 'bg-green-400';
+            } else {
+                label = `前往 ${name}`;
+            }
+            // 子任务行：人需要在场执行的任务
+            if (item.sub_task) {
+                // 计算结束时间
+                let endTime = '';
+                if (item.time && item.sub_task.duration_minutes) {
+                    const parts = item.time.split(':');
+                    if (parts.length === 2) {
+                        let h = parseInt(parts[0]), m = parseInt(parts[1]);
+                        m += item.sub_task.duration_minutes;
+                        h += Math.floor(m / 60);
+                        m = m % 60;
+                        endTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                    }
+                }
+                subHtml = `
+                    <p class="text-xs text-gray-400 mt-1 flex justify-between">
+                        <span>── 进行${item.sub_task.action}（预计 ${item.sub_task.duration_minutes} 分钟）</span>
+                        <span class="text-gray-500">${endTime} 结束</span>
+                    </p>
+                `;
+            }
+        } else if (item.action === 'PICK_TASK') {
+            const name = shopName(item.memo);
+            label = `去 ${name} 接回宠物`;
+            dotColor = 'bg-green-400';
+        } else if (item.action === 'WAIT') {
+            label = '等待中';
+            dotColor = 'bg-blue-400';
+        } else {
+            label = item.memo || '';
+            if (item.action === 'DROP_TASK' || item.action === 'WAIT') dotColor = 'bg-blue-400';
+            else if (item.action === 'PICK_TASK') dotColor = 'bg-green-400';
+        }
+
+        html += `
+            <div class="flex items-start relative z-10">
+                <div class="w-6 h-6 ${dotColor} rounded-full border-4 border-gray-900 flex-shrink-0"></div>
+                <div class="ml-6">
+                    <p class="text-xs text-yellow-400 font-bold">${item.time}</p>
+                    <p class="text-sm font-bold">${label}</p>
+                    ${subHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    html += `</div><div class="mt-8 space-y-3">
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                    <span>预计总耗时</span>
+                    <span class="text-white font-bold">${data.total_minutes} 分钟</span>
+                </div>
+                <button onclick="handleNavigation()" class="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl hover:scale-95 transition-transform">
+                    执行计划
+                </button>
+                <button onclick="resetAll()" class="w-full bg-gray-100 text-gray-500 font-bold py-3 rounded-2xl hover:bg-gray-200 transition">
+                    重新搜索
+                </button>
+            </div></div>
+        </section>
+    `;
+
+    const scheduleSection = document.getElementById('schedule-section');
+    if (scheduleSection) scheduleSection.innerHTML = html;
+    else {
+        const dc = document.getElementById('dynamic-content');
+        dc.insertAdjacentHTML('beforeend', html);
+    }
+
+    currentPhase = 'done';
+}
+
+// ======================================================================
+// 冲突弹窗
+// ======================================================================
+function showConflictModal(data) {
+    const modal = document.getElementById('conflict-modal');
+    const msg = document.getElementById('conflict-message');
+    if (modal && msg) {
+        msg.innerHTML = data.message || `执行将延误 ${data.delay_minutes || ''} 分钟`;
+        modal.classList.remove('hidden');
+    }
+    currentPhase = 'conflict';
+}
+
+async function conflictChoice(choice) {
+    const modal = document.getElementById('conflict-modal');
+    if (modal) modal.classList.add('hidden');
+
+    try {
+        const res = await fetch(API_BASE + '/api/conflict_choice', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({choice})
+        });
+        const data = await res.json();
+        if (data.error) { showError(data.error); return; }
+        if (data.phase === 'conflict') {
+            showConflictModal(data);
+        } else if (data.phase === 'done') {
+            renderSchedule(data);
+        } else if (data.phase === 'error') {
+            showError(data.message);
+        }
+    } catch(e) {
+        showError('网络错误: ' + e.message);
+    }
+}
+
+// ======================================================================
+// 工具函数
+// ======================================================================
+function showError(msg) {
+    mainEl.innerHTML = `
+        <div class="p-6 text-center">
+            <div class="bg-red-50 border-2 border-red-200 rounded-[32px] p-6">
+                <p class="text-red-500 font-bold text-sm">⚠️ ${msg}</p>
+                <button onclick="resetAll()" class="mt-4 bg-gray-100 text-gray-700 font-bold px-6 py-3 rounded-2xl hover:bg-gray-200 transition">
+                    重新开始
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+async function resetAll() {
+    await fetch(API_BASE + '/api/reset', {method: 'POST'});
+    location.reload();
+}
+
+// ======================================================================
+// 执行计划全屏覆盖
+// ======================================================================
+let execTimelineData = null;
+
+function handleNavigation() {
+    // 从当前已渲染的 schedule 中获取数据
+    const scheduleSection = document.getElementById('schedule-section');
+    if (!scheduleSection) return;
+    // 数据已经在 renderSchedule 时存到 window
+    openExecCover();
+}
+
+let lastScheduleData = null;
+
+function openExecCover() {
+    const cover = document.getElementById('exec-cover');
+    if (!cover) return;
+    const content = document.getElementById('exec-plan-content');
+    const scheduleSection = document.getElementById('schedule-section');
+    if (scheduleSection && content) {
+        content.innerHTML = scheduleSection.innerHTML;
+        const btns = content.querySelector('.mt-8.space-y-3');
+        if (btns) btns.remove();
+        // 追加防踩坑提醒
+        if (lastScheduleData && lastScheduleData.pitfall_reminders) {
+            let extraHtml = '';
+            for (const r of lastScheduleData.pitfall_reminders) {
+                extraHtml += `<div class="bg-gray-800 rounded-[32px] p-6 text-white mt-4"><p class="text-sm font-medium">${r.display_text}</p></div>`;
+            }
+            if (lastScheduleData.pitfall_insights) {
+                for (const ins of lastScheduleData.pitfall_insights) {
+                    extraHtml += `<div class="bg-gray-800 rounded-[32px] p-6 text-white mt-4"><h4 class="text-sm font-bold text-yellow-400 mb-2">${ins.title}</h4><p class="text-xs text-gray-300">${ins.content}</p></div>`;
+                }
+            }
+            content.insertAdjacentHTML('beforeend', extraHtml);
+        }
+        // 追加触发器按钮
+        if (lastScheduleData && lastScheduleData.pitfall_triggers) {
+            for (const trig of lastScheduleData.pitfall_triggers) {
+                if (trig.ui_manifest && trig.ui_manifest.component_type === 'standard_button') {
+                    content.insertAdjacentHTML('beforeend', `
+                        <div class="bg-yellow-50 border border-yellow-300 rounded-[32px] p-5 mt-4">
+                            <p class="text-sm text-gray-800 font-medium mb-3">${trig.ui_manifest.prompt_text}</p>
+                            <button onclick="executeTrigger('${trig.trigger_id}')" class="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl hover:scale-95 transition-transform">
+                                ${trig.ui_manifest.confirm_label}
+                            </button>
+                        </div>
+                    `);
+                }
+            }
+        }
+    }
+    cover.classList.remove('hidden');
+    document.getElementById('plan-widget')?.classList.remove('hidden');
+    // 放大动画
+    const card = document.getElementById('exec-card');
+    if (card) {
+        card.style.transition = 'none';
+        card.style.transformOrigin = 'center center';
+        card.style.transform = 'scale(0.3)';
+        card.style.opacity = '0';
+        card.offsetHeight;
+        card.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease-out';
+        card.style.transform = 'scale(1)';
+        card.style.opacity = '1';
+    }
+}
+
+async function executeTrigger(triggerId) {
+    try {
+        const res = await fetch(API_BASE + '/api/reflect_trigger', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({trigger_id: triggerId})
+        });
+        const data = await res.json();
+        if (data.error) { alert('执行失败: ' + data.error); return; }
+        let msg = '✅ 已执行:\n';
+        if (data.executed_tools) {
+            for (const t of data.executed_tools) {
+                msg += `- ${t.tool}: ${t.status}\n`;
+            }
+        }
+        alert(msg);
+    } catch(e) {
+        alert('网络错误: ' + e.message);
+    }
+}
+
+function closeExecCover() {
+    const cover = document.getElementById('exec-cover');
+    const card = document.getElementById('exec-card');
+    if (card) {
+        card.style.transition = 'transform 0.25s ease-in, opacity 0.2s ease-in';
+        card.style.transformOrigin = 'center center';
+        card.style.transform = 'scale(0.3)';
+        card.style.opacity = '0';
+        setTimeout(() => {
+            if (cover) cover.classList.add('hidden');
+            card.style.transition = 'none';
+            card.style.transform = '';
+            card.style.opacity = '';
+        }, 280);
+    } else {
+        if (cover) cover.classList.add('hidden');
+    }
+}
+
+function sendExecMessage() {
+    const input = document.getElementById('exec-chat-input');
+    if (!input || !input.value.trim()) return;
+    alert('发送: ' + input.value.trim());
+    input.value = '';
+}
+
+function endTrip() {
+    closeExecCover();
+    // 隐藏"您的计划"挂件
+    document.getElementById('plan-widget')?.classList.add('hidden');
+    // 创建居中白色弹窗
+    const toast = document.createElement('div');
+    toast.className = 'fixed inset-0 z-50 flex items-center justify-center pointer-events-none';
+    toast.innerHTML = '<div class="bg-white rounded-[32px] shadow-2xl px-10 py-6 text-center"><p class="text-gray-900 font-bold text-lg">行程结束</p></div>';
+    document.body.appendChild(toast);
+    // 2秒后渐变消失
+    setTimeout(function() {
+        toast.style.transition = 'opacity 0.6s ease';
+        toast.style.opacity = '0';
+        setTimeout(function() {
+            toast.remove();
+        }, 600);
+    }, 2000);
+}
+
+// ======================================================================
+// 挂件拖动
+// ======================================================================
+function initWidgetDrag() {
+    const widget = document.getElementById('plan-widget');
+    const btn = document.getElementById('plan-widget-btn');
+    if (!widget || !btn) return;
+    let isDragging = false;
+    let didDrag = false;
+    let startX, startY, origX, origY;
+
+    // 点击事件（只有纯点击才触发）
+    btn.addEventListener('click', function(e) {
+        if (didDrag) return; // 拖动过不触发
+        openExecCover();
+    });
+
+    widget.addEventListener('mousedown', function(e) {
+        if (e.target === widget || e.target === btn) {
+            isDragging = true;
+            didDrag = false;
+            const rect = widget.getBoundingClientRect();
+            origX = rect.left;
+            origY = rect.top;
+            startX = e.clientX;
+            startY = e.clientY;
+            widget.style.cursor = 'grabbing';
+        }
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            didDrag = true;
+        }
+        widget.style.left = (origX + dx) + 'px';
+        widget.style.right = 'auto';
+        widget.style.top = (origY + dy) + 'px';
+        widget.style.bottom = 'auto';
+    });
+
+    document.addEventListener('mouseup', function() {
+        isDragging = false;
+        if (widget) widget.style.cursor = 'grab';
+    });
+}
+
+// 响应式挂件位置：右下角固定
+function resetWidgetPosition() {
+    const widget = document.getElementById('plan-widget');
+    if (!widget) return;
+    widget.style.left = 'auto';
+    widget.style.right = 'auto';
+    widget.style.bottom = '24px';
+    widget.style.top = 'auto';
+    // 居中于手机容器
+    const maxW = document.querySelector('.max-w-md');
+    if (maxW) {
+        const rect = maxW.getBoundingClientRect();
+        widget.style.left = (rect.left + rect.width / 2 - widget.offsetWidth / 2) + 'px';
+    }
+}
+
+// ======================================================================
+// 初始化
+// ======================================================================
+document.addEventListener('DOMContentLoaded', function() {
+    bindSearch();
+    initWidgetDrag();
+});
+</script>
+
+</body>
+</html>
