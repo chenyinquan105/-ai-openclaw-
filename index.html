@@ -103,6 +103,22 @@
 
  </main>
 
+<!-- 宠物打车提醒弹窗 -->
+<div id="pet-taxi-modal" class="absolute inset-0 flex items-center justify-center z-50 hidden" style="background: rgba(0,0,0,0.5);">
+ <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 animate-fade-in">
+ <div class="text-center mb-4">
+ <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+ <svg class="w-7 h-7 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+ </div>
+ <h3 class="text-lg font-black text-gray-900">🐶 带宠物打车提醒</h3>
+ <p class="text-xs text-gray-500 mt-2 leading-relaxed">您选择带宠物洗澡并打车前往，请提前与司机沟通确认是否允许携带宠物上车。</p>
+ </div>
+ <div class="flex space-x-3">
+ <button onclick="confirmPetTaxi()" class="flex-1 bg-gray-900 text-yellow-400 font-black py-3.5 rounded-2xl hover:bg-gray-800 transition text-sm meituan-shadow">好的</button>
+ </div>
+ </div>
+</div>
+
  <!-- 异常弹窗 -->
  <div id="demo-exception-modal" class="absolute inset-0 flex items-center justify-center z-50 hidden" style="background: rgba(0,0,0,0.5);">
  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 animate-fade-in">
@@ -168,6 +184,31 @@ const mainEl = document.getElementById('dynamic-content');
 
 // 首屏原始内容（硬编码示例），用户输入后会被动态替换
 let firstRun = true;
+
+// --- 自动滚动 ---
+var userScrolledUp = false;
+var scrollContainer = document.querySelector('main');
+
+function scrollToBottom() {
+ if (userScrolledUp) return;
+ if (!scrollContainer) scrollContainer = document.querySelector('main');
+ requestAnimationFrame(function() {
+ scrollContainer.scrollTop = scrollContainer.scrollHeight;
+ });
+}
+
+// 监测手动上滑
+if (scrollContainer) {
+ scrollContainer.addEventListener('scroll', function() {
+ var th = 60;
+ var atBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight < th;
+ if (!atBottom && scrollContainer.scrollTop > 0) {
+ userScrolledUp = true;
+ } else if (atBottom) {
+ userScrolledUp = false;
+ }
+ });
+}
 
 // --- 状态 ---
 let currentPhase = 'init';
@@ -305,6 +346,7 @@ function renderCategorySelection(categories) {
 
  mainEl.innerHTML = html;
  currentPhase = 'choose_shop';
+ scrollToBottom();
 }
 
 // 点击切换卡片选中状态
@@ -355,6 +397,27 @@ async function confirmShopSelection() {
  return;
  }
 
+ // 宠物洗澡 + 打车 → 弹窗提醒
+ if (selectedTransport === '打车' && selections.some(function(s) { return s.category === 'pet'; })) {
+ var modal = document.getElementById('pet-taxi-modal');
+ if (modal) modal.classList.remove('hidden');
+ return;
+ }
+
+ await confirmShopSelectionSubmit();
+}
+
+// 提交选店（私有方法，宠物弹窗确认后也调用此）
+async function confirmShopSelectionSubmit() {
+ const cards = document.querySelectorAll('.shop-card.border-yellow-400');
+ const selections = [];
+ cards.forEach(c => {
+ selections.push({
+ category: c.dataset.category,
+ shop_id: c.dataset.shopId
+ });
+ });
+
  try {
  const res = await fetch(API_BASE + '/api/choose_shop', {
  method: 'POST',
@@ -375,12 +438,13 @@ async function confirmShopSelection() {
 // 阶段: 时间输入
 // ======================================================================
 function renderTimeInput(data) {
+ scrollToBottom();
  let timeHtml = `
  <section class="pt-4">
  <div class="bg-gray-100 rounded-[32px] p-6">
  <h3 class="text-sm font-bold mb-2">⏰ 预计什么时间去？</h3>
  <div class="flex space-x-3">
- <input type="text" id="time-input" placeholder="例如：下午3点 / 明天上午 / 直接回车=现在出发"
+ <input type="text" id="time-input" placeholder="例如：下午3点 / 明天上午"
  class="flex-1 bg-white rounded-full px-4 py-3 text-sm border-2 border-transparent focus:border-yellow-400 outline-none"
  onkeydown="if(event.key==='Enter') submitTime()">
  <button onclick="submitTime()" class="bg-yellow-400 text-black font-bold px-6 py-3 rounded-full hover:scale-95 transition-transform">确定</button>
@@ -568,6 +632,7 @@ function renderSchedule(data) {
 
  // 触发更新左侧控制台的目标下拉框节点
  updateConsoleNodes(data);
+ scrollToBottom();
 }
 
 // ======================================================================
@@ -904,6 +969,19 @@ function selectPlanBOption(el, optionId) {
  el.classList.add('border-yellow-400', 'bg-yellow-50');
  selectedPlanBOption = optionId;
  document.getElementById('planb-execute-btn').disabled = false;
+}
+
+// ---- 宠物打车弹窗 ----
+function closePetTaxiModal() {
+ var modal = document.getElementById('pet-taxi-modal');
+ if (modal) modal.classList.add('hidden');
+}
+
+function confirmPetTaxi() {
+ var modal = document.getElementById('pet-taxi-modal');
+ if (modal) modal.classList.add('hidden');
+ // 继续提交
+ confirmShopSelectionSubmit();
 }
 
 function closeDemoExceptionModal() {
