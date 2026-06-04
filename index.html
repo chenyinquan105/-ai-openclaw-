@@ -67,11 +67,7 @@
  <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
  <div class="flex items-center justify-between mb-4">
  <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
- <div id="plan-widget" class="hidden">
- <div class="bg-yellow-400 text-black font-black text-sm px-5 py-3 rounded-2xl shadow-2xl meituan-shadow cursor-pointer" id="plan-widget-btn" onclick="openExecCover()">
- 您的计划
- </div>
- </div>
+ <div id="plan-widget" class="hidden"></div>
  </div>
  <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
  <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
@@ -450,7 +446,7 @@ function renderCategorySelection(categories) {
  </button>
  </section>
  <div id="time-section"></div>
- <div id="schedule-section"></div>
+ <div id="schedule-section" class="mt-6"></div>
  `;
 
  mainEl.innerHTML = html;
@@ -540,7 +536,11 @@ async function confirmShopSelectionSubmit() {
  const data = await res.json();
  if (data.error) { showError(data.error); return; }
  if (data.phase === 'ask_time') {
- renderTimeInput(data);
+   renderTimeInput(data);
+ } else if (data.phase === 'done') {
+   renderSchedule(data);
+ } else if (data.phase === 'conflict') {
+   showConflictModal(data);
  }
  } catch(e) {
  showError('网络错误: ' + e.message);

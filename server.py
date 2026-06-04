@@ -226,12 +226,39 @@ def api_start():
     session_state["searched_categories"] = result["categories"]
     session_state["phase"] = "choose_shop"
 
-    # 判断用户是否已提时间
+    # 判断用户是否已提时间，若已提则语义解析出发/到达
+    # 先把中文数字归一化：“两点”→“2点”，“二点半”→“2点30”
+    text_norm = text.replace('两', '2').replace('二', '2').replace('点半', '点30').replace('半', '30')
     has_time = bool(re.search(
         r"\d{1,2}[：:时点]|\d{1,2}:\d{2}|上午\d|下午\d|明天.*\d|周[一二三四五六日天].*\d|星期.*\d",
-        text
+        text_norm
     ))
     session_state["has_time_from_input"] = has_time
+    fixed_time = None
+    time_mode = "now"
+    if has_time:
+        m = re.search(r"(\d{1,2})[：:时点](\d{0,2})", text_norm)
+        if m:
+            h, mi = int(m.group(1)), int(m.group(2) or 0)
+            # 没有明确上午/下午标记，且 h<=5 → 视为下午
+            has_am = bool(re.search(r'早上|早晨|上午|早[上晨]', text))
+            has_pm = bool(re.search(r'下午|晚上|傍晚|今晚|午[后饭]|下[午晚]', text))
+            if has_am and h == 12:
+                h = 0
+            elif not has_am and not has_pm and h <= 5:
+                h += 12
+            elif has_pm and h < 12:
+                h += 12
+            fixed_time = f"{h:02d}:{mi:02d}"
+        # 判断是"几点出发"还是"几点到达"
+        # 含"出发/开始走/启程/走"等 → 出发时间
+        # 否则默认为到达时间（要去做什么/到什么地方）
+        if re.search(r"出发|开始走|启程|开始|就走|就走|再走|从.*走", text):
+            time_mode = "fixed"
+        else:
+            time_mode = "arrive_by"
+    session_state["fixed_time"] = fixed_time
+    session_state["time_mode"] = time_mode
 
     return jsonify({
         "phase": "choose_shop",
@@ -262,8 +289,13 @@ def api_choose_shop():
 
     session_state["selected_pairs"] = selected_pairs
     session_state["transport"] = data.get("transport", "步行")
-    session_state["phase"] = "ask_time"
 
+    # 若用户最开始已提时间，直接跑排程，跳过时间输入
+    if session_state.get("fixed_time"):
+        session_state["phase"] = "running"
+        return _run_schedule_from_session()
+
+    session_state["phase"] = "ask_time"
     return jsonify({
         "phase": "ask_time",
         "has_time_in_input": session_state["has_time_from_input"]
@@ -279,19 +311,30 @@ def api_set_time():
 
     user_input = session_state["user_input"]
     time_desc_full = user_input + " " + time_text
+    # 中文数字归一化
+    td_norm = time_desc_full.replace('两', '2').replace('二', '2').replace('点半', '点30').replace('半', '30')
 
     has_now = bool(re.search(r"现在|立即|马上|当前|立刻|现在就出发|默认", time_desc_full.lower()))
     has_specific = bool(re.search(
         r"\d{1,2}[：:时点]|\d{1,2}:\d{2}|上午\d|下午\d|明天.*\d|周[一二三四五六日天].*\d|星期.*\d",
-        time_desc_full
+        td_norm
     ))
 
     fixed_time = None
     time_mode = "now"
     if has_specific and not has_now:
-        m = re.search(r"(\d{1,2})[：:时点](\d{0,2})", time_desc_full)
+        m = re.search(r"(\d{1,2})[：:时点](\d{0,2})", td_norm)
         if m:
             h, mi = int(m.group(1)), int(m.group(2) or 0)
+            # 没有明确上午/下午标记，且 h<=5 → 视为下午
+            has_am = bool(re.search(r'早上|早晨|上午|早[上晨]', time_desc_full))
+            has_pm = bool(re.search(r'下午|晚上|傍晚|今晚|午[后饭]|下[午晚]', time_desc_full))
+            if has_am and h == 12:
+                h = 0
+            elif not has_am and not has_pm and h <= 5:
+                h += 12
+            elif has_pm and h < 12:
+                h += 12
             fixed_time = f"{h:02d}:{mi:02d}"
             time_mode = "fixed"
 
@@ -299,6 +342,15 @@ def api_set_time():
     session_state["time_mode"] = time_mode
 
     # 构建排程输入
+    return _run_schedule_from_session()
+
+
+def _run_schedule_from_session():
+    """从 session_state 构建排程输入并执行"""
+    global session_state
+    fixed_time = session_state.get("fixed_time")
+    time_mode = session_state.get("time_mode", "now")
+
     task_list = []
     spatial_matrix = {
         "locations": {"loc_current": {"name": "当前起点", "coord": "39.93,116.45"}},
@@ -313,24 +365,31 @@ def api_set_time():
         else:
             coord = "39.93,116.45"
         human_needed = info.get("human_needed", True)
+        # time_mode:
+        #   "fixed" → 用户说几点出发，该时间就是出发时间，不设 fixed_start_time
+        #   "arrive_by" → 用户说几点到店，该时间就是到店时间，设 fixed_start_time
+        #   "now" → 没提时间，即出发
         task_list.append({
             "task_id": sid,
             "name": sname,
             "location_id": sid,
             "duration_minutes": _duration(cat),
             "human_needed": human_needed,
-            "fixed_start_time": fixed_time if time_mode == "fixed" else None,
+            "fixed_start_time": fixed_time if time_mode == "arrive_by" else None,
             "category": cat,
         })
         spatial_matrix["locations"][sid] = {"name": sname, "coord": coord}
 
     session_state["task_list"] = task_list
     session_state["spatial_matrix"] = spatial_matrix
-    session_state["now_str"] = datetime.now().strftime("%H:%M")
+    # 若用户说几点出发，now_str 设为该时间（引擎从该时间开始行走）
+    if time_mode == "fixed":
+        session_state["now_str"] = fixed_time
+    else:
+        session_state["now_str"] = datetime.now().strftime("%H:%M")
     session_state["confirmed_ids"] = []
     session_state["rejected_ids"] = []
 
-    # 立即执行排程
     return _run_schedule()
 
 
