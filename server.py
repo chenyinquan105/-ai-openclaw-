@@ -83,7 +83,7 @@ def _search_poi(agent_instance, user_text: str) -> dict:
     """执行 LLM 解析 + POI 搜索，返回 (category_list, poi_data) 或错误"""
     system_prompt_1 = {
         "role": "system",
-        "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡/宠物店→pet，咖啡→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry。"
+        "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡/宠物店→pet，咖啡→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry，火锅/海底捞/吃火锅→hotpot。"
     }
     agent_instance.context_memory = [system_prompt_1, {"role": "user", "content": user_text}]
 
@@ -184,6 +184,10 @@ def _build_categories_for_frontend(agent_instance) -> list:
                 "rating": s.get("rating", 0),
                 "distance": dist_str,
                 "human_needed": s.get("human_needed", True),
+                "phone": s.get("phone", ""),
+                "address": s.get("address", ""),
+                "signature_dishes": s.get("signature_dishes", []),
+                "top_comments": s.get("top_comments", []),
             })
         result.append({
             "category": cat,
@@ -742,6 +746,28 @@ def api_get_swap_candidates():
     return jsonify({
         "category": target_category,
         "shops": shops_data[:5]
+    })
+
+
+@app.route("/api/shop_detail", methods=["POST"])
+def api_shop_detail():
+    """店铺详情：返回 phone/address/signature_dishes/top_comments"""
+    global session_state
+    data = request.get_json(silent=True) or {}
+    shop_id = data.get("shop_id", "")
+    if not shop_id:
+        return jsonify({"error": "缺少 shop_id"}), 400
+    info = agent.poi_cache.get(shop_id, {})
+    if not info:
+        return jsonify({"error": "未找到该店铺"}), 404
+    return jsonify({
+        "shop_id": shop_id,
+        "name": info.get("name", ""),
+        "rating": info.get("rating", 0),
+        "phone": info.get("phone", ""),
+        "address": info.get("address", ""),
+        "signature_dishes": info.get("signature_dishes", []),
+        "top_comments": info.get("top_comments", []),
     })
 
 

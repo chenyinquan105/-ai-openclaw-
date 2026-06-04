@@ -14,7 +14,8 @@ import difflib
 CATEGORY_MAP = {
     "理发": "hair", "剪头": "hair", "理发店": "hair", "美发": "hair",
     "狗洗澡": "pet", "宠物店": "pet", "给宠物洗澡": "pet",
-    "干洗": "laundry", "洗衣服": "laundry", "咖啡": "cafe", "健身": "gym"
+    "干洗": "laundry", "洗衣服": "laundry", "咖啡": "cafe", "健身": "gym",
+    "火锅": "hotpot"
 }
 
 CATEGORY_NAME_CN = {
@@ -25,6 +26,7 @@ CATEGORY_NAME_CN = {
     "restaurant": "餐饮",
     "cinema": "电影",
     "laundry": "干洗",
+    "hotpot": "火锅",
 }
 
 def find_best_match(query_name: str, poi_cache: dict) -> str:
@@ -120,7 +122,7 @@ class MeituanAgent:
         # --- 阶段 1: 需求解析与 POI 搜索 ---
         system_prompt_1 = {
             "role": "system",
-            "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。刻画品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡/宠物店→pet，咖啡→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry。"
+            "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。刻画品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡/宠物店→pet，咖啡→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry，火锅/海底捞/吃火锅→hotpot。"
         }
         self.context_memory.append(system_prompt_1)
         self.context_memory.append({"role": "user", "content": user_input})
