@@ -24,10 +24,16 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, base_dir)
 import main as backend
 
+from skills import time_master
+import skills.task_reminder_skill as reminder_skill
+
 app = Flask(__name__, static_folder=base_dir)
 CORS(app)
 
 # ======================================================================
+# 虚拟时钟全局 session_id
+# ======================================================================
+_CLOCK_SESSION_ID = "sandbox_main"
 # 全局状态 —— 每个 session 一个 agent 实例
 # ======================================================================
 # 当前只支持单会话（一个用户）
@@ -878,10 +884,138 @@ def api_swap_shop():
 
 
 # ======================================================================
+# 虚拟时钟 API
+# ======================================================================
+
+@app.route("/api/clock/init", methods=["POST"])
+def clock_init():
+    """初始化或重置虚拟时钟，接收 schedule_nodes JSON"""
+    data = request.get_json() or {}
+    tm = time_master.get_master()
+    initial_time = data.get("initial_time", "08:00")
+    nodes = data.get("schedule_nodes", [])
+    tm.set_schedule(_CLOCK_SESSION_ID, nodes, initial_time=initial_time)
+    clock = tm.get_or_create_session(_CLOCK_SESSION_ID, initial_time=initial_time)
+    return jsonify(clock.to_dict())
+
+
+@app.route("/api/clock/status", methods=["GET"])
+def clock_status():
+    """获取当前时钟状态"""
+    tm = time_master.get_master()
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    if not cs:
+        return jsonify({"virtual_time": None, "speed": 0, "is_running": False, "schedule_count": 0})
+    d = cs.to_dict()
+    d["schedule_count"] = len(cs.schedule_nodes)
+    return jsonify(d)
+
+
+@app.route("/api/clock/offset", methods=["POST"])
+def clock_offset():
+    """快进 N 分钟"""
+    data = request.get_json() or {}
+    delta = data.get("delta", 10)
+    tm = time_master.get_master()
+    res = tm.offset(_CLOCK_SESSION_ID, int(delta))
+    _process_clock_triggers(res)
+    return jsonify(res)
+
+
+@app.route("/api/clock/jump", methods=["POST"])
+def clock_jump():
+    """跳转到指定时间"""
+    data = request.get_json() or {}
+    target = data.get("target", "14:00")
+    tm = time_master.get_master()
+    res = tm.jump(_CLOCK_SESSION_ID, target)
+    _process_clock_triggers(res)
+    return jsonify(res)
+
+
+@app.route("/api/clock/speed", methods=["POST"])
+def clock_set_speed():
+    """设置倍速（只记倍速，不启动走时）: speed=30|60|120"""
+    data = request.get_json() or {}
+    speed_val = float(data.get("speed", 30))
+    tm = time_master.get_master()
+    res = tm.set_speed(_CLOCK_SESSION_ID, speed_val)
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    return jsonify({
+        "status": res.get("status", "SUCCESS"),
+        "speed": speed_val,
+        "virtual_time": res.get("new_virtual_time", cs.virtual_time if cs else "12:00"),
+        "is_running": cs.is_running if cs else False,
+    })
+
+
+@app.route("/api/clock/start", methods=["POST"])
+def clock_start():
+    """启动/继续自动走时（以当前记录的速度启动）"""
+    tm = time_master.get_master()
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    speed = cs.speed if cs else 1.0
+    tm.stop_auto_tick(_CLOCK_SESSION_ID)
+    res = tm.start_auto_tick(_CLOCK_SESSION_ID, speed)
+    return jsonify({
+        "status": res.get("status", "SUCCESS"),
+        "speed": speed,
+        "virtual_time": res.get("new_virtual_time", cs.virtual_time if cs else "12:00"),
+        "is_running": True,
+    })
+
+
+@app.route("/api/clock/stop", methods=["POST"])
+def clock_stop():
+    """停止自动走时"""
+    tm = time_master.get_master()
+    tm.stop_auto_tick(_CLOCK_SESSION_ID)
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    return jsonify({"status": "STOPPED", "virtual_time": cs.virtual_time if cs else "08:00"})
+
+
+@app.route("/api/clock/events", methods=["GET"])
+def clock_pop_events():
+    """消费未读的触发事件"""
+    tm = time_master.get_master()
+    events = tm.pop_triggered_events(_CLOCK_SESSION_ID)
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    return jsonify({
+        "events": events,
+        "virtual_time": cs.virtual_time if cs else "08:00",
+    })
+
+
+@app.route("/api/clock/set_schedule", methods=["POST"])
+def clock_set_schedule():
+    """设置排程节点"""
+    data = request.get_json() or {}
+    nodes = data.get("nodes", [])
+    tm = time_master.get_master()
+    tm.set_schedule(_CLOCK_SESSION_ID, nodes)
+    return jsonify({"status": "SUCCESS", "count": len(nodes)})
+
+
+def _process_clock_triggers(res: dict):
+    """时钟事件产生后，调用 reminder_skill 处理并记录到 session_state"""
+    from flask import current_app as app
+    ticked = res.get("ticked_minutes_list", [])
+    events = res.get("triggered_nodes", [])
+    if not ticked and not events:
+        return
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+    # 将 alert 挂到全局以便前端 /api/clock/events 也能拉到
+    # alerts 直接返回给前端（offset/jump 的响应中已带 triggered_nodes）
+    # 更深的提醒通知通过 pop_triggered_events 拉取
+
+
+# ======================================================================
 # 启动
 # ======================================================================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     print(f"🚀 美团 AI 助手服务启动: http://localhost:{port}")
     _reset_session()
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=False)

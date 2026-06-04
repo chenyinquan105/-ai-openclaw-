@@ -60,6 +60,82 @@
  </div>
  </div>
 
+ <!-- 右侧控制台（虚拟时钟） -->
+ <div class="w-full lg:w-72 bg-gray-900 text-gray-100 p-5 rounded-[32px] shadow-2xl border border-gray-800 space-y-5 lg:sticky lg:top-8 flex-shrink-0 z-20 order-last">
+ <div>
+ <h2 class="text-base font-black tracking-wide text-yellow-400 flex items-center gap-2">
+ <span>🕒</span> 虚拟时间控制台
+ <!-- 胶囊滑动开关 -->
+ <div onclick="clockTogglePower()" id="clock-power-btn" class="relative w-9 h-5 rounded-full transition-colors duration-300 cursor-pointer flex items-center ml-auto" style="background-color: #374151; z-index: 10; pointer-events: auto;">
+ <div id="clock-power-knob" class="absolute w-3.5 h-3.5 bg-white rounded-full shadow-md transition-all duration-300" style="left: 2px;"></div>
+ </div>
+ </h2>
+ <p class="text-[11px] text-gray-400 mt-1">操纵时空沙盒 · 实时驱动排程推进</p>
+ </div>
+
+ <hr class="border-gray-800">
+
+ <div id="clock-panel-body" class="space-y-4" style="opacity:0.4;pointer-events:none;">
+
+ <!-- 时间显示 + 暂停/继续按钮 -->
+ <div class="flex items-center justify-center gap-2">
+ <div class="text-4xl font-black text-white tracking-widest" id="clock-display">12:00</div>
+ <button onclick="clockTogglePlay()" id="clock-play-btn" class="text-lg w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 border border-gray-700 transition text-white hidden">▶</button>
+ </div>
+
+ <!-- 横向时间轴滑动条 -->
+ <div class="px-1">
+ <input type="range" id="clock-slider" min="0" max="1440" value="480"
+ class="w-full h-1.5 appearance-none rounded-full cursor-pointer hidden"
+ style="background: #374151; outline: none;"
+ onchange="clockSliderChange(this.value)" oninput="clockSliderPreview(this.value)">
+ <div class="flex justify-between text-[10px] text-gray-500 mt-0.5 px-0.5 hidden" id="clock-slider-label">
+ <span>00:00</span><span>12:00</span><span>24:00</span>
+ </div>
+ </div>
+
+ <!-- 快进按钮 -->
+ <div class="space-y-2">
+ <label class="block text-xs font-bold text-gray-400 tracking-wider">⏩ 时间快进</label>
+ <div class="grid grid-cols-3 gap-2">
+ <button onclick="clockFastForward(10)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center">
+ <span class="text-lg">+10</span>
+ </button>
+ <button onclick="clockFastForward(20)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center">
+ <span class="text-lg">+20</span>
+ </button>
+ <button onclick="clockFastForward(30)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center">
+ <span class="text-lg">+30</span>
+ </button>
+ </div>
+ </div>
+
+ <!-- 倍速走时 -->
+ <div class="space-y-2">
+ <label class="block text-xs font-bold text-gray-400 tracking-wider">🚀 倍速</label>
+ <div class="grid grid-cols-3 gap-2">
+ <button onclick="clockSetSpeed(2)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center active:border-green-400" id="speed-1x-btn">2x</button>
+ <button onclick="clockSetSpeed(5)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center" id="speed-2x-btn">5x</button>
+ <button onclick="clockSetSpeed(10)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center" id="speed-3x-btn">10x</button>
+ </div>
+ <button onclick="clockResetSpeed()" class="w-full bg-gray-800 hover:bg-red-900/50 text-xs font-bold py-2.5 rounded-xl border border-gray-700 transition text-center mt-1">
+ ⏹ 关闭倍速
+ </button>
+ </div>
+
+ <hr class="border-gray-800">
+
+ <!-- 事件日志 -->
+ <div class="space-y-2">
+ <label class="block text-xs font-bold text-gray-400 tracking-wider">📡 时空事件日志</label>
+ <div id="clock-event-log" class="space-y-1 max-h-40 overflow-y-auto scrollbar-hide text-[11px]">
+ <p class="text-gray-500 italic py-2 text-center">等待时间推进...</p>
+ </div>
+ </div>
+ </div>
+
+ </div>
+
  <!-- 中央竖屏 -->
  <div class="w-full max-w-md bg-white shadow-2xl relative rounded-[40px] overflow-hidden flex-shrink-0 border border-gray-200 flex flex-col" id="main-phone-container" style="height: calc(100vh - 32px); max-height: 900px;">
 
@@ -1586,8 +1662,286 @@ function removeActiveException(id) {
 // ======================================================================
 // 初始化
 // ======================================================================
+// 虚拟时钟状态与主控开关
+// ======================================================================
+
+let clockPowerOn = false;  // 默认关闭（采用真实时间）
+let clockCurrentSpeed = 1;  // 当前倍率，默认 1x（每秒 1 虚拟分钟）
+
+function clockTogglePower() {
+  clockPowerOn = !clockPowerOn;
+  const knob = document.getElementById('clock-power-knob');
+  const btn = document.getElementById('clock-power-btn');
+  const body = document.getElementById('clock-panel-body');
+  const display = document.getElementById('clock-display');
+  const playBtn = document.getElementById('clock-play-btn');
+  const slider = document.getElementById('clock-slider');
+  const sliderLabel = document.getElementById('clock-slider-label');
+
+  if (clockPowerOn) {
+    // 开 — 默认 12:00，暂停状态
+    clockCurrentSpeed = 1;
+    const initTime = '12:00';
+    const initMins = 720;
+    knob.style.left = '20px';
+    btn.style.backgroundColor = '#22c55e';
+    body.style.opacity = '1';
+    body.style.pointerEvents = 'auto';
+    playBtn.classList.remove('hidden');
+    playBtn.textContent = '▶';
+    slider.classList.remove('hidden');
+    sliderLabel.classList.remove('hidden');
+    slider.value = initMins;
+    clockFetch('POST', '/api/clock/speed', {speed: 1}).catch(() => {});
+    clockFetch('POST', '/api/clock/init', {
+      initial_time: initTime,
+      schedule_nodes: []
+    }).catch(() => {});
+    clockUpdateUI({virtual_time: initTime, is_running: false, speed: 1});
+  } else {
+    // 关
+    knob.style.left = '3px';
+    btn.style.backgroundColor = '#374151';
+    body.style.opacity = '0.4';
+    body.style.pointerEvents = 'none';
+    playBtn.classList.add('hidden');
+    slider.classList.add('hidden');
+    sliderLabel.classList.add('hidden');
+    clockFetch('POST', '/api/clock/stop').catch(() => {});
+    updateRealTimeDisplay();
+  }
+}
+
+function clockTogglePlay() {
+  const playBtn = document.getElementById('clock-play-btn');
+  if (playBtn.textContent === '▶') {
+    // 继续 — 以当前倍率启动
+    clockFetch('POST', '/api/clock/start').then(data => {
+      clockUpdateUI({...data, is_running: true});
+      playBtn.textContent = '⏸';
+      clockLogEvent('▶ 自动走时已继续', 'info');
+    }).catch(() => {});
+  } else {
+    // 暂停
+    clockStop();
+    playBtn.textContent = '▶';
+  }
+}
+
+function clockSliderPreview(val) {
+  const mins = parseInt(val);
+  const hh = String(Math.floor(mins / 60)).padStart(2,'0');
+  const mm = String(mins % 60).padStart(2,'0');
+  document.getElementById('clock-display').textContent = hh + ':' + mm;
+}
+
+function clockSliderChange(val) {
+  const mins = parseInt(val);
+  const hh = String(Math.floor(mins / 60)).padStart(2,'0');
+  const mm = String(mins % 60).padStart(2,'0');
+  const target = hh + ':' + mm;
+  clockFetch('POST', '/api/clock/jump', {target}).then(data => {
+    if (data.status === 'SUCCESS') {
+      clockUpdateUI(data);
+      clockLogEvent('🎚️ 拖动到 ' + target, 'info');
+      if (data.triggered_nodes && data.triggered_nodes.length) {
+        data.triggered_nodes.forEach(ev => {
+          clockLogEvent('🔄 [' + ev.time + '] ' + (ev.name || ev.type || '事件'), 'event');
+        });
+      }
+    }
+    clockFetch('GET', '/api/clock/events').then(ed => {
+      if (ed.events && ed.events.length) {
+        ed.events.forEach(e => clockLogEvent('📡 ' + JSON.stringify(e), 'alert'));
+      }
+    });
+  });
+}
+
+function updateRealTimeDisplay() {
+  const display = document.getElementById('clock-display');
+  if (display && !clockPowerOn) {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    display.textContent = hh + ':' + mm;
+  }
+}
+
+// 每秒更新真实时间
+setInterval(updateRealTimeDisplay, 1000);
+
+// ======================================================================
+// 虚拟时钟 UI
+// ======================================================================
+
+async function clockFetch(method, path, body) {
+  const opts = {method};
+  if (body) {
+    opts.headers = {'Content-Type': 'application/json'};
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(API_BASE + path, opts);
+  return res.json();
+}
+
+function clockUpdateUI(data) {
+  const display = document.getElementById('clock-display');
+  const playBtn = document.getElementById('clock-play-btn');
+  const slider = document.getElementById('clock-slider');
+  if (data.virtual_time) {
+    display.textContent = data.virtual_time;
+    // 同步滑块
+    if (slider) {
+      const parts = data.virtual_time.split(':');
+      slider.value = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    }
+  }
+  // 暂停/继续按钮状态
+  if (playBtn) {
+    playBtn.textContent = data.is_running ? '⏸' : '▶';
+  }
+  // 更新速度按钮高亮
+  const speedBtns = ['speed-1x-btn', 'speed-2x-btn', 'speed-3x-btn'];
+  speedBtns.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('border-green-400', 'bg-green-900/30');
+  });
+  if (data.is_running && data.speed) {
+    const speedMap = {2:0, 5:1, 10:2};
+    const idx = speedMap[Math.round(data.speed)];
+    if (idx !== undefined) {
+      const el = document.getElementById(speedBtns[idx]);
+      if (el) el.classList.add('border-green-400', 'bg-green-900/30');
+    }
+  }
+}
+
+function clockLogEvent(msg, type) {
+  const log = document.getElementById('clock-event-log');
+  const placeholder = log.querySelector('.text-gray-500');
+  if (placeholder) placeholder.remove();
+  const div = document.createElement('div');
+  div.className = 'py-1 px-2 rounded-lg ' + (type === 'event' ? 'bg-green-900/20 text-green-300' : type === 'alert' ? 'bg-yellow-900/20 text-yellow-300' : 'bg-gray-800/50 text-gray-300');
+  div.textContent = msg;
+  log.appendChild(div);
+  // 环形缓冲：保留最多 3 条
+  while (log.children.length > 3) {
+    log.removeChild(log.firstChild);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+async function clockFastForward(delta) {
+  if (!clockPowerOn) { clockLogEvent('⚠️ 请先开启虚拟时间控制台', 'alert'); return; }
+  // 先乐观更新显示（无延迟）
+  const display = document.getElementById('clock-display');
+  const slider = document.getElementById('clock-slider');
+  const curTime = display.textContent;
+  const curMins = parseInt(curTime.split(':')[0])*60 + parseInt(curTime.split(':')[1]);
+  const newMins = Math.min(1440, curMins + delta);
+  const newHh = String(Math.floor(newMins/60)).padStart(2,'0');
+  const newMm = String(newMins%60).padStart(2,'0');
+  display.textContent = newHh + ':' + newMm;
+  slider.value = newMins;
+  // 再调后端确认
+  const data = await clockFetch('POST', '/api/clock/offset', {delta});
+  if (data.status === 'SUCCESS') {
+    clockUpdateUI(data);
+    clockLogEvent('⏩ 快进 ' + delta + ' 分钟 → ' + data.new_virtual_time, 'info');
+    if (data.triggered_nodes && data.triggered_nodes.length) {
+      data.triggered_nodes.forEach(ev => {
+        const name = ev.name || ev.type || '事件';
+        clockLogEvent('🔄 [' + ev.time + '] ' + name, 'event');
+      });
+    }
+  } else {
+    clockLogEvent('⚠️ ' + (data.error_message || '快进失败'), 'alert');
+  }
+  const evData = await clockFetch('GET', '/api/clock/events');
+  if (evData.events && evData.events.length) {
+    evData.events.forEach(e => clockLogEvent('📡 事件: ' + JSON.stringify(e), 'alert'));
+  }
+}
+
+async function clockSetSpeed(speed) {
+  if (!clockPowerOn) { clockLogEvent('⚠️ 请先开启虚拟时间控制台', 'alert'); return; }
+  clockCurrentSpeed = speed;
+  const data = await clockFetch('POST', '/api/clock/speed', {speed});
+  if (data.status === 'SUCCESS') {
+    clockUpdateUI({...data, is_running: data.is_running || false});
+    clockLogEvent('🚀 倍速已设为 ' + speed + 'x', 'info');
+  } else {
+    clockLogEvent('⚠️ 倍速设置失败', 'alert');
+  }
+}
+
+async function clockStop() {
+  if (!clockPowerOn) return;
+  const data = await clockFetch('POST', '/api/clock/stop');
+  clockUpdateUI({virtual_time: data.virtual_time, is_running: false, speed: 0});
+  clockLogEvent('⏹ 自动走时已停止', 'info');
+  const playBtn = document.getElementById('clock-play-btn');
+  if (playBtn) playBtn.textContent = '▶';
+}
+
+async function clockResetSpeed() {
+  if (!clockPowerOn) return;
+  clockCurrentSpeed = 1;
+  await clockFetch('POST', '/api/clock/speed', {speed: 1});
+  await clockFetch('POST', '/api/clock/speed', {speed: 1});
+  // 清除所有倍速按钮高亮
+  document.querySelectorAll('[id^="speed-"]').forEach(el => {
+    el.classList.remove('border-green-400', 'bg-green-900/30');
+  });
+  clockLogEvent('🔁 倍速已重置为 1x（默认）', 'info');
+}
+
+async function clockGoto() {
+  if (!clockPowerOn) { clockLogEvent('⚠️ 请先开启虚拟时间控制台', 'alert'); return; }
+  const input = document.getElementById('clock-goto-input');
+  const target = input.value;
+  if (!target) return;
+  const data = await clockFetch('POST', '/api/clock/jump', {target});
+  if (data.status === 'SUCCESS') {
+    clockUpdateUI(data);
+    clockLogEvent('🎚️ 跳转 → ' + data.new_virtual_time + ' (经过 ' + data.elapsed_minutes + ' 分钟)', 'info');
+    if (data.triggered_nodes && data.triggered_nodes.length) {
+      data.triggered_nodes.forEach(ev => {
+        clockLogEvent('🔄 [' + ev.time + '] ' + (ev.name || ev.type || '事件'), 'event');
+      });
+    }
+  } else {
+    clockLogEvent('⚠️ ' + (data.error_message || '跳转失败'), 'alert');
+  }
+  const evData = await clockFetch('GET', '/api/clock/events');
+  if (evData.events && evData.events.length) {
+    evData.events.forEach(e => clockLogEvent('📡 事件: ' + JSON.stringify(e), 'alert'));
+  }
+}
+
+// 轮询自动走时事件（每 2 秒检查一次）
+setInterval(async function() {
+  if (!clockPowerOn) return;
+  const st = await clockFetch('GET', '/api/clock/status');
+  clockUpdateUI(st);
+  if (st.is_running) {
+    const evData = await clockFetch('GET', '/api/clock/events');
+    if (evData.events && evData.events.length) {
+      evData.events.forEach(e => clockLogEvent('📡 事件: ' + JSON.stringify(e), 'alert'));
+    }
+  }
+}, 1000);
+
+// ======================================================================
+// 初始化
+// ======================================================================
 document.addEventListener('DOMContentLoaded', function() {
  bindSearch();
+ // 初始化时钟显示（忽略空 session）
+ clockFetch('GET', '/api/clock/status').then(data => {
+   if (data && data.virtual_time) clockUpdateUI(data);
+ }).catch(() => {});
 });
 </script>
 

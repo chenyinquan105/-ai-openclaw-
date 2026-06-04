@@ -1,3 +1,11 @@
+"""
+main.py —— 美团 AI 智能助手中枢系统
+======================================
+双轨设计：
+  模式 1 — 原有静态排程（搜索店铺 → 选店 → 排计划）
+  模式 2 — 24H 时空沙盒仿真（虚拟时钟驱动排程计划实时推进）
+"""
+
 import json
 import os
 import sys
@@ -43,6 +51,7 @@ def find_best_match(query_name: str, poi_cache: dict) -> str:
 # 确保能找到 skills 文件夹下的模块
 base_dir = os.path.dirname(os.path.abspath(__file__))
 skills_path = os.path.join(base_dir, "skills")
+if base_dir not in sys.path: sys.path.insert(0, base_dir)
 if skills_path not in sys.path: sys.path.append(skills_path)
 
 try:
@@ -53,6 +62,23 @@ except ImportError as e:
     sys.exit(1)
 
 from openai import OpenAI
+
+# ======================================================================
+# 双轨通用核心（虚拟时钟 + 任务提醒）
+# ======================================================================
+from skills import time_master
+import skills.task_reminder_skill as reminder_skill
+
+
+def _t_to_m(t: str) -> int:
+    h, m = t.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _m_to_t(mins: int) -> str:
+    mins = mins % 1440
+    return f"{mins // 60:02d}:{mins % 60:02d}"
+
 
 class MeituanAgent:
     def __init__(self, api_key: str, base_url: str):
@@ -79,7 +105,6 @@ class MeituanAgent:
         shops = self.poi_cache_per_category.get(category, [])
         if not shops:
             return None
-        # 按评分降序
         sorted_shops = sorted(shops, key=lambda s: s.get("rating", 0), reverse=True)
         top_n = sorted_shops[:3]
 
@@ -108,15 +133,28 @@ class MeituanAgent:
                 else:
                     print(f"  ⚠️ 请输入 1-{len(top_n)} 或 0")
             except ValueError:
-                # 允许直接输入店名
                 matched = [s for s in top_n if choice in s.get("name", "")]
                 if matched:
                     print(f"  → 已选: {matched[0].get('name')}")
                     return matched[0]["shop_id"]
                 print(f"  ⚠️ 请输入 1-{len(top_n)}、0、或完整店名")
 
+    # ======================================================================
+    # 模式 1：原有静态排程（不动）
+    # ======================================================================
+
     def run(self):
         print("=== 美团 AI 智能助手 ===")
+        print("  [1] 原有排程模式（搜索选店 → 排计划）")
+        print("  [2] 24H 时空沙盒仿真（虚拟时钟驱动计划实时推进）")
+        mode = input("  请选择运行模式 (1/2): ").strip()
+        if mode == "2":
+            self._run_sandbox_timeline()
+            return
+        self._run_classic_scheduling()
+
+    def _run_classic_scheduling(self):
+        """模式 1：原有静态排程（代码不变）"""
         user_input = input("用户: ")
 
         # --- 阶段 1: 需求解析与 POI 搜索 ---
@@ -146,7 +184,6 @@ class MeituanAgent:
 
         msg = self._call_llm(self.context_memory, tools=tools_poi)
 
-        # 阶段 1 重试
         retry_p1 = 0
         while not msg.tool_calls and retry_p1 < 5:
             retry_p1 += 1
@@ -178,17 +215,14 @@ class MeituanAgent:
                         self.poi_cache[shop["shop_id"]] = shop
             self.context_memory.append({"role": "tool", "tool_call_id": tool_call.id, "content": json.dumps(search_res)})
 
-        # ---------- 按品类分组，供后面交互选择使用 ----------
         self.poi_cache_per_category = {}
         for sid, shop in self.poi_cache.items():
             cat = shop.get("category")
             self.poi_cache_per_category.setdefault(cat, []).append(shop)
 
-        # --- 阶段 2: 代码展示 top 3 → 用户选店（替换原来的 LLM 推荐环节） ---
-        # 找出这次实际搜索的品类
+        # --- 阶段 2: top 3 → 用户选店 ---
         searched_categories = list(self.poi_cache_per_category.keys())
-
-        selected_pairs = []  # [(category, shop_id, shop_name), ...]
+        selected_pairs = []
         print("\n--- 请为每个品类选择店铺 ---")
 
         for cat in searched_categories:
@@ -206,7 +240,6 @@ class MeituanAgent:
             return
 
         # --- 询问时间 ---
-        # 先看看用户之前有没有提时间
         print("\n--- 时间确认 ---")
         has_time = bool(re.search(
             r"\d{1,2}[：:时点]|\d{1,2}:\d{2}|上午\d|下午\d|明天.*\d|周[一二三四五六日天].*\d|星期.*\d",
@@ -220,7 +253,6 @@ class MeituanAgent:
             print("已从您之前的输入中识别到时间信息。")
 
         time_desc_full = user_input + " " + time_desc
-        # 正则解析
         has_now = bool(re.search(r"现在|立即|马上|当前|立刻|现在就出发|默认", time_desc_full.lower()))
         has_specific = bool(re.search(
             r"\d{1,2}[：:时点]|\d{1,2}:\d{2}|上午\d|下午\d|明天.*\d|周[一二三四五六日天].*\d|星期.*\d",
@@ -237,7 +269,6 @@ class MeituanAgent:
         # --- 阶段 3: 执行并发排程 ---
         print("[*] 正在执行并发排程...")
 
-        # 按品类定默认时长
         def _duration(cat):
             return {"hair": 60, "pet": 30, "cafe": 20,
                     "restaurant": 60, "gym": 60, "cinema": 120, "laundry": 30}.get(cat, 45)
@@ -283,18 +314,318 @@ class MeituanAgent:
                     rejected_ids.append(schedule_res["conflict_task"]["task_id"])
                 continue
             elif schedule_res.get("status") == "SUCCESS":
-                self.format_final_output(schedule_res)
+                self._format_output(schedule_res)
                 break
             else:
                 print(f"AI: 规划失败：{schedule_res.get('message')}")
                 break
 
-    def format_final_output(self, res):
+    def _format_output(self, res):
         print("\n" + "★"*25)
         print(f"🏆 时间最优解生成 (建议 {res['suggested_departure_time']} 出发)")
         for item in res["timeline"]:
             print(f"[{item['time']}] {item['memo']}")
         print("★"*25 + "\n")
+
+    # ======================================================================
+    # 模式 2：24H 时空沙盒仿真
+    # ======================================================================
+
+    def _run_sandbox_timeline(self):
+        """
+        24H 时空沙盒仿真系统。
+        虚拟时钟驱动排程计划实时推进，PlanB 异常、任务提醒全部联动。
+        """
+        print("\n" + "═"*25 + " 迈入24H生活健康数字沙盒 " + "═"*25)
+        print("💡 操作指南：")
+        print("  +10 / +20 / +30    快进按钮")
+        print("  GOTO HH:MM         拖拽时间轴到指定时间点")
+        print("  SPEED 1.0/2.0/3.0  切换自动走时倍速")
+        print("  (空回车)            自动走时模式下手动步进一秒")
+        print("  STATUS              查看当前时钟与事件状态")
+        print("  EXIT                退出沙盒")
+        print("═"*70)
+
+        session_id = "sandbox_main"
+        tm = time_master.get_master()
+
+        # ----------------------------------------------------------------
+        # 第 1 步：跑一次原有排程引擎，获取计划表
+        # ----------------------------------------------------------------
+        print("\n[沙盒] 正在调用排程引擎生成计划...")
+        schedule_res = self._generate_schedule_for_sandbox()
+        if not schedule_res:
+            print("[沙盒] 计划生成失败，退回主菜单。")
+            return
+
+        timeline = schedule_res["timeline"]
+        suggested_departure = schedule_res["suggested_departure_time"]
+
+        print(f"\n★ 计划已生成（建议 {suggested_departure} 出发）★")
+        for item in timeline:
+            print(f"  [{item['time']}] {item['memo']}")
+
+        # ----------------------------------------------------------------
+        # 第 2 步：将 timeline 注册到虚拟时钟作为 schedule_nodes
+        # ----------------------------------------------------------------
+        schedule_nodes = []
+        for item in timeline:
+            schedule_nodes.append({
+                "time": item["time"],
+                "type": "SCHEDULE",
+                "node_id": item.get("task_id", "") or item.get("action", "unknown"),
+                "name": item["memo"],
+                "action": item["action"],
+                "target_location_id": item.get("target_location_id"),
+            })
+        # 额外注册一个水任务作为演示
+        schedule_nodes.append({"time": "10:00", "type": "WATER", "id": "wat_1", "name": "喝水提醒"})
+        schedule_nodes.append({"time": "15:00", "type": "WATER", "id": "wat_2", "name": "喝水提醒"})
+        schedule_nodes.append({"time": "08:30", "type": "MED", "id": "med_hypertension", "name": "高血压阿司匹林"})
+
+        tm.set_schedule(session_id, schedule_nodes)
+
+        # 将时钟初始化到计划表最早时间前 15 分钟
+        first_time = schedule_nodes[0]["time"]
+        first_m = _t_to_m(first_time)
+        init_m = max(0, first_m - 15)
+        init_time = _m_to_t(init_m)
+        clock = tm.get_or_create_session(session_id, initial_time=init_time)
+
+        # 记录已经报告过到达的节点（避免重复弹）
+        _reported_arrive = set()
+
+        auto_tick_enabled = False
+
+        # ----------------------------------------------------------------
+        # 第 3 步：主循环 — 用户操作 → 时钟推进 → 事件判定 → 反馈
+        # ----------------------------------------------------------------
+        while True:
+            clock_state = clock.to_dict()
+            running_label = f"▶ {clock_state['speed']}x" if auto_tick_enabled else "⏸"
+            print(f"\n[🕒 {clock_state['virtual_time']}] {running_label}", end="")
+
+            user_cmd = input("  >>> ").strip().lower()
+
+            if user_cmd in ("exit", "quit"):
+                tm.stop_auto_tick(session_id)
+                break
+
+            if user_cmd == "status":
+                cs = tm.get_session(session_id)
+                print(f"  虚拟时间: {cs.virtual_time}")
+                print(f"  自动走时: {'开' if cs.is_running else '关'}")
+                print(f"  待触发节点: {len(cs.schedule_nodes)} 个")
+                for n in cs.schedule_nodes:
+                    t = n.get("type", "?")
+                    print(f"    [{n['time']}] [{t}] {n.get('name','')}")
+                pending = tm.pop_triggered_events(session_id)
+                if pending:
+                    print(f"  未消费事件: {len(pending)} 个")
+                continue
+
+            # --- 用户响应交互（吃药/喝水/到达确认） ---
+            if user_cmd in ("1", "2", "3", "我已吞服药片", "吃了", "已到达", "到达"):
+                action_res = reminder_skill.handle_user_action(
+                    session_id, user_cmd, clock.virtual_time, tm
+                )
+                print(f"  {action_res['message']}")
+                continue
+
+            ticked_list = []
+            triggered_events = []
+            time_changed = False
+
+            # --- A. 快进 ---
+            if user_cmd.startswith("+"):
+                try:
+                    delta = int(user_cmd[1:])
+                    res = tm.offset(session_id, delta)
+                    if res["status"] == "SUCCESS":
+                        ticked_list = res["ticked_minutes_list"]
+                        triggered_events = res["triggered_nodes"]
+                        print(f"  ⏩ 快进 {delta} 分钟 → {res['new_virtual_time']}")
+                        time_changed = True
+                    else:
+                        print(f"  ⚠️ {res['error_message']}")
+                except ValueError:
+                    print("  ⚠️ 格式: +10 / +20 / +30")
+                continue
+
+            # --- B. 拖拽跳转 ---
+            if user_cmd.startswith("goto "):
+                target_t = user_cmd[5:].strip()
+                res = tm.jump(session_id, target_t)
+                if res["status"] == "SUCCESS":
+                    ticked_list = res["ticked_minutes_list"]
+                    triggered_events = res["triggered_nodes"]
+                    print(f"  🎚️ 跳转 → {res['new_virtual_time']} (经过 {res['elapsed_minutes']} 分钟)")
+                    time_changed = True
+                else:
+                    print(f"  ⚠️ {res['error_message']}")
+                continue
+
+            # --- C. 倍速切换 ---
+            if user_cmd.startswith("speed "):
+                try:
+                    speed_val = float(user_cmd.split(" ")[1])
+                    if speed_val not in (1.0, 2.0, 3.0):
+                        print("  ⚠️ 允许倍速: 1.0 / 2.0 / 3.0")
+                        continue
+                    speed_min = speed_val * 60  # 1x=60, 2x=120, 3x=180
+                    tm.stop_auto_tick(session_id)
+                    res = tm.start_auto_tick(session_id, speed_min)
+                    if res["status"] == "SUCCESS":
+                        auto_tick_enabled = True
+                        print(f"  🚀 自动走时 {speed_val}x 已启动（每秒推进 {speed_min} 虚拟分钟）")
+                    else:
+                        print(f"  ⚠️ {res['error_message']}")
+                except ValueError:
+                    print("  ⚠️ 格式: SPEED 1.0 / SPEED 2.0 / SPEED 3.0")
+                continue
+
+            # --- D. 停止倍速 ---
+            if user_cmd == "stop":
+                tm.stop_auto_tick(session_id)
+                auto_tick_enabled = False
+                print("  ⏹ 自动走时已停止")
+                continue
+
+            # --- E. 空回车：自动走时步进 / 消费事件 ---
+            if user_cmd == "":
+                if auto_tick_enabled:
+                    # 消费事件队列
+                    queued = tm.pop_triggered_events(session_id)
+                    if queued:
+                        triggered_events = queued
+                        ticked_list = []
+                        time_changed = True
+                    else:
+                        cs = tm.get_session(session_id)
+                        print(f"  . 当前 {cs.virtual_time} 无新事件")
+                else:
+                    print("  ℹ️ 自动走时未开启（先输入 SPEED 2.0）")
+                # 如果没事件，继续循环
+                if not time_changed:
+                    continue
+
+            # --- F. 未知指令 ---
+            if not time_changed:
+                print("  ⚠️ 未知指令，请参考上方操作指南")
+                continue
+
+            # ----------------------------------------------------------------
+            # 事件判定：处理 ticked_list + triggered_events
+            # ----------------------------------------------------------------
+            if time_changed:
+                # 1) 处理 SCHEDULE 类型的触发事件（排程到达/离开）
+                for ev in triggered_events:
+                    if ev.get("type") == "SCHEDULE":
+                        node_id = ev.get("node_id", "")
+                        name = ev.get("name", "")
+                        act = ev.get("action", "")
+                        if act == "ARRIVE" and node_id not in _reported_arrive:
+                            _reported_arrive.add(node_id)
+                            msg = f"✅ [{ev['time']}] 已到达：{name}"
+                            print(f"  📍 {msg}")
+                        elif act == "DEPART":
+                            print(f"  🚶 [{ev['time']}] {name}")
+                        elif act == "LEAVE":
+                            print(f"  🚶 [{ev['time']}] {name}")
+                        else:
+                            print(f"  📋 [{ev['time']}] {name}")
+
+                # 2) 调用 task_reminder 处理 WATER/MED 事件 + 超时催促
+                alerts = reminder_skill.process_reminder_pipeline(
+                    session_id, ticked_list, triggered_events, tm
+                )
+                for alert in alerts:
+                    print(f"  {alert['message']}")
+
+    # ======================================================================
+    # 沙盒辅助：生成排程计划
+    # ======================================================================
+
+    def _generate_schedule_for_sandbox(self) -> dict:
+        """
+        快速走一遍排程流程（硬编码品类用于演示），返回 schedule_res。
+        与 _run_classic_scheduling 的阶段 1-3 相同，但自动选店 + 自动时间。
+        """
+        # 使用硬编码演示场景：理发 → 咖啡 → 宠物
+        demo_categories = ["hair", "cafe", "pet"]
+        print(f"[沙盒] 演示场景: 理发 → 咖啡 → 宠物")
+
+        # 搜 POI
+        for cat in demo_categories:
+            search_res = skill_poi.search_poi_matrix(
+                center_coord="39.93,116.45",
+                categories=[cat],
+                radius_meters=3000,
+                min_rating=0,
+            )
+            if search_res.get("status") == "SUCCESS":
+                for c in search_res["search_results"]:
+                    for shop in search_res["search_results"][c]:
+                        self.poi_cache[shop["shop_id"]] = shop
+
+        self.poi_cache_per_category = {}
+        for sid, shop in self.poi_cache.items():
+            cat = shop.get("category")
+            self.poi_cache_per_category.setdefault(cat, []).append(shop)
+
+        # 自动选 top1
+        selected_pairs = []
+        for cat in demo_categories:
+            shops = self.poi_cache_per_category.get(cat, [])
+            if shops:
+                sorted_shops = sorted(shops, key=lambda s: s.get("rating", 0), reverse=True)
+                top = sorted_shops[0]
+                selected_pairs.append((cat, top["shop_id"], top["name"]))
+
+        if not selected_pairs:
+            return None
+
+        def _duration(cat):
+            return {"hair": 60, "pet": 30, "cafe": 20}.get(cat, 45)
+
+        task_list = []
+        spatial_matrix = {
+            "locations": {"loc_current": {"name": "当前起点", "coord": "39.93,116.45"}},
+            "routes": {}
+        }
+
+        for cat, sid, sname in selected_pairs:
+            info = self.poi_cache.get(sid, {})
+            coord = f"{info.get('lat', 39.93)},{info.get('lng', 116.45)}"
+
+            task_list.append({
+                "task_id": sid,
+                "name": sname,
+                "location_id": sid,
+                "duration_minutes": _duration(cat),
+                "human_needed": info.get("human_needed", True),
+            })
+            spatial_matrix["locations"][sid] = {
+                "name": sname,
+                "coord": coord,
+            }
+
+        now_str = "08:00"
+        confirmed_ids, rejected_ids = [], []
+
+        while True:
+            schedule_res = skill_scheduler.solve_concurrent_timeline(
+                task_list, spatial_matrix, now_str, confirmed_ids, rejected_ids
+            )
+            if schedule_res.get("status") == "CONFIRM_REQUIRED":
+                # 沙盒模式自动接受冲突
+                confirmed_ids.append(schedule_res["conflict_task"]["task_id"])
+                continue
+            elif schedule_res.get("status") == "SUCCESS":
+                return schedule_res
+            else:
+                return None
+
 
 if __name__ == "__main__":
     agent = MeituanAgent(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
