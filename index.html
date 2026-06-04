@@ -926,6 +926,120 @@ let lastScheduleData = null;
 // 缓存执行计划内容，避免重复构建
 let execContentCache = '';
 
+function renderMetroTimeline(data) {
+ const departureTime = clockPowerOn && window._clockVirtualTime ? window._clockVirtualTime : data.departure_time;
+
+ function nameFromMemo(memo) {
+   if (!memo) return '';
+   let m = memo.match(/前往(?:执行)?\s*(.+?)(?: —.*)?$/);
+   if (m) return m[1];
+   m = memo.match(/完成回收:\s*(.+)/);
+   if (m) return m[1];
+   m = memo.match(/到达\s*(.+)/);
+   if (m) return m[1];
+   return memo;
+ }
+ function dotColor(action, memo) {
+   if (action === 'DEPART') return 'bg-yellow-400';
+   if (action === 'WAIT') return 'bg-blue-400';
+   if (action === 'PICK_TASK') return 'bg-green-400';
+   if (action === 'MOVE' || action === 'MOVE_AND_EXEC') {
+     if (memo && memo.includes('放下')) return 'bg-blue-400';
+     if (memo && memo.includes('回收')) return 'bg-green-400';
+     return 'bg-indigo-400';
+   }
+   return 'bg-gray-400';
+ }
+ function timeLabel(action) {
+   if (action === 'DEPART') return '出发';
+   if (action === 'WAIT') return '等待';
+   if (action === 'PICK_TASK') return '取回';
+   return '';
+ }
+
+ // 构建节点数组
+ const nodes = [];
+ for (let i = 0; i < data.timeline.length; i++) {
+   const item = data.timeline[i];
+   const name = nameFromMemo(item.memo);
+   nodes.push({
+     time: item.time,
+     name: name || timeLabel(item.action) || item.memo,
+     dot: dotColor(item.action, item.memo),
+     sub: item.sub_task ? item.sub_task.action : '',
+     duration: item.sub_task ? item.sub_task.duration_minutes : '',
+     action: item.action,
+   });
+ }
+
+ // 构建每个节点的 HTML（不使用 flex gap，使用 inline-block + margin 实现自适应间距）
+ function nodeHtml(node, isLast) {
+   const durText = node.duration ? node.duration + 'min' : '';
+   const subLine = node.sub ? `<span class="block text-[10px] text-gray-400 whitespace-nowrap">${node.sub} ${durText}</span>` : '';
+   return `
+     <div class="inline-block align-top" style="margin-right:32px;">
+       <!-- 时间 -->
+       <div class="text-center mb-1" style="height:20px;">
+         <span class="text-xs text-yellow-400 font-bold whitespace-nowrap">${node.time}</span>
+       </div>
+       <!-- 圆点 + 水平线段区域 -->
+       <div class="relative" style="width:20px; height:20px; margin:0 auto;">
+         <div class="w-[20px] h-[20px] ${node.dot} rounded-full border-[3px] border-gray-900 z-10 relative"></div>
+       </div>
+       <!-- 名称 + 子任务 -->
+       <div class="text-center mt-1" style="max-width:120px;">
+         <div class="text-sm font-bold text-white leading-tight whitespace-nowrap">${node.name}</div>
+         ${subLine}
+       </div>
+     </div>`;
+ }
+
+ const totalText = data.total_minutes + 'min';
+
+ let lineHtml = '<div class="inline-block align-top" style="margin-right:28px; padding-top:20px;">';
+ lineHtml += `<span class="block text-xs text-gray-500 text-center whitespace-nowrap">总计</span>`;
+ lineHtml += '</div>';
+
+ // 拼装完整卡片
+ let html = `
+   <div class="flex justify-between items-center mb-5">
+     <div>
+       <h2 class="text-xl font-bold text-white">行程方案</h2>
+       <p class="text-xs text-gray-400 mt-1">AI 优化 · 步行方案</p>
+     </div>
+     <div class="text-right">
+       <p class="text-2xl font-black text-yellow-400">${departureTime}</p>
+       <p class="text-[10px] uppercase tracking-widest text-gray-500">出发时间</p>
+     </div>
+   </div>
+   <!-- 水平地铁线（左右滑动） -->
+   <div class="overflow-x-auto pb-3" style="scrollbar-width:none; -ms-overflow-style:none;">
+     <div class="relative" style="min-width:100%;">
+       <!-- 水平直线（在所有圆点背后） -->
+       <div class="absolute" style="top:36px; left:calc(20px/2); right:calc(20px/2); height:3px; background:#4b5563; z-index:0;"></div>
+       <!-- 节点行 -->
+       <div style="white-space:nowrap; position:relative; z-index:1;">
+         ${nodes.map(n => nodeHtml(n)).join('')}
+         <!-- 总计节点 -->
+         <div class="inline-block align-top" style="margin-right:0;">
+           <div class="text-center mb-1" style="height:20px;">
+             <span class="text-xs text-gray-500 whitespace-nowrap">总计</span>
+           </div>
+           <div class="relative" style="width:20px; height:20px; margin:0 auto;">
+             <div class="w-[20px] h-[20px] bg-gray-700 rounded-full border-[3px] border-gray-900 z-10 relative flex items-center justify-center" style="font-size:10px; color:#9ca3af; font-weight:bold;">∑</div>
+           </div>
+           <div class="text-center mt-1">
+             <div class="text-sm font-bold text-yellow-400 whitespace-nowrap">${totalText}</div>
+           </div>
+         </div>
+       </div>
+     </div>
+   </div>
+   <div class="text-[10px] text-gray-500 mt-1 text-center">← 左右滑动查看完整行程 →</div>
+ `;
+ return html;
+}
+
 function openExecCover() {
  const cover = document.getElementById('exec-cover');
  if (!cover) return;
@@ -936,9 +1050,16 @@ function openExecCover() {
  } else if (content) {
  const scheduleSection = document.getElementById('schedule-section');
  if (scheduleSection && content) {
+ // 1. 取竖向布局的 innerHTML
  content.innerHTML = scheduleSection.innerHTML;
+ // 2. 移除底部按钮
  const btns = content.querySelector('.mt-8.space-y-3');
  if (btns) btns.remove();
+ // 3. 找到行程方案卡片，替换为地铁线布局
+ const scheduleCard = content.querySelector('.bg-gray-900');
+ if (scheduleCard && lastScheduleData && lastScheduleData.timeline) {
+ scheduleCard.innerHTML = renderMetroTimeline(lastScheduleData);
+ }
  // 追加防踩坑提醒
  if (lastScheduleData && lastScheduleData.pitfall_reminders) {
  let extraHtml = '';
