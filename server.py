@@ -509,6 +509,290 @@ def api_reflect_trigger():
 
 
 # ======================================================================
+# Plan B 二级弹窗相关 API
+# ======================================================================
+
+@app.route("/api/insert_shelter", methods=["POST"])
+def api_insert_shelter():
+    """
+    下暴雨避雨：检索附近 cafe 品类店铺，插入行程第一个目的地后重算排程。
+    """
+    if not session_state.get("task_list"):
+        return jsonify({"error": "无行程数据"}), 400
+
+    # 从 poi_cache 中找 cafe 品类最近店铺
+    cafe_shop_id = None
+    cafe_name = None
+    for sid, shop in agent.poi_cache.items():
+        if shop.get("category") == "cafe":
+            cafe_shop_id = sid
+            cafe_name = shop.get("name", "附近饮品店")
+            break
+
+    if not cafe_shop_id:
+        # 找不到 cafe，尝试其他饮品类兜底
+        for sid, shop in agent.poi_cache.items():
+            cat = shop.get("category", "")
+            if cat in ("cafe",):
+                cafe_shop_id = sid
+                cafe_name = shop.get("name", "附近店铺")
+                break
+
+    if not cafe_shop_id:
+        return jsonify({"error": "未找到附近的避雨店铺"}), 404
+
+    # 构造避雨节点
+    shelter_info = agent.poi_cache[cafe_shop_id]
+    raw_coord = shelter_info.get('coord', '')
+    if raw_coord and ',' in raw_coord:
+        coord = raw_coord
+    else:
+        coord = "39.93,116.45"
+
+    shelter_task = {
+        "task_id": cafe_shop_id,
+        "name": cafe_name,
+        "location_id": cafe_shop_id,
+        "duration_minutes": 20,  # 歇脚20分钟
+        "human_needed": True,
+        "fixed_start_time": None,
+        "category": "cafe",
+    }
+
+    # 插入 task_list 第0位
+    task_list = session_state["task_list"]
+    task_list.insert(0, shelter_task)
+    session_state["task_list"] = task_list
+
+    # 更新 spatial_matrix
+    session_state["spatial_matrix"]["locations"][cafe_shop_id] = {
+        "name": cafe_name,
+        "coord": coord
+    }
+
+    # 清除之前的排程缓存，重算
+    session_state["confirmed_ids"] = []
+    session_state["rejected_ids"] = []
+
+    schedule_res = backend.skill_scheduler.solve_concurrent_timeline(
+        task_list,
+        session_state["spatial_matrix"],
+        session_state["now_str"],
+        session_state["confirmed_ids"],
+        session_state["rejected_ids"],
+    )
+
+    if schedule_res.get("status") == "SUCCESS":
+        # 防踩坑走一遍（简化）
+        cleaned_timeline = []
+        for item in schedule_res["timeline"]:
+            memo = item.get("memo", "")
+            sub = None
+            if item["task_id"]:
+                for t in task_list:
+                    if t["task_id"] == item["task_id"]:
+                        sub = {"action": t["name"], "duration_minutes": t["duration_minutes"]}
+                        break
+            cleaned_timeline.append({
+                "time": item["time"],
+                "memo": memo,
+                "action": item["action"],
+                "sub_task": sub,
+            })
+        return jsonify({
+            "phase": "done",
+            "shelter_name": cafe_name,
+            "shelter_id": cafe_shop_id,
+            "departure_time": schedule_res["suggested_departure_time"],
+            "total_minutes": schedule_res["total_duration_minutes"],
+            "timeline": cleaned_timeline,
+            "pitfall_reminders": [],
+            "pitfall_insights": [],
+            "pitfall_triggers": [],
+        })
+    else:
+        return jsonify({
+            "phase": "inserted",
+            "shelter_name": cafe_name,
+            "shelter_id": cafe_shop_id,
+            "message": schedule_res.get("message", "避雨点已加入，但排程需要进一步确认")
+        })
+
+
+@app.route("/api/get_swap_candidates", methods=["POST"])
+def api_get_swap_candidates():
+    """
+    获取可替换的同品类店铺列表（排除异常店）。
+    输入: { anomaly_type: "排号异常" | "餐厅停电" }
+    """
+    data = request.get_json(silent=True) or {}
+    anomaly_type = data.get("anomaly_type", "")
+
+    selected_pairs = session_state.get("selected_pairs", [])
+    if not selected_pairs:
+        return jsonify({"error": "无已选店铺"}), 400
+
+    # 找到需要被替换的节点（第一个与异常匹配的品类）
+    # 排号异常/停电通常对应 restaurant 品类
+    target_category = None
+    excluded_shop_id = None
+    for cat, sid, sname in selected_pairs:
+        if cat in ("restaurant",):
+            target_category = cat
+            excluded_shop_id = sid
+            break
+
+    if not target_category:
+        # 兜底：尝试用第一个品类
+        cat, sid, sname = selected_pairs[0]
+        target_category = cat
+        excluded_shop_id = sid
+
+    # 从 poi_cache_per_category 获取同品类所有店铺并过滤
+    shops_data = []
+    shops = agent.poi_cache_per_category.get(target_category, [])
+    for shop in shops:
+        if shop["shop_id"] == excluded_shop_id:
+            continue
+        # 计算距离
+        dist_m = 0
+        raw_coord = shop.get("coord", "")
+        if raw_coord and "," in raw_coord:
+            try:
+                slat, slng = float(raw_coord.split(",")[0].strip()), float(raw_coord.split(",")[1].strip())
+                from math import radians, cos, sin, asin, sqrt
+                R = 6371000
+                dlat = radians(slat - 39.93)
+                dlng = radians(slng - 116.45)
+                a = sin(dlat/2)**2 + cos(radians(39.93))*cos(radians(slat))*sin(dlng/2)**2
+                c = 2 * asin(sqrt(a))
+                dist_m = int(R * c)
+            except:
+                pass
+        dist_str = f"{dist_m}m" if dist_m < 1000 else f"{dist_m/1000:.1f}km"
+        shops_data.append({
+            "shop_id": shop["shop_id"],
+            "name": shop["name"],
+            "rating": shop.get("rating", 0),
+            "distance": dist_str,
+        })
+
+    # 按评分降序
+    shops_data.sort(key=lambda s: s["rating"], reverse=True)
+
+    return jsonify({
+        "category": target_category,
+        "shops": shops_data[:5]
+    })
+
+
+@app.route("/api/swap_shop", methods=["POST"])
+def api_swap_shop():
+    """
+    替换店铺后重算排程。
+    输入: { new_shop_id: "...", is_queue: bool }
+    """
+    data = request.get_json(silent=True) or {}
+    new_shop_id = data.get("new_shop_id")
+    is_queue = data.get("is_queue", False)
+
+    if not new_shop_id or new_shop_id not in agent.poi_cache:
+        return jsonify({"error": "无效的店铺 ID"}), 400
+
+    # 更新 selected_pairs 中对应条目
+    new_shop = agent.poi_cache[new_shop_id]
+    new_category = new_shop.get("category", "")
+    new_name = new_shop.get("name", "")
+
+    selected_pairs = session_state.get("selected_pairs", [])
+    updated = False
+    for i, (cat, sid, sname) in enumerate(selected_pairs):
+        # 匹配品类后替换
+        if cat == new_category or (not updated):
+            selected_pairs[i] = (new_category, new_shop_id, new_name)
+            updated = True
+            break
+    if not updated:
+        selected_pairs.append((new_category, new_shop_id, new_name))
+    session_state["selected_pairs"] = selected_pairs
+
+    # 更新 task_list
+    raw = new_shop.get('coord', '')
+    coord = raw if raw and ',' in raw else "39.93,116.45"
+
+    def _duration(cat):
+        return {"hair": 60, "pet": 30, "cafe": 20,
+                "restaurant": 60, "gym": 60, "cinema": 120, "laundry": 30}.get(cat, 45)
+
+    new_task = {
+        "task_id": new_shop_id,
+        "name": new_name,
+        "location_id": new_shop_id,
+        "duration_minutes": _duration(new_category),
+        "human_needed": new_shop.get("human_needed", True),
+        "fixed_start_time": session_state.get("fixed_time"),
+        "category": new_category,
+    }
+    session_state["spatial_matrix"]["locations"][new_shop_id] = {
+        "name": new_name,
+        "coord": coord
+    }
+    task_list = session_state["task_list"]
+    # 替换掉品类相同的旧 task
+    replaced = False
+    for i, t in enumerate(task_list):
+        if t.get("category") == new_category or (not replaced):
+            task_list[i] = new_task
+            replaced = True
+            break
+    if not replaced:
+        task_list.append(new_task)
+    session_state["task_list"] = task_list
+
+    # 重算排程
+    session_state["confirmed_ids"] = []
+    session_state["rejected_ids"] = []
+    schedule_res = backend.skill_scheduler.solve_concurrent_timeline(
+        task_list,
+        session_state["spatial_matrix"],
+        session_state["now_str"],
+        session_state["confirmed_ids"],
+        session_state["rejected_ids"],
+    )
+
+    if schedule_res.get("status") == "SUCCESS":
+        cleaned = []
+        for item in schedule_res["timeline"]:
+            memo = item.get("memo", "")
+            sub = None
+            if item["task_id"]:
+                for t in task_list:
+                    if t["task_id"] == item["task_id"]:
+                        sub = {"action": t["name"], "duration_minutes": t["duration_minutes"]}
+                        break
+            cleaned.append({
+                "time": item["time"],
+                "memo": memo,
+                "action": item["action"],
+                "sub_task": sub,
+            })
+        return jsonify({
+            "phase": "done",
+            "departure_time": schedule_res["suggested_departure_time"],
+            "total_minutes": schedule_res["total_duration_minutes"],
+            "timeline": cleaned,
+            "pitfall_reminders": [],
+            "pitfall_insights": [],
+            "pitfall_triggers": [],
+        })
+    else:
+        return jsonify({
+            "phase": "swapped",
+            "message": schedule_res.get("message", "店铺已替换，但排程需要进一步确认")
+        })
+
+
+# ======================================================================
 # 启动
 # ======================================================================
 if __name__ == "__main__":

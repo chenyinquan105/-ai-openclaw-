@@ -138,6 +138,23 @@
  </div>
  </div>
 
+ <!-- 二级弹窗 Modal -->
+ <div id="planb-second-modal" class="absolute inset-0 flex items-center justify-center z-[60] hidden"
+      style="background: rgba(0,0,0,0.5);">
+  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 animate-fade-in">
+    <div class="text-center mb-4">
+      <h3 id="second-modal-title" class="text-lg font-black text-gray-900">二级确认</h3>
+      <p id="second-modal-hint" class="text-xs text-gray-500 mt-1"></p>
+    </div>
+    <div id="second-modal-body" class="space-y-2 mb-4"></div>
+    <div class="flex space-x-3">
+      <button onclick="closeSecondModal()" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition text-sm">返回</button>
+      <button id="second-modal-confirm" onclick="confirmSecondModal()"
+              class="flex-1 bg-gray-900 text-yellow-400 font-black py-3.5 rounded-2xl hover:bg-gray-800 transition text-sm meituan-shadow">确认</button>
+    </div>
+  </div>
+ </div>
+
  <div id="exec-cover" class="hidden z-40" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
  <div id="exec-card" class="w-full h-full bg-white flex flex-col">
  <!-- 顶部固定：返回+结束行程 -->
@@ -223,6 +240,86 @@ const CATEGORY_NAME = {
  hair: '理发', pet: '宠物洗澡', cafe: '咖啡',
  restaurant: '餐饮', cinema: '电影', gym: '健身', laundry: '干洗',
 };
+
+// ======================================================================
+// 交通时间计算工具
+// ======================================================================
+
+/** 交通方式速度(m/min)及额外等候时间(min) */
+/* 常数与后端 concurrent_pipeline_scheduler.py 严格对齐 */
+var TRANSPORT_SPEED = {
+  '步行': 80,
+  '公共交通': 250,        // 公交车平均速度
+  '地铁': 500,             // 地铁行驶速度
+  '打车': 400,
+  '驾车': 500,
+};
+var TRANSPORT_WAIT = {
+  '步行': 0,
+  '公共交通': 5,           // 步行到公交站+等车
+  '地铁': 5,               // 步行到地铁站+等车+出站
+  '打车': 5,               // 叫车等待+启动
+  '驾车': 5,               // 启动汽车+停车
+};
+
+/** 从距离字符串(如 "200m" / "1.2km")解析米数 */
+function parseDistanceMeters(distStr) {
+  if (!distStr) return 0;
+  var m = distStr.match(/^([\d.]+)(m|km)$/);
+  if (!m) return 0;
+  var val = parseFloat(m[1]);
+  if (m[2] === 'km') return Math.round(val * 1000);
+  return Math.round(val);
+}
+
+/** 计算某种交通方式的预计用时（分钟），含等车时间 */
+function calcTransportMinutes(distanceMeters, mode) {
+  if (!distanceMeters || distanceMeters <= 0) return 0;
+  var speed = TRANSPORT_SPEED[mode] || 80;
+  var wait = TRANSPORT_WAIT[mode] || 0;
+  return Math.ceil(distanceMeters / speed) + wait;
+}
+
+/** 获取当前所有已选店铺的平均距离（m） */
+function getAvgSelectedDistanceMeters() {
+  var cards = document.querySelectorAll('.shop-card.border-yellow-400');
+  if (!cards.length) return 0;
+  var total = 0, count = 0;
+  cards.forEach(function(c) {
+    // shop-card 结构: h3(名称) + div > span(评分) + span(距离)
+    // 距离 span 是文本类似 "200m" 或 "1.2km"，直接遍历 card 的文本节点找
+    var allSpans = c.querySelectorAll('span');
+    var found = false;
+    allSpans.forEach(function(sp) {
+      var txt = sp.textContent.trim();
+      if (/^[\d.]+(m|km)$/.test(txt)) {
+        var distM = parseDistanceMeters(txt);
+        if (distM > 0) { total += distM; count++; found = true; }
+      }
+    });
+  });
+  if (!count) return 0;
+  return Math.round(total / count);
+}
+
+/** 更新所有交通方式的时间标签 */
+function updateTransportTimeLabels() {
+  var avgDist = getAvgSelectedDistanceMeters();
+  if (avgDist <= 0) {
+    // 无数据时显示占位
+    ['步行','公共交通','打车','驾车'].forEach(function(m) {
+      var el = document.getElementById('time-label-' + m);
+      if (el) el.textContent = '';
+    });
+    return;
+  }
+  ['步行','公共交通','打车','驾车'].forEach(function(m) {
+    var el = document.getElementById('time-label-' + m);
+    if (!el) return;
+    var min = calcTransportMinutes(avgDist, m);
+    el.textContent = '约 ' + min + ' 分钟';
+  });
+}
 
 // ======================================================================
 // 搜索按钮事件
@@ -322,15 +419,27 @@ function renderCategorySelection(categories) {
  html += `</div></div>`;
  }
 
- // 行进方式选择
+ // 行进方式选择 — 每种选项分开渲染以便动态更新时间标签
  html += `
  <div class="bg-gray-50 rounded-[32px] p-5 mt-4">
  <p class="text-sm font-bold text-gray-800 mb-3">🚶 选择行进方式</p>
- <div class="grid grid-cols-4 gap-2">
- <div class="transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform" data-transport="步行" onclick="selectTransport(this)">🚶 步行</div>
- <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition" data-transport="公共交通" onclick="selectTransport(this)">🚌 公共交通</div>
- <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition" data-transport="打车" onclick="selectTransport(this)">🚕 打车</div>
- <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition" data-transport="驾车" onclick="selectTransport(this)">🚗 驾车</div>
+ <div class="grid grid-cols-4 gap-2" id="transport-grid">
+ <div class="transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center" data-transport="步行" onclick="selectTransport(this)">
+   <span>🚶 步行</span>
+   <span id="time-label-步行" class="text-[10px] opacity-80 mt-0.5">计算中...</span>
+ </div>
+ <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center" data-transport="公共交通" onclick="selectTransport(this)">
+   <span>🚌 公共交通</span>
+   <span id="time-label-公共交通" class="text-[10px] opacity-80 mt-0.5">计算中...</span>
+ </div>
+ <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center" data-transport="打车" onclick="selectTransport(this)">
+   <span>🚕 打车</span>
+   <span id="time-label-打车" class="text-[10px] opacity-80 mt-0.5">计算中...</span>
+ </div>
+ <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center" data-transport="驾车" onclick="selectTransport(this)">
+   <span>🚗 驾车</span>
+   <span id="time-label-驾车" class="text-[10px] opacity-80 mt-0.5">计算中...</span>
+ </div>
  </div>
  </div>
  `;
@@ -346,15 +455,17 @@ function renderCategorySelection(categories) {
 
  mainEl.innerHTML = html;
  currentPhase = 'choose_shop';
+ // 渲染完毕后计算交通时间
+ updateTransportTimeLabels();
  scrollToBottom();
 }
 
 // 点击切换卡片选中状态
 function selectTransport(el) {
   document.querySelectorAll('.transport-option').forEach(o => {
-    o.className = 'transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition';
+    o.className = 'transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center';
   });
-  el.className = 'transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform';
+  el.className = 'transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center';
   selectedTransport = el.dataset.transport;
 }
 
@@ -379,6 +490,8 @@ function toggleShopCard(el) {
  div.innerHTML = '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg>';
  el.appendChild(div);
  }
+ // 选店变更 → 重新计算交通时间
+ updateTransportTimeLabels();
 }
 
 // 确认选店
@@ -545,53 +658,47 @@ function renderSchedule(data) {
  if (item.action === 'DEPART') {
  label = '出发';
  dotColor = 'bg-yellow-400';
- } else if (item.action === 'MOVE_AND_EXEC') {
- // "前往 酷迪宠物三里屯店 — 放下物品，开始后台处理" → "前往 酷迪宠物三里屯店"
- const name = shopName(item.memo);
- const hasDrop = item.memo.includes('放下');
- const hasStart = item.memo.includes('人在场');
- const hasPick = item.memo.includes('回收');
- if (hasDrop) {
- label = `去 ${name}`;
- dotColor = 'bg-blue-400';
- } else if (hasPick) {
- label = `取回 ${name}`;
- dotColor = 'bg-green-400';
- } else {
- label = `前往 ${name}`;
- }
- // 子任务行：人需要在场执行的任务
- if (item.sub_task) {
- // 计算结束时间
- let endTime = '';
- if (item.time && item.sub_task.duration_minutes) {
- const parts = item.time.split(':');
- if (parts.length === 2) {
- let h = parseInt(parts[0]), m = parseInt(parts[1]);
- m += item.sub_task.duration_minutes;
- h += Math.floor(m / 60);
- m = m % 60;
- endTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
- }
- }
- subHtml = `
- <p class="text-xs text-gray-400 mt-1 flex justify-between">
- <span>── 进行${item.sub_task.action}（预计 ${item.sub_task.duration_minutes} 分钟）</span>
- <span class="text-gray-500">${endTime} 结束</span>
- </p>
- `;
- }
+ } else if (item.action === 'MOVE' || item.action === 'MOVE_AND_EXEC') {
+   var name = shopName(item.memo);
+   var hasDrop = item.memo && item.memo.includes('放下');
+   var hasStart = item.memo && item.memo.includes('人在场');
+   var hasPick = item.memo && item.memo.includes('回收');
+   if (hasDrop) {
+     label = '去 ' + name;
+     dotColor = 'bg-blue-400';
+   } else if (hasPick) {
+     label = '取回 ' + name;
+     dotColor = 'bg-green-400';
+   } else {
+     label = '前往 ' + name;
+     dotColor = 'bg-indigo-400';
+   }
+   // 子任务行
+   if (item.sub_task) {
+     var endTime = '';
+     if (item.time && item.sub_task.duration_minutes) {
+       var parts = item.time.split(':');
+       if (parts.length === 2) {
+         var h = parseInt(parts[0]), m = parseInt(parts[1]);
+         m += item.sub_task.duration_minutes;
+         h += Math.floor(m / 60);
+         m = m % 60;
+         endTime = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+       }
+     }
+     subHtml = '<p class="text-xs text-gray-400 mt-1 flex justify-between"><span>── 进行' + item.sub_task.action + '（预计 ' + item.sub_task.duration_minutes + ' 分钟）</span><span class="text-gray-500">' + endTime + ' 结束</span></p>';
+   }
  } else if (item.action === 'PICK_TASK') {
- const name = shopName(item.memo);
- label = `去 ${name} 接回宠物`;
- dotColor = 'bg-green-400';
+   var name = shopName(item.memo);
+   label = '去 ' + name + ' 接回宠物';
+   dotColor = 'bg-green-400';
  } else if (item.action === 'WAIT') {
- label = '等待中';
- dotColor = 'bg-blue-400';
+   label = '等待中';
+   dotColor = 'bg-blue-400';
  } else {
- label = item.memo || '';
- if (item.action === 'DROP_TASK' || item.action === 'WAIT') dotColor = 'bg-blue-400';
- else if (item.action === 'PICK_TASK') dotColor = 'bg-green-400';
+   label = item.memo || '';
+   if (item.action === 'DROP_TASK' || item.action === 'WAIT') dotColor = 'bg-blue-400';
+   else if (item.action === 'PICK_TASK') dotColor = 'bg-green-400';
  }
 
  html += `
@@ -892,7 +999,7 @@ function updateConsoleNodes(data) {
 function getPlanBOptions(type) {
  const options = {
  '排号异常': [
- { id: 'swap_shop', title: '更换同品类店铺 + 一键排号', subtitle: '检索附近同品类评分最高商户，自动更换并排号', emoji: '🔄' },
+  { id: 'swap_shop_and_queue', title: '更换同品类店铺 + 一键排号', subtitle: '检索附近同品类评分最高商户，自动更换并排号', emoji: '🔄' },
  { id: 'postpone', title: '延后排号，先去其他节点', subtitle: '将该节点延后，优先执行其他行程', emoji: '⏳' },
  { id: 'cancel_node', title: '取消该节点', subtitle: '从行程中移除该节点', emoji: '❌' }
  ],
@@ -984,23 +1091,318 @@ function confirmPetTaxi() {
  confirmShopSelectionSubmit();
 }
 
-function closeDemoExceptionModal() {
- const modal = document.getElementById('demo-exception-modal');
- if (modal) modal.classList.add('hidden');
- pendingDemoException = null;
- selectedPlanBOption = null;
+// ======================================================================
+// 二级弹窗与执行反馈
+// ======================================================================
+
+/**
+ * 二级弹窗状态
+ */
+let secondModalSelectedValue = null;
+let secondModalSelectedName = null;
+let secondModalCallback = null;
+
+/**
+ * 向执行计划界面的聊天区域追加一条助理消息。
+ * 如果 exec-cover 未打开则自动打开。
+ */
+function appendExecChatMessage(text) {
+  var content = document.getElementById('exec-plan-content');
+  if (!content) return;
+  var msg = document.createElement('div');
+  msg.className = 'bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-3 animate-fade-in';
+  msg.innerHTML = '<p class="text-sm text-gray-800 leading-relaxed">🤖 ' + text + '</p>';
+  content.appendChild(msg);
+  requestAnimationFrame(function() {
+    content.scrollTop = content.scrollHeight;
+  });
+  var cover = document.getElementById('exec-cover');
+  if (cover && cover.classList.contains('hidden')) {
+    openExecCover();
+  }
 }
 
-function executePlanB() {
- if (!pendingDemoException || !selectedPlanBOption) return;
- activeExceptions.push({ ...pendingDemoException });
- renderActiveExceptions();
+/**
+ * 渲染二级弹窗
+ * @param {string} title    弹窗标题
+ * @param {string} hint     提示文案
+ * @param {Array}  options  [{ value, emoji, title, subtitle }, ...]
+ * @param {function} onConfirm(selectedValue, selectedName)  确认回调
+ */
+function showSecondModal(title, hint, options, onConfirm) {
+  secondModalSelectedValue = null;
+  secondModalSelectedName = null;
+  secondModalCallback = onConfirm;
+  document.getElementById('second-modal-title').textContent = title;
+  document.getElementById('second-modal-hint').textContent = hint;
+  document.getElementById('second-modal-body').innerHTML =
+    options.map(function(o, i) {
+      var selectedAttr = (i === 0) ? ' border-yellow-400 bg-yellow-50' : ' border-gray-200 bg-gray-50';
+      if (i === 0) {
+        secondModalSelectedValue = o.value;
+        secondModalSelectedName = o.title;
+      }
+      return '<div class="second-option rounded-2xl p-3 cursor-pointer hover:border-yellow-400 hover:bg-yellow-50 transition flex items-center gap-3 border' + selectedAttr + '" data-value="' + o.value + '" data-name="' + o.title + '" onclick="selectSecondOption(this)">' +
+        '<div class="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0 text-base">' + o.emoji + '</div>' +
+        '<div class="min-w-0 flex-1">' +
+        '<p class="text-sm font-bold text-gray-900">' + o.title + '</p>' +
+        (o.subtitle ? '<p class="text-xs text-gray-500 mt-0.5">' + o.subtitle + '</p>' : '') +
+        '</div></div>';
+    }).join('');
+  // 如果是延后弹窗，在最后追加自定义输入区（隐藏）
+  var hasCustom = options.some(function(o) { return o.value === 'custom'; });
+  var body = document.getElementById('second-modal-body');
+  if (hasCustom) {
+    var inputDiv = document.createElement('div');
+    inputDiv.id = 'custom-delay-input-wrap';
+    inputDiv.className = 'hidden mt-2';
+    inputDiv.innerHTML = '<div class="bg-gray-50 rounded-2xl p-3 flex items-center gap-2 border border-gray-200">' +
+      '<span class="text-sm text-gray-600">⏱️ 分钟:</span>' +
+      '<input id="custom-delay-input" type="number" min="1" max="999" value="45" class="flex-1 bg-white rounded-full px-4 py-2 text-sm border border-gray-200 outline-none focus:border-yellow-400">' +
+      '</div>';
+    body.appendChild(inputDiv);
+  }
+  // 默认选中第一个
+  document.getElementById('second-modal-confirm').disabled = false;
+  document.getElementById('planb-second-modal').classList.remove('hidden');
+}
 
- const optionLabel = document.querySelector('.planb-option.border-yellow-400 .text-sm.font-bold');
- const label = optionLabel ? optionLabel.textContent : selectedPlanBOption;
- alert(`✅ 已执行 Plan B: [${label}]
-针对异常: ${pendingDemoException.type}`);
- closeDemoExceptionModal();
+function selectSecondOption(el) {
+  document.querySelectorAll('.second-option').forEach(function(o) {
+    o.classList.remove('border-yellow-400', 'bg-yellow-50');
+    o.classList.add('border-gray-200', 'bg-gray-50');
+  });
+  el.classList.remove('border-gray-200', 'bg-gray-50');
+  el.classList.add('border-yellow-400', 'bg-yellow-50');
+  secondModalSelectedValue = el.dataset.value;
+  secondModalSelectedName = el.dataset.name;
+  // 选中自定义时显示输入框
+  var wrap = document.getElementById('custom-delay-input-wrap');
+  if (wrap) {
+    wrap.classList.toggle('hidden', el.dataset.value !== 'custom');
+  }
+}
+
+function closeSecondModal() {
+  document.getElementById('planb-second-modal').classList.add('hidden');
+  secondModalSelectedValue = null;
+  secondModalSelectedName = null;
+};
+
+function confirmSecondModal() {
+  if (!secondModalSelectedValue) return;
+  document.getElementById('planb-second-modal').classList.add('hidden');
+  var cb = secondModalCallback;
+  var val = secondModalSelectedValue;
+  var name = secondModalSelectedName;
+  secondModalCallback = null;
+  // 自定义延长时间：从输入框取值
+  if (val === 'custom') {
+    var input = document.getElementById('custom-delay-input');
+    val = input ? input.value : '45';
+    name = val + ' 分钟';
+  }
+  if (cb) cb(val, name);
+}
+
+function closeDemoExceptionModal() {
+  const modal = document.getElementById('demo-exception-modal');
+  if (modal) modal.classList.add('hidden');
+  pendingDemoException = null;
+  selectedPlanBOption = null;
+}
+
+/**
+ * 核心 Plan B 执行函数
+ */
+function executePlanB() {
+  if (!pendingDemoException || !selectedPlanBOption) return;
+
+  var exType = pendingDemoException.type;
+  var optId = selectedPlanBOption;
+  var optionLabel = document.querySelector('.planb-option.border-yellow-400 .text-sm.font-bold');
+  var label = optionLabel ? optionLabel.textContent : optId;
+
+  // ---- 1. 打车类：切换交通方式 ----
+  if (optId === 'switch_to_taxi') {
+    selectedTransport = '打车';
+    document.querySelectorAll('.transport-option').forEach(function(o) {
+      if (o.dataset.transport === '打车') {
+        o.className = 'transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center';
+      } else {
+        o.className = 'transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center';
+      }
+    });
+    activeExceptions.push({ ...pendingDemoException });
+    renderActiveExceptions();
+    appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕，将以更快的速度到达各目的地。');
+    closeDemoExceptionModal();
+    return;
+  }
+
+  // ---- 2. 避雨：插入 cafe 为首个目的地 ----
+  if (optId === 'find_shelter') {
+    activeExceptions.push({ ...pendingDemoException });
+    renderActiveExceptions();
+    closeDemoExceptionModal();
+    fetch(API_BASE + '/api/insert_shelter', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var name = data.shelter_name || '附近饮品店';
+      appendExecChatMessage('为您添加了避雨点 <b>' + name + '</b> ☕，已安排为行程第一个目的地。请等雨势减弱后再出发前往后续节点。');
+      if (data.timeline) {
+        renderSchedule(data);
+      }
+    })
+    .catch(function() {
+      appendExecChatMessage('已为您找到最近咖啡店避雨 ☕，已加入行程第一站。');
+    });
+    return;
+  }
+
+  // ---- 3. 取消节点 / 取消计划 ----
+  if (optId === 'cancel_node' || optId === 'cancel_trip') {
+    activeExceptions.push({ ...pendingDemoException });
+    renderActiveExceptions();
+    var msg = '';
+    if (optId === 'cancel_node') {
+      msg = '已将异常节点 <b>从行程中移除</b> ❌，请确认剩余行程是否满足需求。';
+    } else {
+      msg = '已为您 <b>取消本次行程计划</b>，如需重新规划请随时告诉我。';
+      execContentCache = '';
+      document.getElementById('exec-plan-content').innerHTML = '';
+    }
+    appendExecChatMessage(msg);
+    closeDemoExceptionModal();
+    return;
+  }
+
+  // ---- 4. 延后类 ----
+  if (optId === 'postpone' || optId === 'postpone_departure') {
+    showSecondModal(
+      '⏳ 延后多长时间？',
+      '请选择延时时长，系统将重新排程',
+      [
+        { value: '15', emoji: '⏱️', title: '15 分钟' },
+        { value: '30', emoji: '⏱️', title: '30 分钟' },
+        { value: '60', emoji: '⏱️', title: '1 小时' },
+        { value: 'custom', emoji: '✏️', title: '自定义', subtitle: '输入具体分钟数' }
+      ],
+      function(delayVal) {
+        activeExceptions.push({ ...pendingDemoException });
+        renderActiveExceptions();
+        appendExecChatMessage('已延后相关任务 ⏳，将重新排程确保整体行程尽量不受影响。（延后 ' + delayVal + ' 分钟）');
+        closeDemoExceptionModal();
+      }
+    );
+    return;
+  }
+
+  // ---- 5. 堵车 → 改步行/地铁接驳 ----
+  if (optId === 'switch_to_walk_metro') {
+    // 根据已选店铺平均距离计算各接驳方式预计用时
+    var avgDist = getAvgSelectedDistanceMeters();
+    var secondOpts = [
+      { value: 'walk', emoji: '🚶', title: '全程步行', subtitle: '' },
+      { value: 'metro', emoji: '🚇', title: '步行至地铁站', subtitle: '' },
+      { value: 'walk_bus', emoji: '🚌', title: '步行+公交混合', subtitle: '' }
+    ];
+    // 用不同的速度近似模拟三种模式
+    var modeSpeedMap = { walk: 80, metro: 300, walk_bus: 180 };
+    secondOpts.forEach(function(o) {
+      var speed = modeSpeedMap[o.value] || 80;
+      var mins = Math.ceil(avgDist / speed);
+      o.subtitle = '约 ' + mins + ' 分钟';
+    });
+    showSecondModal(
+      '🚶 请选择接驳方式',
+      '堵车路段切换为非驾车出行',
+      secondOpts,
+      function(secondVal) {
+        var transportMap = { walk: '步行', metro: '地铁', walk_bus: '步行+公交' };
+        var tLabel = transportMap[secondVal] || '步行';
+        selectedTransport = tLabel;
+        activeExceptions.push({ ...pendingDemoException });
+        renderActiveExceptions();
+        appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。');
+        closeDemoExceptionModal();
+      }
+    );
+    return;
+  }
+
+  // ---- 6. 排号异常→换店+排号（swap_shop_and_queue）or 停电→换店（swap_shop）----
+  if (optId === 'swap_shop_and_queue' || optId === 'swap_shop') {
+    var isQueue = (optId === 'swap_shop_and_queue');
+    closeDemoExceptionModal();
+    fetch(API_BASE + '/api/get_swap_candidates', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ anomaly_type: exType })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error || !data.shops || data.shops.length === 0) {
+        appendExecChatMessage('抱歉，附近未找到可替换的同品类店铺。建议取消该节点或延后处理。');
+        return;
+      }
+      var shopOpts = data.shops.map(function(s, i) {
+        return {
+          value: s.shop_id,
+          emoji: '🏪',
+          title: s.name,
+          subtitle: '★' + s.rating + '  ' + (s.distance || '')
+        };
+      });
+      showSecondModal(
+        isQueue ? '🔄 选择替换店铺（自动排号）' : '🔄 选择替换餐厅',
+        '已排除异常店，请从同品类中选择替代：',
+        shopOpts,
+        function(swapShopId, swapShopName) {
+          activeExceptions.push({ ...pendingDemoException });
+          renderActiveExceptions();
+          fetch(API_BASE + '/api/swap_shop', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ new_shop_id: swapShopId, is_queue: isQueue })
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(swapRes) {
+            var extraMsg = isQueue ? '，已自动为您 <b>一键排号</b> 🎫' : '';
+            appendExecChatMessage('已将异常店铺替换为 <b>' + (swapShopName || '新店铺') + '</b>' + extraMsg + '，行程已更新。');
+            if (swapRes.timeline) {
+              renderSchedule(swapRes);
+            }
+          })
+          .catch(function() {
+            appendExecChatMessage('替换店铺失败，请稍后重试。');
+          });
+        }
+      );
+    })
+    .catch(function() {
+      appendExecChatMessage('获取可替换店铺列表失败，请稍后重试。');
+    });
+    return;
+  }
+
+  // ---- 7. 重新规划路线绕行 ----
+  if (optId === 'reroute') {
+    activeExceptions.push({ ...pendingDemoException });
+    renderActiveExceptions();
+    appendExecChatMessage('📢 正在为您重新规划绕行路线，避开拥堵路段 🗺️，请稍候。');
+    closeDemoExceptionModal();
+    return;
+  }
+
+  // ---- 默认兜底 ----
+  activeExceptions.push({ ...pendingDemoException });
+  renderActiveExceptions();
+  appendExecChatMessage('已执行操作: ' + label);
+  closeDemoExceptionModal();
 }
 
 function renderActiveExceptions() {

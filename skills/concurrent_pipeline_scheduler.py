@@ -18,9 +18,13 @@ from typing import List, Dict, Any, Tuple
 # ======================================================================
 # 全局常量
 # ======================================================================
-WALK_SPEED = 80
-TAXI_SPEED = 400
-TAXI_WAIT = 5
+WALK_SPEED = 80                    # 步行速度 m/min
+TAXI_SPEED = 400                   # 出租车速度 m/min
+TAXI_WAIT = 5                      # 打车等候 + 启动耗时 (分钟)
+CAR_SPEED = 500                    # 驾车速度 m/min
+CAR_WARMUP = 5                     # 启动汽车+停车耗时 (分钟)
+METRO_ACCESS = 5                   # 步行到地铁站+等车+出站 (分钟)
+METRO_SPEED = 500                  # 地铁行驶速度 m/min
 DROP_PICK_DURATION = 5
 MAX_TOLERABLE_DELAY = 15  # 软冲突容忍上限 (分钟)
 
@@ -56,8 +60,19 @@ def _get_route(loc_a: str, loc_b: str, sm: dict) -> Tuple[str, int]:
     return "WALK", 0
 
 def _travel_min(mode: str, dist: int) -> int:
+    """
+    根据交通模式和距离(m)计算总耗时(分钟)，包含启动/接驳/等待时间。
+    已知 mode 值: WALK, TAXI, DRIVE, METRO, BUS
+    """
     if mode == "TAXI":
         return TAXI_WAIT + math.ceil(dist / TAXI_SPEED)
+    if mode == "DRIVE":
+        return CAR_WARMUP + math.ceil(dist / CAR_SPEED)
+    if mode == "METRO":
+        return METRO_ACCESS + math.ceil(dist / METRO_SPEED)
+    if mode == "BUS":
+        return 5 + math.ceil(dist / 250)  # 5min 步行到站+等车
+    # WALK 及未知模式
     return math.ceil(dist / WALK_SPEED)
 
 def _parse(t: str) -> int:
@@ -195,7 +210,8 @@ def solve_concurrent_timeline(
         t_min = _travel_min(mode, dist)
         cur_min += t_min
         bg_finish_map[task["location_id"]] = cur_min + task["duration_minutes"]
-        push("MOVE", cur_min - t_min, target_loc=cur_loc, next_loc=task["location_id"], task_id=task["task_id"], memo=f"前往 {task['name']}")
+        push("MOVE", cur_min - t_min, target_loc=cur_loc, next_loc=task["location_id"],
+             task_id=task["task_id"], memo=f"前往 {task['name']}")
         push("DROP_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="放下物品，开始后台处理")
         cur_min += DROP_PICK_DURATION
         cur_loc = task["location_id"]
@@ -209,7 +225,8 @@ def solve_concurrent_timeline(
         if any(m in occupied_slots for m in range(arr_min, arr_min + task["duration_minutes"])):
             post_anchor_tasks.append(task)
             continue
-        push("MOVE", cur_min, target_loc=cur_loc, next_loc=task["location_id"], task_id=task["task_id"], memo=f"前往执行 {task['name']}")
+        push("MOVE", cur_min, target_loc=cur_loc, next_loc=task["location_id"],
+             task_id=task["task_id"], memo=f"前往执行 {task['name']}")
         cur_min = arr_min
         push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="人在场执行中")
         cur_min += task["duration_minutes"]
@@ -222,7 +239,8 @@ def solve_concurrent_timeline(
         arr_min = cur_min + t_min
         fs_min = _parse(task["fixed_start_time"])
         
-        push("MOVE", cur_min, target_loc=cur_loc, next_loc=task["location_id"], task_id=task["task_id"], memo=f"前往锚点: {task['name']}")
+        push("MOVE", cur_min, target_loc=cur_loc, next_loc=task["location_id"],
+             task_id=task["task_id"], memo=f"前往锚点: {task['name']}")
         if arr_min < fs_min:
             push("WAIT", arr_min, target_loc=task["location_id"], memo="提前到达，等待开始")
             arr_min = fs_min
@@ -232,21 +250,25 @@ def solve_concurrent_timeline(
         cur_min += task["duration_minutes"]
         cur_loc = task["location_id"]
 
-    # 阶段 C.5: 延后任务处理 (Post Anchor)
+    # 阶段 C.5: 延后任务处理 (Post Anchor) — MOVE 也有路径但无 depush 直接累加，不需要记忆
     for task in post_anchor_tasks:
         mode, dist = _get_route(cur_loc, task["location_id"], spatial_matrix)
-        cur_min += _travel_min(mode, dist)
+        t_min = _travel_min(mode, dist)
+        cur_min += t_min
         if not task["human_needed"]:
             bg_finish_map[task["location_id"]] = cur_min + task["duration_minutes"]
+            push("MOVE", cur_min - t_min, target_loc=cur_loc, next_loc=task["location_id"],
+                 task_id=task["task_id"], memo=f"前往 {task['name']}")
             push("DROP_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="延后Drop处理")
             cur_min += DROP_PICK_DURATION
         else:
+            push("MOVE", cur_min - t_min, target_loc=cur_loc, next_loc=task["location_id"],
+                 task_id=task["task_id"], memo=f"前往执行 {task['name']}")
             push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="延后人在场执行")
             cur_min += task["duration_minutes"]
         cur_loc = task["location_id"]
 
-    # 阶段 D: PICK 收尾
-    # 按任务列表寻找所有需要回收的地点
+    # 阶段 D: PICK 收尾 — 去回收地的 MOVE
     for task in task_list:
         if task["human_needed"] or task.get("fixed_start_time"): continue
         dest = task["location_id"]
