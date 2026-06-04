@@ -396,7 +396,13 @@ def _run_schedule_from_session():
     if time_mode == "fixed":
         session_state["now_str"] = fixed_time
     else:
-        session_state["now_str"] = datetime.now().strftime("%H:%M")
+        # 虚拟时间开启时优先使用虚拟时钟当前时间
+        _tm = time_master.get_master()
+        _cs = _tm.get_session(_CLOCK_SESSION_ID)
+        if _cs and _cs.virtual_time:
+            session_state["now_str"] = _cs.virtual_time
+        else:
+            session_state["now_str"] = datetime.now().strftime("%H:%M")
     session_state["confirmed_ids"] = []
     session_state["rejected_ids"] = []
 
@@ -480,6 +486,26 @@ def _run_schedule():
                 "action": item["action"],
                 "sub_task": sub_task_info,
             })
+
+        # 注册到虚拟时钟（如果已开启）
+        _tm = time_master.get_master()
+        _cs = _tm.get_session(_CLOCK_SESSION_ID)
+        if _cs:
+            _schedule_nodes = []
+            for item in schedule_res["timeline"]:
+                _schedule_nodes.append({
+                    "time": item["time"],
+                    "type": "SCHEDULE",
+                    "node_id": item.get("task_id", ""),
+                    "name": item.get("memo", ""),
+                    "action": item.get("action", ""),
+                    "target_location_id": item.get("target_location_id"),
+                })
+            # 日常提醒
+            _schedule_nodes.append({"time": "10:00", "type": "WATER", "id": "wat_1", "name": "喝水提醒"})
+            _schedule_nodes.append({"time": "15:00", "type": "WATER", "id": "wat_2", "name": "喝水提醒"})
+            _schedule_nodes.append({"time": "08:30", "type": "MED", "id": "med_hypertension", "name": "高血压阿司匹林"})
+            _tm.set_schedule(_CLOCK_SESSION_ID, _schedule_nodes)
 
         # 调用防踩坑 Skill
         from skills import destination_anti_pitfall as skill_pitfall
@@ -679,6 +705,17 @@ def api_insert_shelter():
             "pitfall_insights": [],
             "pitfall_triggers": [],
         })
+        # 注册到虚拟时钟（如果已开启）
+        _tm = time_master.get_master()
+        _cs = _tm.get_session(_CLOCK_SESSION_ID)
+        if _cs:
+            _sn = []
+            for item in schedule_res["timeline"]:
+                _sn.append({"time": item["time"], "type": "SCHEDULE", "node_id": item.get("task_id",""), "name": item.get("memo",""), "action": item.get("action","")})
+            _sn.append({"time": "10:00", "type": "WATER", "id": "wat_1", "name": "喝水提醒"})
+            _sn.append({"time": "15:00", "type": "WATER", "id": "wat_2", "name": "喝水提醒"})
+            _sn.append({"time": "08:30", "type": "MED", "id": "med_hypertension", "name": "高血压阿司匹林"})
+            _tm.set_schedule(_CLOCK_SESSION_ID, _sn)
     else:
         return jsonify({
             "phase": "inserted",
@@ -876,6 +913,17 @@ def api_swap_shop():
             "pitfall_insights": [],
             "pitfall_triggers": [],
         })
+        # 注册到虚拟时钟（如果已开启）
+        _tm = time_master.get_master()
+        _cs = _tm.get_session(_CLOCK_SESSION_ID)
+        if _cs:
+            _sn = []
+            for item in schedule_res["timeline"]:
+                _sn.append({"time": item["time"], "type": "SCHEDULE", "node_id": item.get("task_id",""), "name": item.get("memo",""), "action": item.get("action","")})
+            _sn.append({"time": "10:00", "type": "WATER", "id": "wat_1", "name": "喝水提醒"})
+            _sn.append({"time": "15:00", "type": "WATER", "id": "wat_2", "name": "喝水提醒"})
+            _sn.append({"time": "08:30", "type": "MED", "id": "med_hypertension", "name": "高血压阿司匹林"})
+            _tm.set_schedule(_CLOCK_SESSION_ID, _sn)
     else:
         return jsonify({
             "phase": "swapped",

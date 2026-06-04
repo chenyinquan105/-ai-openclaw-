@@ -713,6 +713,7 @@ async function submitTime() {
 // ======================================================================
 function renderSchedule(data) {
  lastScheduleData = data;
+ const departureTime = clockPowerOn && window._clockVirtualTime ? window._clockVirtualTime : data.departure_time;
  let html = `
  <section class="pb-10">
  <div class="bg-gray-900 rounded-[40px] p-8 text-white shadow-2xl">
@@ -722,7 +723,7 @@ function renderSchedule(data) {
  <p class="text-xs text-gray-400 mt-1">AI 优化 · 步行方案</p>
  </div>
  <div class="text-right">
- <p class="text-2xl font-black text-yellow-400">${data.departure_time}</p>
+ <p class="text-2xl font-black text-yellow-400">${departureTime}</p>
  <p class="text-[10px] uppercase tracking-widest text-gray-500">出发时间</p>
  </div>
  </div>
@@ -1925,6 +1926,7 @@ setInterval(async function() {
   if (!clockPowerOn) return;
   const st = await clockFetch('GET', '/api/clock/status');
   clockUpdateUI(st);
+  window._clockVirtualTime = st.virtual_time;
   if (st.is_running) {
     const evData = await clockFetch('GET', '/api/clock/events');
     if (evData.events && evData.events.length) {
