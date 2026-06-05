@@ -2256,76 +2256,72 @@ var _butlerPageActive = false;
 var _butlerFlipAnimating = false;
 
 function openButlerPanel() {
-  if (_butlerFlipAnimating) return;
-  _butlerFlipAnimating = true;
+  _butlerPageActive = true;
+  _butlerFlipAnimating = false;
 
-  // 确保 exec-cover 被隐藏，不遮挡管家界面
+  // 确保 exec-cover 被隐藏
   var execCover = document.getElementById('exec-cover');
   if (execCover) execCover.classList.add('hidden');
-  // 隐藏冲突弹窗
   var conflict = document.getElementById('conflict-modal');
   if (conflict) conflict.classList.add('hidden');
 
   // 加载背面内容
   butlerRenderContent();
 
-  // 1. 先让背面可见、正面保持可见（动画期间两者都可见）
+  // 瞬间切换：正面 hidden，背面 visible
+  var card = document.getElementById('main-flip-card');
   var front = document.getElementById('main-face-front');
   var back = document.getElementById('main-face-back');
-  if (back) back.style.visibility = 'visible';
 
-  // 2. 触发翻转动画
-  var card = document.getElementById('main-flip-card');
-  if (card) card.style.transform = 'rotateY(-180deg)';
+  if (card) {
+    card.style.transition = 'none';
+    card.style.transform = 'rotateY(-180deg)';
+  }
+  if (front) {
+    front.style.visibility = 'hidden';
+    front.style.pointerEvents = 'none';
+  }
+  if (back) {
+    back.style.visibility = 'visible';
+    back.style.pointerEvents = 'auto';
+  }
 
-  _butlerPageActive = true;
-
-  // 3. 动画完成后：正面隐藏，背面完全可交互
-  setTimeout(function() {
-    if (front) {
-      front.style.visibility = 'hidden';
-      front.style.pointerEvents = 'none';
-    }
-    if (back) {
-      back.style.pointerEvents = 'auto';
-      // 强制重绘，确保点击区域生效
-      back.style.transform = 'rotateY(180deg)';
-    }
-    _butlerFlipAnimating = false;
-  }, 700);
+  // 恢复 transition（供以后可能需要）
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      if (card) card.style.transition = '';
+    });
+  });
 }
 
 function closeButlerPanel() {
-  if (_butlerFlipAnimating) return;
-  _butlerFlipAnimating = true;
   _butlerPageActive = false;
+  _butlerFlipAnimating = false;
 
+  var card = document.getElementById('main-flip-card');
   var front = document.getElementById('main-face-front');
   var back = document.getElementById('main-face-back');
-  
-  // 1. 先让正面可见
+
+  // 瞬间设回 0deg —— 先去掉 transition 避免动画
+  if (card) {
+    card.style.transition = 'none';
+    card.style.transform = 'rotateY(0deg)';
+  }
   if (front) {
     front.style.visibility = 'visible';
-    front.style.pointerEvents = 'none';
+    front.style.pointerEvents = 'auto';
+  }
+  if (back) {
+    back.style.visibility = 'hidden';
+    back.style.pointerEvents = 'none';
   }
 
-  // 2. 翻转回正面
-  var card = document.getElementById('main-flip-card');
-  if (card) card.style.transform = 'rotateY(0deg)';
-
-  // 3. 动画完成后：背面隐藏，正面完全可交互
-  setTimeout(function() {
-    if (back) {
-      back.style.visibility = 'hidden';
-      back.style.pointerEvents = 'none';
-    }
-    if (front) {
-      front.style.pointerEvents = 'auto';
-      // 强制重绘
-      front.style.transform = 'rotateY(0deg)';
-    }
-    _butlerFlipAnimating = false;
-  }, 700);
+  // 恢复 transition（供下次进入用）
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      if (card) card.style.transition = '';
+    });
+  });
 }
 
 function butlerRenderContent() {
