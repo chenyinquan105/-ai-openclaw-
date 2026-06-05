@@ -144,7 +144,7 @@
   <div class="w-full h-full relative" id="main-flip-card" style="transform-style: preserve-3d; transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: center center;">
 
    <!-- ===== 正面 ===== -->
-   <div class="absolute inset-0 flex flex-col bg-white rounded-[40px] overflow-hidden" id="main-face-front" style="backface-visibility: hidden; -webkit-backface-visibility: hidden;">
+   <div class="absolute inset-0 flex flex-col bg-white rounded-[40px] overflow-hidden" id="main-face-front" style="-webkit-backface-visibility: hidden; backface-visibility: hidden; pointer-events: auto;">
     <!-- 顶部固定：搜索区 -->
     <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
      <div class="flex items-center justify-between mb-4">
@@ -183,7 +183,7 @@
    </div>
 
    <!-- ===== 背面（全天候管家UI） ===== -->
-   <div class="absolute inset-0 flex flex-col bg-white rounded-[40px] overflow-hidden" id="main-face-back" style="backface-visibility: hidden; -webkit-backface-visibility: hidden; transform: rotateY(180deg);">
+   <div class="absolute inset-0 flex flex-col bg-white rounded-[40px] overflow-hidden" id="main-face-back" style="-webkit-backface-visibility: hidden; backface-visibility: hidden; transform: rotateY(180deg); pointer-events: auto;">
     <!-- 顶部：标题+返回 -->
     <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
      <div class="flex items-center justify-between">
@@ -2269,13 +2269,28 @@ function openButlerPanel() {
   // 加载背面内容
   butlerRenderContent();
 
-  // 翻转整个手机屏幕：从右向左（绕 Y 轴旋转 -180deg）
+  // 1. 先让背面可见、正面保持可见（动画期间两者都可见）
+  var front = document.getElementById('main-face-front');
+  var back = document.getElementById('main-face-back');
+  if (back) back.style.visibility = 'visible';
+
+  // 2. 触发翻转动画
   var card = document.getElementById('main-flip-card');
   if (card) card.style.transform = 'rotateY(-180deg)';
 
   _butlerPageActive = true;
 
+  // 3. 动画完成后：正面隐藏，背面完全可交互
   setTimeout(function() {
+    if (front) {
+      front.style.visibility = 'hidden';
+      front.style.pointerEvents = 'none';
+    }
+    if (back) {
+      back.style.pointerEvents = 'auto';
+      // 强制重绘，确保点击区域生效
+      back.style.transform = 'rotateY(180deg)';
+    }
     _butlerFlipAnimating = false;
   }, 700);
 }
@@ -2285,10 +2300,30 @@ function closeButlerPanel() {
   _butlerFlipAnimating = true;
   _butlerPageActive = false;
 
+  var front = document.getElementById('main-face-front');
+  var back = document.getElementById('main-face-back');
+  
+  // 1. 先让正面可见
+  if (front) {
+    front.style.visibility = 'visible';
+    front.style.pointerEvents = 'none';
+  }
+
+  // 2. 翻转回正面
   var card = document.getElementById('main-flip-card');
   if (card) card.style.transform = 'rotateY(0deg)';
 
+  // 3. 动画完成后：背面隐藏，正面完全可交互
   setTimeout(function() {
+    if (back) {
+      back.style.visibility = 'hidden';
+      back.style.pointerEvents = 'none';
+    }
+    if (front) {
+      front.style.pointerEvents = 'auto';
+      // 强制重绘
+      front.style.transform = 'rotateY(0deg)';
+    }
     _butlerFlipAnimating = false;
   }, 700);
 }
