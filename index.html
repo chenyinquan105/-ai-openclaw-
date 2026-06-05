@@ -233,7 +233,38 @@
    </div>
 
   </div>
+
+ <!-- 执行计划面板（在手机容器内部） -->
+ <div id="exec-cover" class="hidden z-40 absolute inset-0 rounded-[40px] overflow-hidden">
+ <div id="exec-card" class="w-full h-full bg-white flex flex-col">
+ <!-- 顶部固定：返回+结束行程 -->
+ <div class="flex-shrink-0 flex items-center justify-between px-4 pt-5 pb-2 bg-white">
+ <div class="flex items-center">
+ <button onclick="closeExecCover()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
+ <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+ </button>
+ <span class="ml-3 text-gray-500 text-sm font-medium">执行计划中...</span>
  </div>
+ <button onclick="endTrip()" class="bg-red-500 text-white font-bold text-sm px-4 py-2 rounded-lg hover:bg-red-600 transition">
+ 结束行程
+ </button>
+ </div>
+ <!-- 中间滚动区：聊天记录+行程安排 -->
+ <div class="flex-1 overflow-y-auto px-4 py-6" id="exec-plan-content"></div>
+ <!-- 底部固定：输入框+语音 -->
+ <div class="flex-shrink-0 bg-white border-t border-gray-200 px-3 py-3 flex items-center space-x-3">
+ <div class="flex-1 flex items-center bg-gray-100 rounded-full px-4 py-2.5 border border-gray-200">
+ <input type="text" id="exec-chat-input" placeholder="输入消息..." class="flex-1 bg-transparent border-none outline-none text-gray-900 text-sm placeholder-gray-400">
+ <button onclick="sendExecMessage()" class="ml-2 text-yellow-500 font-bold text-sm hover:text-yellow-400 transition">发送</button>
+ </div>
+ <button onclick="alert('语音输入')" class="w-10 h-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition">
+ <svg class="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M9 22h6"></path></svg>
+ </button>
+ </div>
+ </div>
+ </div>
+
+</div>
 
 <!-- 宠物打车提醒弹窗 -->
 <div id="pet-taxi-modal" class="absolute inset-0 flex items-center justify-center z-50 hidden" style="background: rgba(0,0,0,0.5);">
@@ -315,35 +346,6 @@
       <div id="detail-comments" class="space-y-3"></div>
     </div>
   </div>
- </div>
-
- <div id="exec-cover" class="hidden z-40" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
- <div id="exec-card" class="w-full h-full bg-white flex flex-col">
- <!-- 顶部固定：返回+结束行程 -->
- <div class="flex-shrink-0 flex items-center justify-between px-4 pt-5 pb-2 bg-white">
- <div class="flex items-center">
- <button onclick="closeExecCover()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
- <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
- </button>
- <span class="ml-3 text-gray-500 text-sm font-medium">执行计划中...</span>
- </div>
- <button onclick="endTrip()" class="bg-red-500 text-white font-bold text-sm px-4 py-2 rounded-lg hover:bg-red-600 transition">
- 结束行程
- </button>
- </div>
- <!-- 中间滚动区：聊天记录+行程安排 -->
- <div class="flex-1 overflow-y-auto px-4 py-6" id="exec-plan-content"></div>
- <!-- 底部固定：输入框+语音 -->
- <div class="flex-shrink-0 bg-white border-t border-gray-200 px-3 py-3 flex items-center space-x-3">
- <div class="flex-1 flex items-center bg-gray-100 rounded-full px-4 py-2.5 border border-gray-200">
- <input type="text" id="exec-chat-input" placeholder="输入消息..." class="flex-1 bg-transparent border-none outline-none text-gray-900 text-sm placeholder-gray-400">
- <button onclick="sendExecMessage()" class="ml-2 text-yellow-500 font-bold text-sm hover:text-yellow-400 transition">发送</button>
- </div>
- <button onclick="alert('语音输入')" class="w-10 h-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition">
- <svg class="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M9 22h6"></path></svg>
- </button>
- </div>
- </div>
  </div>
 
 <script>
@@ -560,7 +562,7 @@ function renderCategorySelection(categories) {
  const selected = i === 0;
  const borderClass = selected ? 'border-yellow-400 meituan-shadow' : 'border-transparent';
  const opacityClass = selected ? '' : 'opacity-60';
- const tag = shop.human_needed ? '' : '<span class="text-[10px] text-blue-500 ml-1 bg-blue-50 px-1 font-bold">可放下即走</span>';
+ const tag = '';
 
  html += `
  <div class="flex-shrink-0 w-44 bg-white p-4 rounded-3xl border-4 ${borderClass} ${opacityClass} shop-card relative cursor-pointer transition-all"
@@ -1030,33 +1032,38 @@ function renderMetroTimeline(data) {
    });
  }
 
- // 构建每个节点的 HTML（不使用 flex gap，使用 inline-block + margin 实现自适应间距）
+ // 构建每个节点（固定宽度 140px，确保所有圆点中心对齐，圆点骑在水平线上）
  function nodeHtml(node, isLast) {
    const durText = node.duration ? node.duration + 'min' : '';
    const subLine = node.sub ? `<span class="block text-[10px] text-gray-400 whitespace-nowrap">${node.sub} ${durText}</span>` : '';
+   const nodeW = 140;
    return `
-     <div class="inline-block align-top" style="margin-right:32px;">
+     <div style="display:inline-block; vertical-align:top; text-align:center; width:${nodeW}px; margin-right:16px;">
        <!-- 时间 -->
-       <div class="text-center mb-1" style="height:20px;">
+       <div style="height:32px; line-height:32px;">
          <span class="text-xs text-yellow-400 font-bold whitespace-nowrap">${node.time}</span>
        </div>
-       <!-- 圆点 + 水平线段区域 -->
-       <div class="relative" style="width:20px; height:20px; margin:0 auto;">
-         <div class="w-[20px] h-[20px] ${node.dot} rounded-full border-[3px] border-gray-900 z-10 relative"></div>
+       <!-- 圆点区域：扩大间距让整体下沉 -->
+       <div style="position:relative; height:28px;">
+         <div class="w-[20px] h-[20px] ${node.dot} rounded-full border-[3px] border-gray-900 z-10 relative" style="position:absolute; left:50%; top:50%; margin-left:-10px; margin-top:-10px;"></div>
        </div>
        <!-- 名称 + 子任务 -->
-       <div class="text-center mt-1" style="max-width:120px;">
+       <div style="max-width:${nodeW}px; margin-top:10px;">
          <div class="text-sm font-bold text-white leading-tight whitespace-nowrap">${node.name}</div>
          ${subLine}
        </div>
      </div>`;
  }
 
+ var nodeWidth = 140;
+ var nodeGap = 12;
  const totalText = data.total_minutes + 'min';
 
- let lineHtml = '<div class="inline-block align-top" style="margin-right:28px; padding-top:20px;">';
- lineHtml += `<span class="block text-xs text-gray-500 text-center whitespace-nowrap">总计</span>`;
- lineHtml += '</div>';
+ // 水平线从第一个圆点中心到最后一个圆点中心
+ var totalNodeCount = nodes.length + 1;
+ var dotCenter = nodeWidth / 2;
+ var lineLeft = dotCenter; // 第一个圆点中心 = 70px
+ var lineTotalWidth = (totalNodeCount - 1) * (nodeWidth + nodeGap); // 到最后一个圆点中心
 
  // 拼装完整卡片
  let html = `
@@ -1073,20 +1080,20 @@ function renderMetroTimeline(data) {
    <!-- 水平地铁线（左右滑动） -->
    <div class="overflow-x-auto pb-3" style="scrollbar-width:none; -ms-overflow-style:none;">
      <div class="relative" style="min-width:100%;">
-       <!-- 水平直线（在所有圆点背后） -->
-       <div class="absolute" style="top:36px; left:calc(20px/2); right:calc(20px/2); height:3px; background:#4b5563; z-index:0;"></div>
+       <!-- 水平直线（圆心位于线上） -->
+       <div class="absolute" style="top:46px; left:${lineLeft}px; width:${lineTotalWidth}px; height:2px; background:#9ca3af; z-index:0;"></div>
        <!-- 节点行 -->
        <div style="white-space:nowrap; position:relative; z-index:1;">
          ${nodes.map(n => nodeHtml(n)).join('')}
          <!-- 总计节点 -->
-         <div class="inline-block align-top" style="margin-right:0;">
-           <div class="text-center mb-1" style="height:20px;">
+         <div style="display:inline-block; vertical-align:top; text-align:center; width:${nodeWidth}px; margin-right:0;">
+           <div style="height:32px; line-height:32px;">
              <span class="text-xs text-gray-500 whitespace-nowrap">总计</span>
            </div>
-           <div class="relative" style="width:20px; height:20px; margin:0 auto;">
-             <div class="w-[20px] h-[20px] bg-gray-700 rounded-full border-[3px] border-gray-900 z-10 relative flex items-center justify-center" style="font-size:10px; color:#9ca3af; font-weight:bold;">∑</div>
+           <div style="position:relative; height:28px;">
+             <div class="w-[20px] h-[20px] bg-gray-700 rounded-full border-[3px] border-gray-900 z-10 relative flex items-center justify-center" style="position:absolute; left:50%; top:50%; margin-left:-10px; margin-top:-10px; font-size:10px; color:#9ca3af; font-weight:bold;">∑</div>
            </div>
-           <div class="text-center mt-1">
+           <div style="max-width:${nodeWidth}px; margin-top:10px;">
              <div class="text-sm font-bold text-yellow-400 whitespace-nowrap">${totalText}</div>
            </div>
          </div>
@@ -1101,6 +1108,12 @@ function renderMetroTimeline(data) {
 function openExecCover() {
  const cover = document.getElementById('exec-cover');
  if (!cover) return;
+ // 如果管家界面打开，先关闭
+ var butlerFront = document.getElementById('main-face-front');
+ var butlerBack = document.getElementById('main-face-back');
+ if (butlerFront && butlerFront.style.visibility === 'hidden') {
+ closeButlerPanel();
+ }
  const content = document.getElementById('exec-plan-content');
  // 用缓存重建内容（不依赖可能被销毁的 DOM）
  if (execContentCache && content) {

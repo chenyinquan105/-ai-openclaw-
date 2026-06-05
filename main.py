@@ -55,8 +55,8 @@ if base_dir not in sys.path: sys.path.insert(0, base_dir)
 if skills_path not in sys.path: sys.path.append(skills_path)
 
 try:
-    from skills import generic_poi_searcher as skill_poi
-    from skills import concurrent_pipeline_scheduler as skill_scheduler
+    from skills.generic_poi_searcher import generic_poi_searcher as skill_poi
+    from skills.concurrent_pipeline_scheduler import concurrent_pipeline_scheduler as skill_scheduler
 except ImportError as e:
     print(f"❌ 导入 Skill 失败: {e}")
     sys.exit(1)
@@ -66,8 +66,8 @@ from openai import OpenAI
 # ======================================================================
 # 双轨通用核心（虚拟时钟 + 任务提醒）
 # ======================================================================
-from skills import time_master
-import skills.task_reminder_skill as reminder_skill
+from skills.time_master import time_master as skill_time
+from skills.task_reminder_skill import task_reminder_skill as reminder_skill
 
 
 def _t_to_m(t: str) -> int:
@@ -347,7 +347,7 @@ class MeituanAgent:
         print("═"*70)
 
         session_id = "sandbox_main"
-        tm = time_master.get_master()
+        tm = skill_time.get_master()
 
         # ----------------------------------------------------------------
         # 第 1 步：跑一次原有排程引擎，获取计划表
