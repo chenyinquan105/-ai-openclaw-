@@ -138,67 +138,73 @@
 
  </div>
 
- <!-- 中央竖屏 -->
- <div class="w-full max-w-md bg-white shadow-2xl relative rounded-[40px] overflow-hidden flex-shrink-0 border border-gray-200 flex flex-col" id="main-phone-container" style="height: calc(100vh - 32px); max-height: 900px;">
-
- <!-- 顶部固定：搜索区 -->
- <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
- <div class="flex items-center justify-between mb-4">
- <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
- <button onclick="openButlerPanel()" class="bg-gray-900 text-yellow-400 font-bold text-[11px] px-4 py-2.5 rounded-full meituan-shadow hover:scale-95 transition-transform whitespace-nowrap flex items-center gap-1.5">
- <span>⏰</span> 全天候私人管家
- </button>
- </div>
- <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
- <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
- <div class="bg-yellow-400 p-2 rounded-full shadow-lg cursor-pointer">
- <svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
- </div>
- </div>
- </header>
-
- <!-- 中间滚动区：3D 翻转容器 -->
- <main class="flex-1 overflow-hidden relative" id="main-flip-container">
+ <!-- 中央竖屏（整个手机作为3D卡片容器） -->
+ <div class="w-full max-w-md shadow-2xl relative rounded-[40px] flex-shrink-0 border border-gray-200" id="main-phone-container" style="height: calc(100vh - 32px); max-height: 900px;">
+  <!-- 3D 翻转卡片 -->
   <div class="w-full h-full relative" id="main-flip-card" style="transform-style: preserve-3d; transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: center center;">
-   <!-- 正面（初始界面） -->
-   <div class="absolute inset-0 overflow-y-auto p-6 space-y-8" id="main-face-front" style="backface-visibility: hidden; -webkit-backface-visibility: hidden;">
-    <div id="dynamic-content"></div>
 
-    <div id="conflict-modal" class="absolute inset-0 bg-black/50 flex items-center justify-center z-50 hidden" style="backface-visibility: visible;">
-     <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6">
-      <div class="text-center mb-6">
-       <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-        <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-       </div>
-       <h3 class="text-lg font-bold">⏰ 时间冲突</h3>
-       <p id="conflict-message" class="text-sm text-gray-600 mt-2"></p>
-      </div>
-      <div class="flex space-x-3">
-       <button onclick="conflictChoice('postpone')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition">延后执行</button>
-       <button onclick="conflictChoice('accept')" class="flex-1 bg-yellow-400 text-black font-bold py-3 rounded-2xl hover:bg-yellow-300 transition">接受延误</button>
+   <!-- ===== 正面 ===== -->
+   <div class="absolute inset-0 flex flex-col bg-white rounded-[40px] overflow-hidden" id="main-face-front" style="backface-visibility: hidden; -webkit-backface-visibility: hidden;">
+    <!-- 顶部固定：搜索区 -->
+    <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
+     <div class="flex items-center justify-between mb-4">
+      <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
+      <button onclick="openButlerPanel()" class="bg-gray-900 text-yellow-400 font-bold text-[11px] px-4 py-2.5 rounded-full meituan-shadow hover:scale-95 transition-transform whitespace-nowrap flex items-center gap-1.5">
+       <span>⏰</span> 全天候私人管家
+      </button>
+     </div>
+     <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
+      <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
+      <div class="bg-yellow-400 p-2 rounded-full shadow-lg cursor-pointer">
+       <svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
       </div>
      </div>
-    </div>
+    </header>
+    <!-- 内容区 -->
+    <main class="flex-1 overflow-y-auto p-6 space-y-8">
+     <div id="dynamic-content"></div>
+
+     <div id="conflict-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6">
+       <div class="text-center mb-6">
+        <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+         <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        </div>
+        <h3 class="text-lg font-bold">⏰ 时间冲突</h3>
+        <p id="conflict-message" class="text-sm text-gray-600 mt-2"></p>
+       </div>
+       <div class="flex space-x-3">
+        <button onclick="conflictChoice('postpone')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition">延后执行</button>
+        <button onclick="conflictChoice('accept')" class="flex-1 bg-yellow-400 text-black font-bold py-3 rounded-2xl hover:bg-yellow-300 transition">接受延误</button>
+       </div>
+      </div>
+     </div>
+    </main>
    </div>
-   <!-- 背面（全天候管家UI） -->
-   <div class="absolute inset-0 overflow-y-auto p-6 space-y-4" id="main-face-back" style="backface-visibility: hidden; -webkit-backface-visibility: hidden; transform: rotateY(180deg); display: flex; flex-direction: column;">
-    <div class="flex items-center justify-between mb-2">
-     <button onclick="closeButlerPanel()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
-      <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
-     </button>
-     <h2 class="text-lg font-black text-gray-900">⏰ 全天候私人管家</h2>
-     <div class="w-9"></div>
-    </div>
-    <div id="butler-task-list" class="flex-1 space-y-3">
-     <div class="text-center py-8"><p class="text-gray-400">⏳ 加载中...</p></div>
-    </div>
-    <div class="flex gap-2 pt-4 border-t border-gray-100">
-     <button onclick="butlerAddReminder('WATER')" class="flex-1 bg-blue-500 text-white font-bold py-3.5 rounded-2xl hover:bg-blue-600 transition text-sm">💧 添加喝水提醒</button>
-     <button onclick="butlerAddReminder('MED')" class="flex-1 bg-red-500 text-white font-bold py-3.5 rounded-2xl hover:bg-red-600 transition text-sm">💊 添加吃药提醒</button>
-    </div>
+
+   <!-- ===== 背面（全天候管家UI） ===== -->
+   <div class="absolute inset-0 flex flex-col bg-white rounded-[40px] overflow-hidden" id="main-face-back" style="backface-visibility: hidden; -webkit-backface-visibility: hidden; transform: rotateY(180deg);">
+    <!-- 顶部：标题+返回 -->
+    <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
+     <div class="flex items-center justify-between">
+      <button onclick="closeButlerPanel()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
+       <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+      </button>
+      <h1 class="text-2xl font-bold text-gray-900">全天候私人管家</h1>
+      <div class="w-9"></div>
+     </div>
+    </header>
+    <!-- 内容区 -->
+    <main class="flex-1 overflow-y-auto p-6 space-y-4" id="butler-scroll">
+     <div id="butler-task-list" class="space-y-3">
+      <div class="text-center py-8"><p class="text-gray-400">⏳ 加载中...</p></div>
+     </div>
+    </main>
+
    </div>
+
   </div>
- </main>
+ </div>
 
 <!-- 宠物打车提醒弹窗 -->
 <div id="pet-taxi-modal" class="absolute inset-0 flex items-center justify-center z-50 hidden" style="background: rgba(0,0,0,0.5);">
@@ -309,10 +315,6 @@
  </button>
  </div>
  </div>
- </div>
- </div>
-
-
  </div>
 
 <script>
@@ -2257,25 +2259,22 @@ function openButlerPanel() {
   if (_butlerFlipAnimating) return;
   _butlerFlipAnimating = true;
 
+  // 确保 exec-cover 被隐藏，不遮挡管家界面
+  var execCover = document.getElementById('exec-cover');
+  if (execCover) execCover.classList.add('hidden');
   // 隐藏冲突弹窗
   var conflict = document.getElementById('conflict-modal');
   if (conflict) conflict.classList.add('hidden');
 
-  // 先加载背面内容
+  // 加载背面内容
   butlerRenderContent();
 
-  // 翻转：从右向左（绕 Y 轴旋转 -180deg）
+  // 翻转整个手机屏幕：从右向左（绕 Y 轴旋转 -180deg）
   var card = document.getElementById('main-flip-card');
-  if (card) {
-    card.style.transform = 'rotateY(-180deg)';
-    // 切换 main 允许背面滚动
-    var main = document.getElementById('main-flip-container');
-    if (main) main.className = 'flex-1 overflow-y-auto relative';
-  }
+  if (card) card.style.transform = 'rotateY(-180deg)';
 
   _butlerPageActive = true;
 
-  // 动画结束后解除锁定
   setTimeout(function() {
     _butlerFlipAnimating = false;
   }, 700);
@@ -2286,13 +2285,8 @@ function closeButlerPanel() {
   _butlerFlipAnimating = true;
   _butlerPageActive = false;
 
-  // 翻转回正面
   var card = document.getElementById('main-flip-card');
-  if (card) {
-    card.style.transform = 'rotateY(0deg)';
-    var main = document.getElementById('main-flip-container');
-    if (main) main.className = 'flex-1 overflow-hidden relative';
-  }
+  if (card) card.style.transform = 'rotateY(0deg)';
 
   setTimeout(function() {
     _butlerFlipAnimating = false;
