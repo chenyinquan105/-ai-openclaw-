@@ -133,19 +133,7 @@
  </div>
  </div>
 
- <!-- 生活健康管家提醒管理 -->
- <hr class="border-gray-800">
- <div class="space-y-2">
- <label class="block text-xs font-bold text-gray-400 tracking-wider">💊 生活健康管家</label>
- <div id="reminder-tasks-list" class="space-y-1 max-h-28 overflow-y-auto scrollbar-hide text-[11px]">
- <p class="text-gray-500 italic py-2 text-center">暂无提醒任务</p>
- </div>
- <div class="flex gap-1">
- <button onclick="reminderOpenAdd('WATER')" class="flex-1 bg-gray-800 hover:bg-gray-700 text-[10px] font-bold py-2 rounded-xl border border-gray-700 transition">💧 喝水</button>
- <button onclick="reminderOpenAdd('MED')" class="flex-1 bg-gray-800 hover:bg-gray-700 text-[10px] font-bold py-2 rounded-xl border border-gray-700 transition">💊 吃药</button>
- <button onclick="reminderRefreshList()" class="bg-gray-800 hover:bg-gray-700 text-[10px] font-bold py-2 px-3 rounded-xl border border-gray-700 transition">🔄</button>
- </div>
- </div>
+ <!-- 全天候私人管家嵌入（弹窗在下方） -->
  </div>
 
  </div>
@@ -157,7 +145,9 @@
  <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
  <div class="flex items-center justify-between mb-4">
  <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
- <div id="plan-widget" class="hidden"></div>
+ <button onclick="openButlerPanel()" class="bg-gray-900 text-yellow-400 font-bold text-[11px] px-4 py-2.5 rounded-full meituan-shadow hover:scale-95 transition-transform whitespace-nowrap flex items-center gap-1.5">
+ <span>⏰</span> 全天候私人管家
+ </button>
  </div>
  <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
  <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
@@ -167,26 +157,47 @@
  </div>
  </header>
 
- <!-- 中间滚动区：交互内容 -->
- <main class="flex-1 overflow-y-auto p-6 space-y-8 relative">
- <div id="dynamic-content"></div>
+ <!-- 中间滚动区：3D 翻转容器 -->
+ <main class="flex-1 overflow-hidden relative" id="main-flip-container">
+  <div class="w-full h-full relative" id="main-flip-card" style="transform-style: preserve-3d; transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: center center;">
+   <!-- 正面（初始界面） -->
+   <div class="absolute inset-0 overflow-y-auto p-6 space-y-8" id="main-face-front" style="backface-visibility: hidden; -webkit-backface-visibility: hidden;">
+    <div id="dynamic-content"></div>
 
- <div id="conflict-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
- <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6">
- <div class="text-center mb-6">
- <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
- <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
- </div>
- <h3 class="text-lg font-bold">⏰ 时间冲突</h3>
- <p id="conflict-message" class="text-sm text-gray-600 mt-2"></p>
- </div>
- <div class="flex space-x-3">
- <button onclick="conflictChoice('postpone')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition">延后执行</button>
- <button onclick="conflictChoice('accept')" class="flex-1 bg-yellow-400 text-black font-bold py-3 rounded-2xl hover:bg-yellow-300 transition">接受延误</button>
- </div>
- </div>
- </div>
-
+    <div id="conflict-modal" class="absolute inset-0 bg-black/50 flex items-center justify-center z-50 hidden" style="backface-visibility: visible;">
+     <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6">
+      <div class="text-center mb-6">
+       <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+       </div>
+       <h3 class="text-lg font-bold">⏰ 时间冲突</h3>
+       <p id="conflict-message" class="text-sm text-gray-600 mt-2"></p>
+      </div>
+      <div class="flex space-x-3">
+       <button onclick="conflictChoice('postpone')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition">延后执行</button>
+       <button onclick="conflictChoice('accept')" class="flex-1 bg-yellow-400 text-black font-bold py-3 rounded-2xl hover:bg-yellow-300 transition">接受延误</button>
+      </div>
+     </div>
+    </div>
+   </div>
+   <!-- 背面（全天候管家UI） -->
+   <div class="absolute inset-0 overflow-y-auto p-6 space-y-4" id="main-face-back" style="backface-visibility: hidden; -webkit-backface-visibility: hidden; transform: rotateY(180deg); display: flex; flex-direction: column;">
+    <div class="flex items-center justify-between mb-2">
+     <button onclick="closeButlerPanel()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
+      <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+     </button>
+     <h2 class="text-lg font-black text-gray-900">⏰ 全天候私人管家</h2>
+     <div class="w-9"></div>
+    </div>
+    <div id="butler-task-list" class="flex-1 space-y-3">
+     <div class="text-center py-8"><p class="text-gray-400">⏳ 加载中...</p></div>
+    </div>
+    <div class="flex gap-2 pt-4 border-t border-gray-100">
+     <button onclick="butlerAddReminder('WATER')" class="flex-1 bg-blue-500 text-white font-bold py-3.5 rounded-2xl hover:bg-blue-600 transition text-sm">💧 添加喝水提醒</button>
+     <button onclick="butlerAddReminder('MED')" class="flex-1 bg-red-500 text-white font-bold py-3.5 rounded-2xl hover:bg-red-600 transition text-sm">💊 添加吃药提醒</button>
+    </div>
+   </div>
+  </div>
  </main>
 
 <!-- 宠物打车提醒弹窗 -->
@@ -300,6 +311,8 @@
  </div>
  </div>
  </div>
+
+
  </div>
 
 <script>
@@ -2212,22 +2225,156 @@ function reminderDeleteTask(taskId) {
 // 每次时钟事件触发后刷新提醒列表
 var _origClockEventLog = _origClockEventLog || function(){};
 (function() {
-  var origPop = clockFetch;
+  var origFetch = window.clockFetch || fetch;
   var patchedFetch = function(method, url, body) {
-    return origPop(method, url, body).then(function(data) {
-      // 如果是 events/offset/jump 等操作，延迟刷新提醒列表
+    var p = (window.clockFetch && window.clockFetch !== patchedFetch) ? window.clockFetch(method, url, body) : fetch(API_BASE + url, {method: method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined}).then(function(r){return r.json();});
+    return p.then(function(data) {
       if (url.indexOf('events') >= 0 || url.indexOf('offset') >= 0 || url.indexOf('jump') >= 0 || url.indexOf('/play') >= 0) {
         setTimeout(reminderRefreshList, 300);
       }
       return data;
     });
   };
-  // 只 patch 一次
   if (!window._reminderPatched) {
     window.clockFetch = patchedFetch;
     window._reminderPatched = true;
   }
 })();
+
+// ======================================================================
+// 全天候私人管家
+// ======================================================================
+
+
+// ======================================================================
+// 全天候私人管家 — 切换竖屏内容（同执行计划模式）
+// ======================================================================
+
+var _butlerPageActive = false;
+var _butlerFlipAnimating = false;
+
+function openButlerPanel() {
+  if (_butlerFlipAnimating) return;
+  _butlerFlipAnimating = true;
+
+  // 隐藏冲突弹窗
+  var conflict = document.getElementById('conflict-modal');
+  if (conflict) conflict.classList.add('hidden');
+
+  // 先加载背面内容
+  butlerRenderContent();
+
+  // 翻转：从右向左（绕 Y 轴旋转 -180deg）
+  var card = document.getElementById('main-flip-card');
+  if (card) {
+    card.style.transform = 'rotateY(-180deg)';
+    // 切换 main 允许背面滚动
+    var main = document.getElementById('main-flip-container');
+    if (main) main.className = 'flex-1 overflow-y-auto relative';
+  }
+
+  _butlerPageActive = true;
+
+  // 动画结束后解除锁定
+  setTimeout(function() {
+    _butlerFlipAnimating = false;
+  }, 700);
+}
+
+function closeButlerPanel() {
+  if (_butlerFlipAnimating) return;
+  _butlerFlipAnimating = true;
+  _butlerPageActive = false;
+
+  // 翻转回正面
+  var card = document.getElementById('main-flip-card');
+  if (card) {
+    card.style.transform = 'rotateY(0deg)';
+    var main = document.getElementById('main-flip-container');
+    if (main) main.className = 'flex-1 overflow-hidden relative';
+  }
+
+  setTimeout(function() {
+    _butlerFlipAnimating = false;
+  }, 700);
+}
+
+function butlerRenderContent() {
+  var list = document.getElementById('butler-task-list');
+  if (!list) return;
+  list.innerHTML = '<div class="text-center py-8"><p class="text-gray-400">⏳ 加载中...</p></div>';
+
+  fetch(API_BASE + '/api/reminder/tasks')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var tasks = data.tasks || [];
+      if (tasks.length === 0) {
+        list.innerHTML = '<div class="text-center py-16"><div class="text-5xl mb-4">🛡️</div><p class="text-gray-600 font-bold text-lg">暂无提醒任务</p><p class="text-gray-400 text-sm mt-2">点击下方按钮添加喝水或吃药提醒</p></div>';
+        return;
+      }
+      tasks.sort(function(a, b) { return (a.time || '00:00').localeCompare(b.time || '00:00'); });
+      var html = '';
+      tasks.forEach(function(t) {
+        var emoji = t.type === 'WATER' ? '💧' : '💊';
+        var label = t.type === 'WATER' ? '喝水' : '吃药';
+        var stateLabel = t.state || 'pending';
+        var stateColor = stateLabel === 'done' ? 'text-green-600 bg-green-50' : stateLabel === 'ongoing' ? 'text-yellow-600 bg-yellow-50' : 'text-gray-500 bg-gray-100';
+        var timeStr = t.time || '--:--';
+        var h = parseInt(timeStr.split(':')[0]) || 0;
+        var period = h < 6 ? '凌晨' : h < 9 ? '早上' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : h < 22 ? '晚上' : '睡前';
+        html += '<div class="bg-white border border-gray-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">' +
+          '<div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ' + (t.type === 'WATER' ? 'bg-blue-50' : 'bg-red-50') + '">' + emoji + '</div>' +
+          '<div class="flex-1 min-w-0">' +
+          '<div class="flex items-center gap-2 flex-wrap">' +
+          '<span class="text-lg font-black text-gray-900">' + timeStr + '</span>' +
+          '<span class="text-xs text-gray-400">' + period + '</span>' +
+          '<span class="text-xs font-bold text-gray-600">' + label + '</span>' +
+          '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ' + stateColor + '">' + stateLabel + '</span>' +
+          '</div>' +
+          '<p class="text-xs text-gray-400 mt-0.5">' + (t.repeat === 'daily' ? '每天' : '单次') + '</p>' +
+          '</div>' +
+          '<button onclick="butlerDeleteTask(\'' + t.id + '\')" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-red-100 hover:text-red-500 transition text-gray-400 flex-shrink-0">✕</button>' +
+          '</div>';
+      });
+      list.innerHTML = html;
+    })
+    .catch(function() {
+      list.innerHTML = '<div class="text-center py-16"><p class="text-red-400">❌ 加载失败</p></div>';
+    });
+}
+
+function butlerAddReminder(type) {
+  // 复用已有的添加弹窗
+  reminderOpenAdd(type);
+}
+
+function butlerDeleteTask(taskId) {
+  if (!confirm('确认删除此提醒？')) return;
+  fetch(API_BASE + '/api/reminder/remove_task', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({task_id: taskId})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.status === 'SUCCESS') {
+      if (window._clockScheduleNodes) {
+        window._clockScheduleNodes = window._clockScheduleNodes.filter(function(n) { return n.id !== taskId; });
+        clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes});
+      }
+      butlerRenderContent();
+    } else {
+      alert('❌ 删除失败: ' + (data.message || '未知错误'));
+    }
+  }).catch(function() {
+    alert('❌ 网络错误');
+  });
+}
+
+// 管家页面打开时也刷新
+var _origReminderRefresh = reminderRefreshList;
+reminderRefreshList = function() {
+  if (_origReminderRefresh) _origReminderRefresh();
+  if (_butlerPageActive) butlerRenderContent();
+};
 </script>
 
 </body>
