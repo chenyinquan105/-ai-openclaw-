@@ -1058,6 +1058,57 @@ def _process_clock_triggers(res: dict):
     # alerts 直接返回给前端（offset/jump 的响应中已带 triggered_nodes）
     # 更深的提醒通知通过 pop_triggered_events 拉取
 
+# ======================================================================
+# 提醒任务管理 API
+# ======================================================================
+
+@app.route("/api/reminder/tasks", methods=["GET"])
+def reminder_get_tasks():
+    """获取当前虚拟时钟中的所有 WATER/MED 排程节点"""
+    tm = time_master.get_master()
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    if not cs:
+        return jsonify({"tasks": []})
+    tasks = []
+    for n in cs.schedule_nodes:
+        if n.get("type") in ("WATER", "MED"):
+            tasks.append(n)
+    return jsonify({"tasks": tasks})
+
+
+@app.route("/api/reminder/add_task", methods=["POST"])
+def reminder_add_task():
+    """添加一个提醒节点到虚拟时钟"""
+    data = request.get_json(silent=True) or {}
+    node = data.get("node", {})
+    if not node or not node.get("id") or not node.get("time") or not node.get("type"):
+        return jsonify({"status": "ERROR", "message": "缺少必填字段"}), 400
+    tm = time_master.get_master()
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    if not cs:
+        tm.set_schedule(_CLOCK_SESSION_ID, [])
+        cs = tm.get_session(_CLOCK_SESSION_ID)
+    current = list(cs.schedule_nodes) if cs else []
+    current.append(node)
+    tm.set_schedule(_CLOCK_SESSION_ID, current)
+    return jsonify({"status": "SUCCESS"})
+
+
+@app.route("/api/reminder/remove_task", methods=["POST"])
+def reminder_remove_task():
+    """删除指定 id 的提醒节点"""
+    data = request.get_json(silent=True) or {}
+    task_id = data.get("task_id", "")
+    if not task_id:
+        return jsonify({"status": "ERROR", "message": "缺少 task_id"}), 400
+    tm = time_master.get_master()
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    if not cs:
+        return jsonify({"status": "ERROR", "message": "无 session"}), 400
+    current = [n for n in cs.schedule_nodes if n.get("id") != task_id]
+    tm.set_schedule(_CLOCK_SESSION_ID, current)
+    return jsonify({"status": "SUCCESS"})
+
 
 # ======================================================================
 # 启动

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenClaw_ReminderPipeline_Output",
+
+  "type": "array",
+  "description": "process_reminder_pipeline 返回的通知列表，供前端/UI层消费",
+  "items": {
+    "type": "object",
+    "required": ["type", "time", "message"],
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "WATER_UI_ALERT",
+          "MED_RINGING_ALERT",
+          "MED_URGE_LIGHT",
+          "MED_URGE_HEAVY",
+          "MED_ESCALATION_CRITICAL",
+          "MED_DUPLICATE_BLOCK"
+        ],
+        "description": "通知类型。WATER_UI_ALERT = 喝水弱提醒；MED_RINGING_ALERT = 吃药响铃；MED_URGE_LIGHT/HEAVY = 催促升级；MED_ESCALATION_CRITICAL = 三振出局；MED_DUPLICATE_BLOCK = 防重复拦截"
+      },
+      "time": {
+        "type": "string",
+        "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+        "description": "该通知代表的虚拟时间"
+      },
+      "message": {
+        "type": "string",
+        "description": "展示给用户的完整提示文本，含 emoji 前缀"
+      },
+      "med_id": {
+        "type": "string",
+        "description": "仅 MED 类通知附带，指向具体的药品事件 ID"
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenClaw_ReminderPipeline_Input",
+
+  "type": "object",
+  "required": ["session_id", "triggered_events"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "会话隔离ID"
+    },
+
+    "triggered_events": {
+      "type": "array",
+      "description": "来自 Time Master 刚撞线触发的原始时间节点事件列表",
+      "items": {
+        "type": "object",
+        "required": ["id", "time", "type"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "提醒事件唯一ID"
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "设定的触发时间 HH:MM"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["WATER", "MED"],
+            "description": "WATER: 喝水, MED: 吃药"
+          },
+          "name": {
+            "type": "string",
+            "description": "当 type 为 MED 时，代表具体的药品名称"
+          },
+          "postpone_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440,
+            "default": 30,
+            "description": "延后分钟数，仅 type=MED 有效，默认 30"
+          }
+        }
+      }
+    }
+  }
+}

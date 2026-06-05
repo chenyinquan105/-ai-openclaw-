@@ -132,20 +132,6 @@
  <p class="text-gray-500 italic py-2 text-center">等待时间推进...</p>
  </div>
  </div>
-
- <!-- 生活健康管家提醒管理 -->
- <hr class="border-gray-800">
- <div class="space-y-2">
- <label class="block text-xs font-bold text-gray-400 tracking-wider">💊 生活健康管家</label>
- <div id="reminder-tasks-list" class="space-y-1 max-h-28 overflow-y-auto scrollbar-hide text-[11px]">
- <p class="text-gray-500 italic py-2 text-center">暂无提醒任务</p>
- </div>
- <div class="flex gap-1">
- <button onclick="reminderOpenAdd('WATER')" class="flex-1 bg-gray-800 hover:bg-gray-700 text-[10px] font-bold py-2 rounded-xl border border-gray-700 transition">💧 喝水</button>
- <button onclick="reminderOpenAdd('MED')" class="flex-1 bg-gray-800 hover:bg-gray-700 text-[10px] font-bold py-2 rounded-xl border border-gray-700 transition">💊 吃药</button>
- <button onclick="reminderRefreshList()" class="bg-gray-800 hover:bg-gray-700 text-[10px] font-bold py-2 px-3 rounded-xl border border-gray-700 transition">🔄</button>
- </div>
- </div>
  </div>
 
  </div>
@@ -157,6 +143,9 @@
  <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
  <div class="flex items-center justify-between mb-4">
  <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
+ <button onclick="openReminderPanel()" id="reminder-btn" class="text-sm font-bold text-yellow-500 bg-yellow-50 px-4 py-1.5 rounded-full hover:bg-yellow-100 transition whitespace-nowrap hidden">
+   任务提醒
+ </button>
  <div id="plan-widget" class="hidden"></div>
  </div>
  <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
@@ -297,12 +286,68 @@
  <svg class="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M9 22h6"></path></svg>
  </button>
  </div>
+ <!-- 任务提醒覆盖层（抽牌动画，手机容器内部） -->
+<div id="reminder-cover" class="hidden z-30" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" onclick="if(event.target===this)closeReminderPanel()">
+ <div id="reminder-card" class="w-full h-full bg-white flex flex-col">
+  <!-- 顶栏 -->
+  <div class="flex-shrink-0 flex items-center justify-between px-4 pt-5 pb-2 bg-white">
+   <div class="flex items-center">
+    <button onclick="closeReminderPanel()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
+     <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+    </button>
+    <span class="ml-3 text-gray-900 text-lg font-bold">健康提醒</span>
+   </div>
+   <button onclick="addReminderTaskForm()" class="text-sm font-bold text-yellow-500 bg-yellow-50 px-4 py-1.5 rounded-full hover:bg-yellow-100 transition">
+    + 添加任务
+   </button>
+  </div>
+  <!-- 中间滚动区 -->
+  <div class="flex-1 overflow-y-auto px-4 py-6" id="reminder-content">
+   <div class="mb-8">
+    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">🥤 喝水</h3>
+    <div id="water-schedule-list" class="space-y-2"></div>
+   </div>
+   <div class="mb-8">
+    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">💊 吃药</h3>
+    <div id="med-schedule-list" class="space-y-2"></div>
+   </div>
+   <div class="mt-6 p-4 bg-red-50 rounded-2xl">
+    <p class="text-xs text-red-400 font-bold mb-1">🚨 紧急联络人</p>
+    <p class="text-sm text-red-600">张小明 13800000000</p>
+   </div>
+  </div>
  </div>
- </div>
- </div>
- </div>
+</div>
 
-<script>
+<!-- 添加任务表单弹窗（手机容器内部） -->
+<div id="reminder-form-modal" class="hidden" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index:45; background: rgba(0,0,0,0.4);" onclick="if(event.target===this)closeReminderForm()">
+ <div class="w-full h-full flex items-center justify-center p-6">
+  <div class="bg-white rounded-[32px] w-full max-w-sm p-6 shadow-2xl" onclick="event.stopPropagation()">
+   <h3 class="text-lg font-bold text-gray-900 mb-4">添加提醒任务</h3>
+   <div class="mb-4">
+    <label class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2 block">类型</label>
+    <div class="flex space-x-3">
+     <button id="rem-form-type-water" class="flex-1 py-3 rounded-full bg-yellow-400 text-black font-bold text-sm" onclick="selectReminderType('water')">🥤 喝水</button>
+     <button id="rem-form-type-med" class="flex-1 py-3 rounded-full bg-gray-100 text-gray-500 font-bold text-sm" onclick="selectReminderType('med')">💊 吃药</button>
+    </div>
+   </div>
+   <div class="mb-4">
+    <label class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2 block">时间</label>
+    <input type="time" id="rem-form-time" class="w-full bg-gray-100 rounded-full px-5 py-3 text-sm font-bold text-gray-900 border-2 border-transparent focus:border-yellow-400 outline-none">
+   </div>
+   <div class="mb-4 hidden" id="rem-form-name-group">
+    <label class="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2 block">药品名称</label>
+    <input type="text" id="rem-form-name" placeholder="阿司匹林" class="w-full bg-gray-100 rounded-full px-5 py-3 text-sm text-gray-900 border-2 border-transparent focus:border-yellow-400 outline-none">
+   </div>
+   <div class="flex space-x-3 mt-6">
+    <button onclick="closeReminderForm()" class="flex-1 bg-gray-100 text-gray-500 font-bold py-3 rounded-full hover:bg-gray-200 transition text-sm">取消</button>
+    <button onclick="submitReminderTask()" class="flex-1 bg-yellow-400 text-black font-black py-3 rounded-full hover:scale-95 transition text-sm">确认添加</button>
+   </div>
+  </div>
+ </div>
+</div>
+
+</div><script>
 // ======================================================================
 // 美团 AI 助手 — 前端交互逻辑
 // 不修改 HTML 骨架，只动态渲染数据
@@ -2071,163 +2116,162 @@ setInterval(async function() {
 }, 1000);
 
 // ======================================================================
+// 任务提醒面板
+// ======================================================================
+
+let reminderFormType = 'water';
+
+function openReminderPanel() {
+  const cover = document.getElementById('reminder-cover');
+  const card = document.getElementById('reminder-card');
+  if (!cover || !card) return;
+  cover.classList.remove('hidden');
+  card.style.transition = 'none';
+  card.style.transform = 'scale(0.3) translateY(60%)';
+  card.style.opacity = '0';
+  card.offsetHeight;
+  card.style.transition = 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease-out';
+  card.style.transform = 'scale(1) translateY(0)';
+  card.style.opacity = '1';
+  fetchReminderTasks();
+}
+
+function closeReminderPanel() {
+  const cover = document.getElementById('reminder-cover');
+  const card = document.getElementById('reminder-card');
+  if (!cover || !card) return;
+  card.style.transition = 'transform 0.2s ease-in, opacity 0.15s ease-out';
+  card.style.transform = 'scale(0.3) translateY(60%)';
+  card.style.opacity = '0';
+  setTimeout(() => { cover.classList.add('hidden'); }, 220);
+}
+
+async function fetchReminderTasks() {
+  try {
+    const res = await fetch('/api/reminder/tasks');
+    const data = await res.json();
+    renderReminderTasks(data);
+  } catch(e) {
+    console.error('获取提醒任务失败', e);
+  }
+}
+
+function renderReminderTasks(data) {
+  const waterList = document.getElementById('water-schedule-list');
+  const medList = document.getElementById('med-schedule-list');
+  if (!waterList || !medList) return;
+  const tasks = data.tasks || [];
+  const waterTasks = tasks.filter(t => t.type === 'WATER');
+  const medTasks = tasks.filter(t => t.type === 'MED');
+  if (waterTasks.length === 0) {
+    waterList.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">暂无喝水提醒</p>';
+  } else {
+    waterList.innerHTML = waterTasks.map(t => `
+      <div class="flex items-center justify-between bg-blue-50 rounded-2xl px-4 py-3">
+        <div>
+          <p class="text-sm font-bold text-gray-900">🥤 喝水提醒</p>
+          <p class="text-xs text-gray-500">${t.time} · 每日</p>
+        </div>
+        <button onclick="removeReminderTask('${t.id}')" class="text-red-400 text-xs hover:text-red-600 transition">删除</button>
+      </div>
+    `).join('');
+  }
+  if (medTasks.length === 0) {
+    medList.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">暂无吃药提醒</p>';
+  } else {
+    medList.innerHTML = medTasks.map(t => `
+      <div class="flex items-center justify-between bg-red-50 rounded-2xl px-4 py-3">
+        <div>
+          <p class="text-sm font-bold text-gray-900">💊 ${t.name || '吃药'}</p>
+          <p class="text-xs text-gray-500">${t.time} · 每日</p>
+        </div>
+        <button onclick="removeReminderTask('${t.id}')" class="text-red-400 text-xs hover:text-red-600 transition">删除</button>
+      </div>
+    `).join('');
+  }
+}
+
+async function removeReminderTask(taskId) {
+  try {
+    const res = await fetch('/api/reminder/remove_task', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({task_id: taskId})
+    });
+    const data = await res.json();
+    if (data.status === 'SUCCESS') {
+      fetchReminderTasks();
+    }
+  } catch(e) {
+    console.error('删除失败', e);
+  }
+}
+
+function addReminderTaskForm() {
+  document.getElementById('reminder-form-modal').classList.remove('hidden');
+  reminderFormType = 'water';
+  selectReminderType('water');
+  document.getElementById('rem-form-time').value = '08:00';
+  document.getElementById('rem-form-name').value = '';
+  document.getElementById('rem-form-name-group').classList.add('hidden');
+}
+
+function closeReminderForm() {
+  document.getElementById('reminder-form-modal').classList.add('hidden');
+}
+
+function selectReminderType(type) {
+  reminderFormType = type;
+  const btnWater = document.getElementById('rem-form-type-water');
+  const btnMed = document.getElementById('rem-form-type-med');
+  const nameGroup = document.getElementById('rem-form-name-group');
+  btnWater.className = type === 'water' ? 'flex-1 py-3 rounded-full bg-yellow-400 text-black font-bold text-sm' : 'flex-1 py-3 rounded-full bg-gray-100 text-gray-500 font-bold text-sm';
+  btnMed.className = type === 'med' ? 'flex-1 py-3 rounded-full bg-yellow-400 text-black font-bold text-sm' : 'flex-1 py-3 rounded-full bg-gray-100 text-gray-500 font-bold text-sm';
+  if (type === 'med') { nameGroup.classList.remove('hidden'); } else { nameGroup.classList.add('hidden'); }
+}
+
+async function submitReminderTask() {
+  const time = document.getElementById('rem-form-time').value;
+  const name = document.getElementById('rem-form-name').value.trim();
+  if (!time) { alert('请选择时间'); return; }
+  if (reminderFormType === 'med' && !name) { alert('请输入药品名称'); return; }
+  try {
+    const node = {
+      id: (reminderFormType === 'water' ? 'wat_' : 'med_') + Date.now(),
+      time: time,
+      type: reminderFormType === 'water' ? 'WATER' : 'MED',
+      name: name || (reminderFormType === 'water' ? '喝水提醒' : '吃药'),
+    };
+    const res = await fetch('/api/reminder/add_task', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({node: node})
+    });
+    const data = await res.json();
+    if (data.status === 'SUCCESS') {
+      closeReminderForm();
+      fetchReminderTasks();
+    } else {
+      alert('添加失败');
+    }
+  } catch(e) {
+    console.error('添加失败', e);
+  }
+}
+
+// ======================================================================
 // 初始化
 // ======================================================================
 document.addEventListener('DOMContentLoaded', function() {
  bindSearch();
+ // 显示任务提醒按钮
+ const remBtn = document.getElementById('reminder-btn');
+ if (remBtn) remBtn.classList.remove('hidden');
  // 初始化时钟显示（忽略空 session）
  clockFetch('GET', '/api/clock/status').then(data => {
    if (data && data.virtual_time) clockUpdateUI(data);
  }).catch(() => {});
-
- // 初始化加载提醒列表
- setTimeout(reminderRefreshList, 500);
 });
-
-// ======================================================================
-// 生活健康管家提醒管理
-// ======================================================================
-
-/**
- * 从后端拉取所有 WATER/MED 提醒节点
- */
-function reminderRefreshList() {
-  fetch(API_BASE + '/api/reminder/tasks')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var container = document.getElementById('reminder-tasks-list');
-      if (!container) return;
-      var tasks = data.tasks || [];
-      if (tasks.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 italic py-2 text-center">暂无提醒任务</p>';
-        return;
-      }
-      container.innerHTML = tasks.map(function(t) {
-        var emoji = t.type === 'WATER' ? '💧' : '💊';
-        var label = t.type === 'WATER' ? '喝水' : '吃药';
-        var stateLabel = t.state || 'pending';
-        var stateDot = stateLabel === 'done' ? 'text-green-400' : stateLabel === 'ongoing' ? 'text-yellow-400' : 'text-gray-500';
-        return '<div class="flex items-center justify-between bg-gray-800 rounded-lg px-2 py-1.5 border border-gray-700">' +
-          '<div class="flex items-center gap-1.5 min-w-0 flex-1">' +
-          '<span class="' + stateDot + '">●</span>' +
-          '<span>' + emoji + '</span>' +
-          '<span class="text-white font-bold truncate">' + t.time + ' ' + label + '</span>' +
-          '<span class="text-[9px] text-gray-400">(' + stateLabel + ')</span>' +
-          '</div>' +
-          '<button onclick="reminderDeleteTask(\'' + t.id + '\')" class="text-red-400 hover:text-red-300 text-xs ml-1 flex-shrink-0">✕</button>' +
-          '</div>';
-      }).join('');
-    })
-    .catch(function() { /* 静默失败 */ });
-}
-
-/**
- * 打开添加提醒的简单弹窗（二级弹窗复用）
- */
-function reminderOpenAdd(type) {
-  var label = type === 'WATER' ? '喝水' : '吃药';
-  var emoji = type === 'WATER' ? '💧' : '💊';
-  var timeOptions = [
-    { value: '08:00', emoji: '🌅', title: '08:00', subtitle: '早上' },
-    { value: '10:00', emoji: '☀️', title: '10:00', subtitle: '上午' },
-    { value: '12:00', emoji: '🌞', title: '12:00', subtitle: '中午' },
-    { value: '14:00', emoji: '🌤️', title: '14:00', subtitle: '下午' },
-    { value: '16:00', emoji: '🌥️', title: '16:00', subtitle: '午后' },
-    { value: '18:00', emoji: '🌆', title: '18:00', subtitle: '傍晚' },
-    { value: '20:00', emoji: '🌙', title: '20:00', subtitle: '晚上' },
-    { value: '22:00', emoji: '🌃', title: '22:00', subtitle: '睡前' },
-    { value: 'custom', emoji: '✏️', title: '自定义时间', subtitle: '手动输入 HH:MM' },
-  ];
-  showSecondModal(
-    emoji + ' 添加' + label + '提醒',
-    '选择需要设置的时间点：',
-    timeOptions,
-    function(val, name) {
-      if (val === 'custom') {
-        var customTime = prompt('请输入时间 (HH:MM)，如 07:30：', '07:30');
-        if (!customTime || !/^\d{1,2}:\d{2}$/.test(customTime)) return;
-        // 补零
-        var parts = customTime.split(':');
-        customTime = String(parts[0]).padStart(2, '0') + ':' + String(parts[1]).padStart(2, '0');
-        val = customTime;
-        name = customTime;
-      }
-      var node = {
-        id: type + '_' + Date.now(),
-        type: type,
-        time: val,
-        state: 'pending',
-        label: label,
-        repeat: 'daily'
-      };
-      fetch(API_BASE + '/api/reminder/add_task', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({node: node})
-      }).then(function(r) { return r.json(); }).then(function(data) {
-        if (data.status === 'SUCCESS') {
-          // 也加到虚拟时钟 schedule 中
-          var tmNodes = window._clockScheduleNodes || [];
-          tmNodes.push({time: val, type: type, id: node.id, memo: label + '提醒', action: label + '提醒', duration_minutes: 0});
-          window._clockScheduleNodes = tmNodes;
-          clockFetch('POST', '/api/clock/set_schedule', {nodes: tmNodes});
-          toast('✅ ' + label + '提醒 (' + val + ') 已添加');
-          reminderRefreshList();
-        } else {
-          toast('❌ 添加失败: ' + (data.message || '未知错误'));
-        }
-      }).catch(function() {
-        toast('❌ 网络错误');
-      });
-    }
-  );
-}
-
-/**
- * 删除指定 id 的提醒
- */
-function reminderDeleteTask(taskId) {
-  if (!confirm('确认删除该提醒任务？')) return;
-  fetch(API_BASE + '/api/reminder/remove_task', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({task_id: taskId})
-  }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.status === 'SUCCESS') {
-      // 也从 clock schedule 中移除
-      if (window._clockScheduleNodes) {
-        window._clockScheduleNodes = window._clockScheduleNodes.filter(function(n) { return n.id !== taskId; });
-        clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes});
-      }
-      toast('🗑️ 已删除');
-      reminderRefreshList();
-    } else {
-      toast('❌ 删除失败');
-    }
-  }).catch(function() {
-    toast('❌ 网络错误');
-  });
-}
-
-// 每次时钟事件触发后刷新提醒列表
-var _origClockEventLog = _origClockEventLog || function(){};
-(function() {
-  var origPop = clockFetch;
-  var patchedFetch = function(method, url, body) {
-    return origPop(method, url, body).then(function(data) {
-      // 如果是 events/offset/jump 等操作，延迟刷新提醒列表
-      if (url.indexOf('events') >= 0 || url.indexOf('offset') >= 0 || url.indexOf('jump') >= 0 || url.indexOf('/play') >= 0) {
-        setTimeout(reminderRefreshList, 300);
-      }
-      return data;
-    });
-  };
-  // 只 patch 一次
-  if (!window._reminderPatched) {
-    window.clockFetch = patchedFetch;
-    window._reminderPatched = true;
-  }
-})();
 </script>
 
 </body>
