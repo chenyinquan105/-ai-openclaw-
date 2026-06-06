@@ -1408,8 +1408,19 @@ function triggerDemoException(type, description) {
  id: Date.now(),
  type: type,
  desc: description,
- scope: targetScopeText
+ scope: targetScopeText,
+ corrupted_node_id: targetScopeText !== '整个行程 (全局影响)' ? (selectEl ? selectEl.value.replace('node_','') : '') : ''
  };
+ // corrupted_node_id: 如果选的是具体节点，从 select value 提取节点索引（对应 task_list 的 task_id）
+ if (pendingDemoException.corrupted_node_id && lastScheduleData && lastScheduleData.timeline) {
+  var nodeIdx = parseInt(pendingDemoException.corrupted_node_id);
+  var tl = lastScheduleData.timeline;
+  if (!isNaN(nodeIdx) && nodeIdx >= 0 && nodeIdx < tl.length && tl[nodeIdx].task_id) {
+   pendingDemoException.corrupted_node_id = tl[nodeIdx].task_id;
+  } else if (!isNaN(nodeIdx) && nodeIdx >= 0 && nodeIdx < tl.length) {
+   pendingDemoException.corrupted_node_id = tl[nodeIdx].memo || '';
+  }
+ }
  selectedPlanBOption = null;
 
  const modal = document.getElementById('demo-exception-modal');
@@ -1698,6 +1709,18 @@ function closeShopDetail() {
 }
 
 /**
+ * PlanB 统一刷新：清执行计划缓存 + 重渲主页面 + 如 exec-cover 打开则关闭后重新打开
+ */
+function _planbFlushExecCover() {
+  execContentCache = null;
+  var execCover = document.getElementById('exec-cover');
+  if (execCover && !execCover.classList.contains('hidden')) {
+    execCover.classList.add('hidden');
+    setTimeout(function() { openExecCover(); }, 200);
+  }
+}
+
+/**
  * 核心 Plan B 执行函数
  */
 function executePlanB() {
@@ -1708,7 +1731,7 @@ function executePlanB() {
   var optionLabel = document.querySelector('.planb-option.border-yellow-400 .text-sm.font-bold');
   var label = optionLabel ? optionLabel.textContent : optId;
 
-  // ---- 1. 打车类：切换交通方式 ----
+  // ---- 1. 打车类：切换交通方式（让后端重算）----
   if (optId === 'switch_to_taxi') {
     selectedTransport = '打车';
     document.querySelectorAll('.transport-option').forEach(function(o) {
@@ -1720,30 +1743,78 @@ function executePlanB() {
     });
     activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
-    appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕，将以更快的速度到达各目的地。');
     closeDemoExceptionModal();
+    fetch(API_BASE + '/api/replan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ transport_mode: 'taxi' })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕，行程时间已重新计算。');
+      if (data.timeline) { renderSchedule(data); }
+      _planbFlushExecCover();
+    })
+    .catch(function() {
+      appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕。');
+      if (lastScheduleData) { renderSchedule(lastScheduleData); }
+      _planbFlushExecCover();
+    });
     return;
   }
 
-  // ---- 2. 避雨：插入 cafe 为首个目的地 ----
+  // ---- 2. 避雨：先拉附近饮品店列表→二级弹窗选店→插入行程 ----
   if (optId === 'find_shelter') {
     activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
-    fetch(API_BASE + '/api/insert_shelter', {
+    // 先获取附近饮品店列表
+    fetch(API_BASE + '/api/get_nearby_cafes', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'}
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var name = data.shelter_name || '附近饮品店';
-      appendExecChatMessage('为您添加了避雨点 <b>' + name + '</b> ☕，已安排为行程第一个目的地。请等雨势减弱后再出发前往后续节点。');
-      if (data.timeline) {
-        renderSchedule(data);
+      if (data.error || !data.shops || data.shops.length === 0) {
+        appendExecChatMessage('附近暂无可避雨的饮品店，建议改用打车或暂缓行程。');
+        return;
       }
+      var shopOpts = data.shops.map(function(s, i) {
+        return {
+          value: s.shop_id,
+          emoji: '☕',
+          title: s.name,
+          subtitle: '★' + s.rating + '  ' + (s.distance || '')
+        };
+      });
+      showSecondModal(
+        '☕ 选择避雨饮品店',
+        '请选择要前往的店铺避雨，系统将安排在行程第一个目的地。',
+        shopOpts,
+        function(shelterShopId, shelterShopName) {
+          // 选中店铺后调后端插入
+          fetch(API_BASE + '/api/insert_shelter', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ shop_id: shelterShopId })
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(insRes) {
+            var name = insRes.shelter_name || shelterShopName || '附近饮品店';
+            appendExecChatMessage('为您添加了避雨点 <b>' + name + '</b> ☕，已安排为行程第一个目的地。请等雨势减弱后再出发前往后续节点。');
+            if (insRes.timeline) {
+              renderSchedule(insRes);
+              _planbFlushExecCover();
+            }
+          })
+          .catch(function() {
+            appendExecChatMessage('已为您安排避雨点 ☕，已加入行程第一站。');
+          });
+        }
+      );
     })
     .catch(function() {
-      appendExecChatMessage('已为您找到最近咖啡店避雨 ☕，已加入行程第一站。');
+      appendExecChatMessage('获取附近饮品店失败，请稍后重试。');
     });
     return;
   }
@@ -1752,50 +1823,115 @@ function executePlanB() {
   if (optId === 'cancel_node' || optId === 'cancel_trip') {
     activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
-    var msg = '';
     if (optId === 'cancel_node') {
-      msg = '已将异常节点 <b>从行程中移除</b> ❌，请确认剩余行程是否满足需求。';
+      appendExecChatMessage('已将异常节点 <b>从行程中移除</b> ❌，请确认剩余行程是否满足需求。');
+      closeDemoExceptionModal();
+      var cancelPayload = { action: 'BYPASS_NODE', corrupted_node_id: pendingDemoException.corrupted_node_id || '' };
+      fetch(API_BASE + '/api/pipeline/mutate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(cancelPayload)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.timeline) { renderSchedule(data); }
+        _planbFlushExecCover();
+      })
+      .catch(function() {
+        if (lastScheduleData) { renderSchedule(lastScheduleData); }
+        _planbFlushExecCover();
+      });
     } else {
-      msg = '已为您 <b>取消本次行程计划</b>，如需重新规划请随时告诉我。';
+      // cancel_trip：清空一切
       execContentCache = '';
       document.getElementById('exec-plan-content').innerHTML = '';
+      var schedSec = document.getElementById('schedule-section');
+      if (schedSec) { schedSec.innerHTML = '<p class="text-gray-500 italic py-8 text-center">行程已取消</p>'; }
+      lastScheduleData = null;
+      var execCover = document.getElementById('exec-cover');
+      if (execCover) { execCover.classList.add('hidden'); }
+      appendExecChatMessage('已为您 <b>取消本次行程计划</b>，如需重新规划请随时告诉我。');
+      closeDemoExceptionModal();
     }
-    appendExecChatMessage(msg);
-    closeDemoExceptionModal();
     return;
   }
 
   // ---- 4. 延后类 ----
   if (optId === 'postpone' || optId === 'postpone_departure') {
-    showSecondModal(
-      '⏳ 延后多长时间？',
-      '请选择延时时长，系统将重新排程',
-      [
-        { value: '15', emoji: '⏱️', title: '15 分钟' },
-        { value: '30', emoji: '⏱️', title: '30 分钟' },
-        { value: '60', emoji: '⏱️', title: '1 小时' },
-        { value: 'custom', emoji: '✏️', title: '自定义', subtitle: '输入具体分钟数' }
-      ],
-      function(delayVal) {
-        activeExceptions.push({ ...pendingDemoException });
-        renderActiveExceptions();
-        appendExecChatMessage('已延后相关任务 ⏳，将重新排程确保整体行程尽量不受影响。（延后 ' + delayVal + ' 分钟）');
-        closeDemoExceptionModal();
-      }
-    );
+    var mutatedNodeId = pendingDemoException.corrupted_node_id || '';
+    if (optId === 'postpone_departure') {
+      // 延后出发：用 replan
+      showSecondModal(
+        '⏳ 延后多长时间？',
+        '请选择延时时长，系统将重新排程',
+        [
+          { value: '15', emoji: '⏱️', title: '15 分钟' },
+          { value: '30', emoji: '⏱️', title: '30 分钟' },
+          { value: '60', emoji: '⏱️', title: '1 小时' },
+          { value: 'custom', emoji: '✏️', title: '自定义', subtitle: '输入具体分钟数' }
+        ],
+        function(delayVal) {
+          activeExceptions.push({ ...pendingDemoException });
+          renderActiveExceptions();
+          closeDemoExceptionModal();
+          fetch(API_BASE + '/api/replan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ delay_minutes: parseInt(delayVal) || 15 })
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            appendExecChatMessage('已延后出发时间 ⏳，已重新排程。（延后 ' + delayVal + ' 分钟）');
+            if (data.timeline) { renderSchedule(data); }
+            _planbFlushExecCover();
+          })
+          .catch(function() {
+            appendExecChatMessage('已延后出发时间 ⏳。（延后 ' + delayVal + ' 分钟）');
+          });
+        }
+      );
+    } else {
+      // 延后特定节点：用 pipeline/mutate POSTPONE_NODE
+      showSecondModal(
+        '⏳ 延后多长时间？',
+        '将该节点移到行程末尾，请选择延时缓冲',
+        [
+          { value: '15', emoji: '⏱️', title: '延后 15 分钟' },
+          { value: '30', emoji: '⏱️', title: '延后 30 分钟' },
+          { value: '60', emoji: '⏱️', title: '延后 1 小时' }
+        ],
+        function(delayVal) {
+          activeExceptions.push({ ...pendingDemoException });
+          renderActiveExceptions();
+          closeDemoExceptionModal();
+          fetch(API_BASE + '/api/pipeline/mutate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ action: 'POSTPONE_NODE', corrupted_node_id: mutatedNodeId, delay_minutes: parseInt(delayVal) || 15 })
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            appendExecChatMessage('已将该节点延后 ⏳，行程已更新。（延后 ' + delayVal + ' 分钟）');
+            if (data.timeline) { renderSchedule(data); }
+            _planbFlushExecCover();
+          })
+          .catch(function() {
+            appendExecChatMessage('已延后相关任务 ⏳。（延后 ' + delayVal + ' 分钟）');
+          });
+        }
+      );
+    }
     return;
   }
 
-  // ---- 5. 堵车 → 改步行/地铁接驳 ----
+  // ---- 5. 堵车 → 改步行/地铁接驳（让后端重算）----
   if (optId === 'switch_to_walk_metro') {
-    // 根据已选店铺平均距离计算各接驳方式预计用时
     var avgDist = getAvgSelectedDistanceMeters();
     var secondOpts = [
       { value: 'walk', emoji: '🚶', title: '全程步行', subtitle: '' },
       { value: 'metro', emoji: '🚇', title: '步行至地铁站', subtitle: '' },
       { value: 'walk_bus', emoji: '🚌', title: '步行+公交混合', subtitle: '' }
     ];
-    // 用不同的速度近似模拟三种模式
     var modeSpeedMap = { walk: 80, metro: 300, walk_bus: 180 };
     secondOpts.forEach(function(o) {
       var speed = modeSpeedMap[o.value] || 80;
@@ -1812,8 +1948,23 @@ function executePlanB() {
         selectedTransport = tLabel;
         activeExceptions.push({ ...pendingDemoException });
         renderActiveExceptions();
-        appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。');
         closeDemoExceptionModal();
+        fetch(API_BASE + '/api/replan', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ transport_mode: secondVal })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段，行程时间已重新计算。');
+          if (data.timeline) { renderSchedule(data); }
+          _planbFlushExecCover();
+        })
+        .catch(function() {
+          appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。');
+          if (lastScheduleData) { renderSchedule(lastScheduleData); }
+          _planbFlushExecCover();
+        });
       }
     );
     return;
@@ -1860,6 +2011,7 @@ function executePlanB() {
             appendExecChatMessage('已将异常店铺替换为 <b>' + (swapShopName || '新店铺') + '</b>' + extraMsg + '，行程已更新。');
             if (swapRes.timeline) {
               renderSchedule(swapRes);
+              _planbFlushExecCover();
             }
           })
           .catch(function() {
@@ -1878,8 +2030,23 @@ function executePlanB() {
   if (optId === 'reroute') {
     activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
-    appendExecChatMessage('📢 正在为您重新规划绕行路线，避开拥堵路段 🗺️，请稍候。');
     closeDemoExceptionModal();
+    fetch(API_BASE + '/api/replan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ delay_minutes: 15 })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      appendExecChatMessage('📢 已为您重新规划绕行路线，避开拥堵路段 🗺️，行程已更新。');
+      if (data.timeline) { renderSchedule(data); }
+      _planbFlushExecCover();
+    })
+    .catch(function() {
+      appendExecChatMessage('📢 正在为您重新规划绕行路线，避开拥堵路段 🗺️，请稍候。');
+      if (lastScheduleData) { renderSchedule(lastScheduleData); }
+      _planbFlushExecCover();
+    });
     return;
   }
 
@@ -1887,6 +2054,8 @@ function executePlanB() {
   activeExceptions.push({ ...pendingDemoException });
   renderActiveExceptions();
   appendExecChatMessage('已执行操作: ' + label);
+  if (lastScheduleData) { renderSchedule(lastScheduleData); }
+  _planbFlushExecCover();
   closeDemoExceptionModal();
 }
 

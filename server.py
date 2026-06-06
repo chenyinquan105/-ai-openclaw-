@@ -222,10 +222,16 @@ session_state = {
 
 def _reset_session():
     global agent, session_state
-    agent = backend.MeituanAgent(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com"
-    )
+    # 复用已有 agent 避免重复初始化 OpenClaw Bridge（并发时可能阻塞）
+    if agent is None:
+        agent = backend.MeituanAgent(
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            base_url="https://api.deepseek.com"
+        )
+    # 只重置 agent 的内存状态，不重建实例
+    agent.context_memory = []
+    agent.poi_cache = {}
+    agent.poi_cache_per_category = {}
     session_state = {
         "phase": "init",
         "searched_categories": [],
@@ -247,8 +253,11 @@ def _reset_session():
         "pitfall_global_reminders": [],
     }
     # 清空虚拟时钟 session（reset 后应回到真实时间模式）
-    tm = time_master.get_master()
-    tm.remove_session(_CLOCK_SESSION_ID)
+    try:
+        tm = time_master.get_master()
+        tm.remove_session(_CLOCK_SESSION_ID)
+    except Exception:
+        pass
 
 
 def _duration(cat: str) -> int:
@@ -801,6 +810,7 @@ def _run_schedule():
                 "memo": memo,
                 "action": item["action"],
                 "sub_task": sub_task_info,
+                "task_id": item.get("task_id", ""),
             })
 
         # 注册到虚拟时钟（如果已开启）
@@ -1057,22 +1067,32 @@ def api_reflect_trigger():
 @app.route("/api/insert_shelter", methods=["POST"])
 def api_insert_shelter():
     """
-    下暴雨避雨：检索附近 cafe 品类店铺，插入行程第一个目的地后重算排程。
+    下暴雨避雨：由前端传入 shop_id 指定饮品店，插入行程第一个目的地后重算排程。
+    输入: { shop_id: "..." }  可选，不传则自动找最近的 cafe
     """
     if not session_state.get("task_list"):
         return jsonify({"error": "无行程数据"}), 400
 
-    # 从 poi_cache 中找 cafe 品类最近店铺
+    data = request.get_json(silent=True) or {}
+    forced_shop_id = data.get("shop_id", "")
+
     cafe_shop_id = None
     cafe_name = None
-    for sid, shop in agent.poi_cache.items():
-        if shop.get("category") == "cafe":
-            cafe_shop_id = sid
-            cafe_name = shop.get("name", "附近饮品店")
-            break
+
+    # 前端指定了 shop_id 优先用
+    if forced_shop_id and forced_shop_id in agent.poi_cache:
+        cafe_shop_id = forced_shop_id
+        cafe_name = agent.poi_cache[forced_shop_id].get("name", "附近饮品店")
+
+    # 否则自动找 cafe 品类最近店铺
+    if not cafe_shop_id:
+        for sid, shop in agent.poi_cache.items():
+            if shop.get("category") == "cafe":
+                cafe_shop_id = sid
+                cafe_name = shop.get("name", "附近饮品店")
+                break
 
     if not cafe_shop_id:
-        # 找不到 cafe，尝试其他饮品类兜底
         for sid, shop in agent.poi_cache.items():
             cat = shop.get("category", "")
             if cat in ("cafe",):
@@ -1140,6 +1160,7 @@ def api_insert_shelter():
                 "memo": memo,
                 "action": item["action"],
                 "sub_task": sub,
+                "task_id": item.get("task_id", ""),
             })
         return jsonify({
             "phase": "done",
@@ -1176,30 +1197,37 @@ def api_insert_shelter():
 def api_get_swap_candidates():
     """
     获取可替换的同品类店铺列表（排除异常店）。
-    输入: { anomaly_type: "排号异常" | "餐厅停电" }
+    输入: { anomaly_type: "排号异常" | "餐厅停电", category: "cafe" 可选 }
     """
     data = request.get_json(silent=True) or {}
     anomaly_type = data.get("anomaly_type", "")
+    forced_category = data.get("category", "")  # 如果前端指定了品类，直接用
 
     selected_pairs = session_state.get("selected_pairs", [])
-    if not selected_pairs:
-        return jsonify({"error": "无已选店铺"}), 400
 
-    # 找到需要被替换的节点（第一个与异常匹配的品类）
-    # 排号异常/停电通常对应 restaurant 品类
     target_category = None
     excluded_shop_id = None
-    for cat, sid, sname in selected_pairs:
-        if cat in ("restaurant",):
+
+    if forced_category:
+        target_category = forced_category
+        excluded_shop_id = ""
+        if selected_pairs:
+            for cat, sid, sname in selected_pairs:
+                if cat == forced_category:
+                    excluded_shop_id = sid
+                    break
+    elif not selected_pairs:
+        return jsonify({"error": "无已选店铺"}), 400
+    else:
+        for cat, sid, sname in selected_pairs:
+            if cat in ("restaurant",):
+                target_category = cat
+                excluded_shop_id = sid
+                break
+        if not target_category:
+            cat, sid, sname = selected_pairs[0]
             target_category = cat
             excluded_shop_id = sid
-            break
-
-    if not target_category:
-        # 兜底：尝试用第一个品类
-        cat, sid, sname = selected_pairs[0]
-        target_category = cat
-        excluded_shop_id = sid
 
     # 从 poi_cache_per_category 获取同品类所有店铺并过滤
     shops_data = []
@@ -1235,6 +1263,50 @@ def api_get_swap_candidates():
 
     return jsonify({
         "category": target_category,
+        "shops": shops_data[:5]
+    })
+
+
+@app.route("/api/get_nearby_cafes", methods=["POST"])
+def api_get_nearby_cafes():
+    """
+    返回 poi_cache 中所有 category 为 "cafe" 的店铺列表，按评分降序，最多5个。
+    """
+    if not agent or not agent.poi_cache:
+        return jsonify({"error": "无店铺缓存"}), 400
+
+    import math
+
+    shops_data = []
+    for sid, shop in agent.poi_cache.items():
+        if shop.get("category") != "cafe":
+            continue
+        # 计算距离（haversine，中心坐标 39.93, 116.45）
+        dist_m = 0
+        raw_coord = shop.get("coord", "")
+        if raw_coord and "," in raw_coord:
+            try:
+                slat, slng = float(raw_coord.split(",")[0].strip()), float(raw_coord.split(",")[1].strip())
+                R = 6371000
+                dlat = math.radians(slat - 39.93)
+                dlng = math.radians(slng - 116.45)
+                a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(39.93)) * math.cos(math.radians(slat)) * math.sin(dlng / 2) ** 2
+                c = 2 * math.asin(math.sqrt(a))
+                dist_m = int(R * c)
+            except:
+                pass
+        dist_str = f"{dist_m}m" if dist_m < 1000 else f"{dist_m / 1000:.1f}km"
+        shops_data.append({
+            "shop_id": shop["shop_id"],
+            "name": shop["name"],
+            "rating": shop.get("rating", 0),
+            "distance": dist_str,
+        })
+
+    # 按评分降序
+    shops_data.sort(key=lambda s: s["rating"], reverse=True)
+
+    return jsonify({
         "shops": shops_data[:5]
     })
 
@@ -1350,6 +1422,7 @@ def api_swap_shop():
                 "memo": memo,
                 "action": item["action"],
                 "sub_task": sub,
+                "task_id": item.get("task_id", ""),
             })
         return jsonify({
             "phase": "done",
@@ -1430,6 +1503,7 @@ def api_replan():
                 "memo": memo,
                 "action": item["action"],
                 "sub_task": sub,
+                "task_id": item.get("task_id", ""),
             })
         main_plan = {
             "departure_time": schedule_res["suggested_departure_time"],
@@ -2071,8 +2145,7 @@ def api_weather():
 # 启动
 # ======================================================================
 if __name__ == "__main__":
-    from waitress import serve
     port = int(os.getenv("PORT", 5000))
     print(f"🚀 美团 AI 助手服务启动: http://localhost:{port}")
     _reset_session()
-    serve(app, host="0.0.0.0", port=port, threads=8)
+    app.run(host="0.0.0.0", port=port, threaded=True, debug=False)
