@@ -30,7 +30,23 @@
  animation: siri-fluid-orange 12s infinite ease-in-out;
 }
 
-/* 极致拟真毛玻璃质感 */
+/* ——— 五步强闭环提醒弹窗动画 ——— */
+@keyframes reminder-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+@keyframes reminder-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+@keyframes reminder-fade-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.reminder-pulse { animation: reminder-pulse 1.2s ease-in-out infinite; }
+.reminder-shake { animation: reminder-shake 0.4s ease-in-out; }
+.reminder-fade-in { animation: reminder-fade-in 0.35s ease-out; }
 .glass-panel {
  background: rgba(255, 255, 255, 0.45);
  backdrop-filter: blur(30px) saturate(190%);
@@ -315,6 +331,25 @@
       <button id="second-modal-confirm" onclick="confirmSecondModal()"
               class="flex-1 bg-gray-900 text-yellow-400 font-black py-3.5 rounded-2xl hover:bg-gray-800 transition text-sm meituan-shadow">确认</button>
     </div>
+  </div>
+ </div>
+
+ <!-- 五步强闭环提醒弹窗 -->
+ <div id="reminder-dialog" class="absolute inset-0 flex items-center justify-center z-[65] hidden" style="background: rgba(0,0,0,0.5);">
+  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 reminder-fade-in">
+   <div class="text-center mb-4">
+    <div id="reminder-dialog-icon" class="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3 reminder-pulse">
+     <span class="text-3xl">🔔</span>
+    </div>
+    <h3 id="reminder-dialog-title" class="text-lg font-black text-gray-900"></h3>
+    <p id="reminder-dialog-body" class="text-sm text-gray-600 mt-2 leading-relaxed whitespace-pre-line"></p>
+   </div>
+   <!-- 操作按钮区 -->
+   <div id="reminder-dialog-actions" class="space-y-2 mb-0"></div>
+   <!-- 关闭按钮（非强制不可关闭场景） -->
+   <div id="reminder-dialog-close-wrap" class="mt-3 hidden">
+    <button onclick="closeReminderDialog()" class="w-full bg-gray-100 text-gray-600 font-bold py-2.5 rounded-2xl hover:bg-gray-200 transition text-sm">我知道了</button>
+   </div>
   </div>
  </div>
 
@@ -1145,18 +1180,37 @@ function openExecCover() {
  content.insertAdjacentHTML('beforeend', extraHtml);
  }
  // 追加触发器按钮
- if (lastScheduleData && lastScheduleData.pitfall_triggers) {
- for (const trig of lastScheduleData.pitfall_triggers) {
- if (trig.ui_manifest && trig.ui_manifest.component_type === 'standard_button') {
+ // 渲染防踩坑触发器（黄色按钮）
+ function _renderTriggers(triggers, bgColor) {
+ if (!triggers || !triggers.length) return;
+ for (const trig of triggers) {
+ const manifest = trig.ui_manifest;
+ if (!manifest) continue;
+ if (manifest.component_type === 'standard_button') {
  content.insertAdjacentHTML('beforeend', `
- <div class="bg-yellow-50 border border-yellow-300 rounded-[32px] p-5 mt-4">
- <p class="text-sm text-gray-800 font-medium mb-3">${trig.ui_manifest.prompt_text}</p>
+ <div class="${bgColor} border border-yellow-300 rounded-[32px] p-5 mt-4">
+ <p class="text-sm text-gray-800 font-medium mb-3">${manifest.prompt_text}</p>
  <div class="flex space-x-3">
  <button onclick="executeTrigger('${trig.trigger_id}')" class="flex-1 bg-yellow-400 text-black font-black py-4 rounded-2xl hover:scale-95 transition-transform">
- ${trig.ui_manifest.confirm_label}
+ ${manifest.confirm_label}
  </button>
  <button onclick="dismissTrigger('${trig.trigger_id}')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-4 rounded-2xl hover:bg-gray-200 transition">
- ${trig.ui_manifest.cancel_label || '不需要'}
+ ${manifest.cancel_label || '不需要'}
+ </button>
+ </div>
+ </div>
+ `);
+ } else if (manifest.component_type === 'dialog') {
+ // 异常传感器产的打断级 Dialog 弹窗（橙色）
+ content.insertAdjacentHTML('beforeend', `
+ <div class="bg-orange-50 border-2 border-orange-400 rounded-[32px] p-5 mt-4 shadow-lg">
+ <p class="text-sm font-black text-orange-700 mb-2">⚠️ ${manifest.prompt_text}</p>
+ <div class="flex space-x-3">
+ <button onclick="executeTrigger('${trig.trigger_id}')" class="flex-1 bg-orange-500 text-white font-black py-4 rounded-2xl hover:scale-95 transition-transform">
+ ${manifest.confirm_label}
+ </button>
+ <button onclick="dismissTrigger('${trig.trigger_id}')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-4 rounded-2xl hover:bg-gray-200 transition">
+ 忽略
  </button>
  </div>
  </div>
@@ -1164,6 +1218,8 @@ function openExecCover() {
  }
  }
  }
+ _renderTriggers(lastScheduleData.pitfall_triggers, 'bg-yellow-50');
+ _renderTriggers(lastScheduleData.anomaly_triggers, 'bg-orange-50');
  execContentCache = content.innerHTML;
  }
  }
@@ -1192,6 +1248,23 @@ async function executeTrigger(triggerId) {
  });
  const data = await res.json();
  if (data.error) { alert('执行失败: ' + data.error); return; }
+
+ // 如果返回的是排程结果（phase: done），刷新行程 + 重开展示弹窗
+ if (data.phase === 'done' || data.timeline) {
+ lastScheduleData = data;
+ execContentCache = null;
+ renderSchedule(data);
+ // 关旧弹窗，延迟重开展示新时间线
+ const cover = document.getElementById('exec-cover');
+ if (cover) cover.classList.add('hidden');
+ setTimeout(function() {
+ execContentCache = null;
+ openExecCover();
+ }, 300);
+ return;
+ }
+
+ // 否则就是虚拟工具执行结果，弹 toast
  let msg = '✅ 已执行:\n';
  if (data.executed_tools) {
  for (const t of data.executed_tools) {
@@ -2329,6 +2402,230 @@ function reminderDeleteTask(taskId) {
     toast('❌ 网络错误');
   });
 }
+
+// ======================================================================
+// 五步强闭环提醒交互 — 弹窗渲染 + 用户响应
+// ======================================================================
+
+var _reminderActiveMedId = null;
+var _reminderActiveState = null;
+
+/**
+ * 处理后端推送的 reminder 类型事件，渲染交互式 Dialog。
+ * 事件类型: MED_RINGING_ALERT | MED_URGE_LIGHT | MED_URGE_HEAVY
+ *          | MED_ESCALATION_CRITICAL | WATER_UI_ALERT | MED_DUPLICATE_BLOCK
+ *          | REMINDER_ACTION_RESULT
+ */
+function handleReminderEvent(ev) {
+  var type = ev.type || '';
+  var msg = ev.message || '';
+  var medId = ev.med_id || '';
+
+  // 防御：无类型跳过
+  if (!type) return false;
+
+  // —— 喝水提醒：轻量 toast ——
+  if (type === 'WATER_UI_ALERT') {
+    toast(msg, 4000);
+    return true;
+  }
+
+  // —— 防重复拦截：toast + 日志 ——
+  if (type === 'MED_DUPLICATE_BLOCK') {
+    toast(msg, 5000);
+    clockLogEvent('⚠️ ' + msg, 'alert');
+    return true;
+  }
+
+  // —— REMINDER_ACTION_RESULT：toast + 关闭弹窗（如果开着） ——
+  if (type === 'REMINDER_ACTION_RESULT') {
+    toast(msg, 3000);
+    if (ev.status === 'SUCCESS_CLOSED' || ev.status === 'POSTPONED') {
+      closeReminderDialog();
+    }
+    reminderRefreshList();
+    return true;
+  }
+
+  // —— 吃药响铃 / 催促 / 紧急联络 ——
+  if (type === 'MED_RINGING_ALERT' || type === 'MED_URGE_LIGHT' || type === 'MED_URGE_HEAVY' || type === 'MED_ESCALATION_CRITICAL') {
+    _reminderActiveMedId = medId;
+    _reminderActiveState = type;
+    renderReminderDialog(type, msg, medId);
+    return true;
+  }
+
+  return false; // 不认识的类型，让调用方退回到 clockLogEvent
+}
+
+function renderReminderDialog(type, msg, medId) {
+  var dlg = document.getElementById('reminder-dialog');
+  var titleEl = document.getElementById('reminder-dialog-title');
+  var bodyEl = document.getElementById('reminder-dialog-body');
+  var actionsEl = document.getElementById('reminder-dialog-actions');
+  var closeWrap = document.getElementById('reminder-dialog-close-wrap');
+  var iconEl = document.getElementById('reminder-dialog-icon');
+
+  // 图标 + 样式
+  var iconEmoji = '🔔';
+  var iconBg = 'bg-yellow-100';
+  var pulseClass = 'reminder-pulse';
+
+  switch (type) {
+    case 'MED_RINGING_ALERT':
+      titleEl.textContent = '💊 服药时间到！';
+      bodyEl.textContent = msg;
+      iconEmoji = '💊'; iconBg = 'bg-green-100'; break;
+    case 'MED_URGE_LIGHT':
+      titleEl.textContent = '⏰ 服药提醒（第1次催促）';
+      bodyEl.textContent = msg;
+      iconEmoji = '🔔'; iconBg = 'bg-yellow-100'; break;
+    case 'MED_URGE_HEAVY':
+      titleEl.textContent = '🚨 服药超时（第2次催促）';
+      bodyEl.textContent = msg;
+      iconEmoji = '⚠️'; iconBg = 'bg-orange-100'; pulseClass = 'reminder-shake'; break;
+    case 'MED_ESCALATION_CRITICAL':
+      titleEl.textContent = '🆘 紧急联络已触发';
+      bodyEl.textContent = msg;
+      iconEmoji = '🆘'; iconBg = 'bg-red-100'; pulseClass = ''; break;
+    default:
+      titleEl.textContent = '提醒';
+      bodyEl.textContent = msg;
+  }
+
+  iconEl.innerHTML = '<span class="text-3xl">' + iconEmoji + '</span>';
+  iconEl.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 ' + iconBg + (pulseClass ? ' ' + pulseClass : '');
+
+  // 操作按钮
+  var isEscalation = (type === 'MED_ESCALATION_CRITICAL');
+  actionsEl.innerHTML = '';
+
+  if (isEscalation) {
+    // 紧急联络：只能关闭
+    actionsEl.innerHTML = '';
+    closeWrap.classList.remove('hidden');
+  } else {
+    // 响铃 / 催促：展示 1/2 按钮
+    closeWrap.classList.add('hidden');
+    actionsEl.innerHTML =
+      '<button onclick="reminderUserAction(\'1\')" class="w-full bg-green-500 text-white font-black py-3.5 rounded-2xl hover:bg-green-600 transition text-base reminder-pulse">' +
+        '✅ 确认，我现在就去拿药' +
+      '</button>' +
+      '<button onclick="reminderUserAction(\'2\')" class="w-full bg-gray-100 text-gray-700 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition text-sm mt-2">' +
+        '⏰ 还没吃饭，帮我延后30分钟提醒' +
+      '</button>';
+  }
+
+  dlg.classList.remove('hidden');
+  // 重新触发入场动画
+  var card = dlg.querySelector('.bg-white');
+  if (card) {
+    card.classList.remove('reminder-fade-in');
+    void card.offsetWidth;
+    card.classList.add('reminder-fade-in');
+  }
+}
+
+function closeReminderDialog() {
+  document.getElementById('reminder-dialog').classList.add('hidden');
+  _reminderActiveMedId = null;
+  _reminderActiveState = null;
+}
+
+function reminderUserAction(action) {
+  if (!_reminderActiveMedId) return;
+  var medId = _reminderActiveMedId;
+  // 先乐观渲染"处理中"
+  var actionsEl = document.getElementById('reminder-dialog-actions');
+  actionsEl.innerHTML = '<div class="text-center py-4 text-gray-500 text-sm">⏳ 处理中…</div>';
+
+  fetch(API_BASE + '/api/reminder/action', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({med_id: medId, action: action})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.status === 'SUCCESS') {
+      var result = data.result || {};
+      var status = result.status;
+      if (status === 'PROCEED') {
+        // 进入 PENDING_SWALLOW 阶段 — 展示"我已吞服药片"按钮
+        _reminderActiveState = 'PENDING_SWALLOW';
+        renderSwallowConfirm(medId, result.message);
+      } else if (status === 'POSTPONED') {
+        closeReminderDialog();
+        toast(result.message, 4000);
+        reminderRefreshList();
+      } else if (status === 'INTERCEPTED') {
+        closeReminderDialog();
+        toast(result.message, 5000);
+      } else {
+        closeReminderDialog();
+        toast(result.message, 3000);
+      }
+    }
+  }).catch(function() {
+    actionsEl.innerHTML =
+      '<button onclick="reminderUserAction(\'1\')" class="w-full bg-green-500 text-white font-black py-3.5 rounded-2xl hover:bg-green-600 transition text-base">' +
+        '✅ 确认，我现在就去拿药' +
+      '</button>' +
+      '<button onclick="reminderUserAction(\'2\')" class="w-full bg-gray-100 text-gray-700 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition text-sm mt-2">' +
+        '⏰ 还没吃饭，帮我延后30分钟提醒' +
+      '</button>';
+    toast('❌ 网络错误，请重试', 3000);
+  });
+}
+
+function renderSwallowConfirm(medId, msg) {
+  var titleEl = document.getElementById('reminder-dialog-title');
+  var bodyEl = document.getElementById('reminder-dialog-body');
+  var actionsEl = document.getElementById('reminder-dialog-actions');
+  var closeWrap = document.getElementById('reminder-dialog-close-wrap');
+  var iconEl = document.getElementById('reminder-dialog-icon');
+
+  titleEl.textContent = '💧 请确认已吞服药片';
+  bodyEl.textContent = msg;
+  iconEl.innerHTML = '<span class="text-3xl">💧</span>';
+  iconEl.className = 'w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3 reminder-pulse';
+  closeWrap.classList.add('hidden');
+  actionsEl.innerHTML =
+    '<button onclick="reminderUserAction(\'swallow\')" class="w-full bg-blue-500 text-white font-black py-3.5 rounded-2xl hover:bg-blue-600 transition text-base reminder-pulse">' +
+      '✅ 我已吞服药片' +
+    '</button>' +
+    '<button onclick="closeReminderDialog()" class="w-full bg-gray-100 text-gray-500 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition text-sm mt-2">' +
+      '🔙 返回' +
+    '</button>';
+}
+
+// ——— 轮询 clock events 时自动分拣 reminder 事件 ———
+var _origHandleClockEvents = null;
+(function patchClockEventConsumers() {
+  var origPopEvents = window.clockFetch;
+  if (!origPopEvents || window._reminderEventPatcherDone) return;
+  window._reminderEventPatcherDone = true;
+
+  // 在所有调用 clockFetch('GET', '/api/clock/events') 之后拦截 data
+  var _origClockFetch = window.clockFetch;
+  window.clockFetch = function(method, path, body) {
+    var p = _origClockFetch(method, path, body);
+    if (method === 'GET' && path === '/api/clock/events') {
+      return p.then(function(data) {
+        if (data && data.events && data.events.length) {
+          var reminderEvents = [];
+          var otherEvents = [];
+          data.events.forEach(function(ev) {
+            if (!handleReminderEvent(ev)) {
+              otherEvents.push(ev);
+            }
+          });
+          // 只把未处理的还给调用方
+          data.events = otherEvents;
+        }
+        return data;
+      });
+    }
+    return p;
+  };
+})();
 
 // 每次时钟事件触发后刷新提醒列表
 var _origClockEventLog = _origClockEventLog || function(){};

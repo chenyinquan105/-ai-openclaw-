@@ -323,6 +323,12 @@ class TimeMaster:
             cs.triggered_queue.clear()
             return events
 
+    def push_triggered_event(self, session_id: str, event: dict):
+        """向事件队列注入一条事件（供提醒引擎使用）"""
+        with self._lock:
+            cs = self._get_or_create_session_nolock(session_id)
+            cs.triggered_queue.append(event)
+
     # ---------- 内部方法 ----------
 
     def _slice_triggered(self, cs: ClockState, start_m: float, end_m: float) -> list:

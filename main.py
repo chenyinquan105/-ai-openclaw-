@@ -87,12 +87,14 @@ class MeituanAgent:
         self.context_memory = []
         self.poi_cache = {}
 
-    def _call_llm(self, messages: list, tools: list = None):
+    def _call_llm(self, messages: list, tools: list = None, max_tokens: int = 300000):
         response = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
+            max_tokens=max_tokens,
             tools=tools,
-            tool_choice="auto" if tools else None
+            tool_choice="auto" if tools else None,
+            timeout=30.0
         )
         return response.choices[0].message
 

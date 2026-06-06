@@ -14,7 +14,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
-from flask import Flask, request, jsonify, send_from_directory
+import queue
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 
 # ======================================================================
@@ -25,7 +26,10 @@ sys.path.insert(0, base_dir)
 import main as backend
 
 from skills.time_master import time_master as time_master
-import skills.task_reminder_skill as reminder_skill
+from skills.task_reminder_skill import task_reminder_skill as reminder_skill
+from skills.route_planner.route_planner import plan_route as _skill_route_planner
+from skills.queue_monitor.queue_monitor import handle as _skill_queue_monitor
+from skills.weather_extractor.weather_extractor import extract_weather as _skill_weather_extractor
 
 app = Flask(__name__, static_folder=base_dir)
 CORS(app)
@@ -237,7 +241,14 @@ def _reset_session():
         "user_input": "",
         "time_desc": "",
         "has_time_from_input": False,
+        "pending_anomalies": [],
+        "anomaly_intent_triggers": [],
+        "pitfall_intent_triggers": [],
+        "pitfall_global_reminders": [],
     }
+    # 清空虚拟时钟 session（reset 后应回到真实时间模式）
+    tm = time_master.get_master()
+    tm.remove_session(_CLOCK_SESSION_ID)
 
 
 def _duration(cat: str) -> int:
@@ -249,6 +260,10 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
     """执行 LLM 解析 + POI 搜索，返回 (category_list, poi_data) 或错误。
     profile: 管家记忆偏好谱，用于注入口味/预算参数。
     """
+    # —— 每轮搜索清空 cache，避免跨请求污染 ——
+    agent_instance.poi_cache = {}
+    agent_instance.poi_cache_per_category = {}
+
     if profile is None:
         profile = {
             "taste": {}, "commute": {}, "budget": {}, "lifestyle": {},
@@ -341,16 +356,22 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
 
         fallback_min_rating = budget.get("rating_cutoff", 0)
         fallback_price_level = budget.get("price_level", None)
+        # price_level 仅对餐饮品类生效（hair/pet/cafe/gym/cinema/laundry 不过滤）
+        food_cats = {"restaurant", "hotpot"}
+        effective_price_level = fallback_price_level if any(c in food_cats for c in mapped_cats) else None
+        print(f"[DEBUG search_poi] LLM args: {json.dumps(args, ensure_ascii=False)}", flush=True)
         search_res = backend.skill_poi.search_poi_matrix(
             center_coord=coord,
             categories=mapped_cats,
             radius_meters=args.get("radius_meters", 3000),
             min_rating=args.get("min_rating", fallback_min_rating),
-            price_level=fallback_price_level,
+            price_level=effective_price_level,
+            dietary_restrictions=diet_res if diet_res else None,
         )
 
         if search_res.get("status") == "SUCCESS":
             for cat in search_res["search_results"]:
+                print(f"[DEBUG search_poi] cat={cat} got {len(search_res['search_results'][cat])} shops", flush=True)
                 if cat not in all_results:
                     all_results[cat] = []
                 all_results[cat].extend(search_res["search_results"][cat])
@@ -372,12 +393,14 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
             fallback_cats.extend([backend.CATEGORY_MAP.get(c, c) for c in raw_cats])
         if fallback_cats:
             fallback_cats = list(set(fallback_cats))
+            # 重试时同样只对餐饮品类应用 price_level
+            retry_price_level = fallback_price_level if any(c in food_cats for c in fallback_cats) else None
             retry_res = backend.skill_poi.search_poi_matrix(
                 center_coord="39.93,116.45",
                 categories=fallback_cats,
                 radius_meters=3000,
                 min_rating=fallback_min_rating,
-                price_level=fallback_price_level,
+                price_level=retry_price_level,
             )
             if retry_res.get("status") == "SUCCESS":
                 for cat, shoplist in retry_res["search_results"].items():
@@ -649,13 +672,42 @@ def _run_schedule_from_session():
         })
         spatial_matrix["locations"][sid] = {"name": sname, "coord": coord}
 
+    # —— 交通模式自动计算（Phase 4.4）——
+    _transport_priority = _read_profile().get("commute", {}).get("transport_priority", "步行优先")
+    _transport_map = {"步行优先": "WALK", "打车优先": "TAXI", "地铁优先": "METRO", "驾车优先": "DRIVE"}
+    _default_mode = _transport_map.get(_transport_priority, "WALK")
+    # 为用户指定的 transport 覆盖
+    _user_transport = session_state.get("transport", "")
+    if _user_transport and _user_transport in ("打车", "公共交通", "驾车"):
+        _override_map = {"打车": "TAXI", "公共交通": "METRO", "驾车": "DRIVE"}
+        _default_mode = _override_map.get(_user_transport, _default_mode)
+
+    # 自动计算所有位置对之间的路线
+    import math as _math
+    _all_loc_ids = list(spatial_matrix["locations"].keys())
+    for i, loc_a in enumerate(_all_loc_ids):
+        for loc_b in _all_loc_ids[i + 1:]:
+            ca = spatial_matrix["locations"][loc_a].get("coord", "")
+            cb = spatial_matrix["locations"][loc_b].get("coord", "")
+            if ca and cb:
+                lat1, lng1 = [float(x) for x in ca.split(",")]
+                lat2, lng2 = [float(x) for x in cb.split(",")]
+                R = 6371.0
+                dlat = _math.radians(lat2 - lat1)
+                dlng = _math.radians(lng2 - lng1)
+                a = _math.sin(dlat / 2) ** 2 + _math.cos(_math.radians(lat1)) * _math.cos(_math.radians(lat2)) * _math.sin(dlng / 2) ** 2
+                c = 2 * _math.atan2(_math.sqrt(a), _math.sqrt(1 - a))
+                dist = int(R * c * 1000)
+                spatial_matrix["routes"][f"{loc_a}->{loc_b}"] = {"transport_mode": _default_mode, "distance_meters": dist}
+                spatial_matrix["routes"][f"{loc_b}->{loc_a}"] = {"transport_mode": _default_mode, "distance_meters": dist}
+
     session_state["task_list"] = task_list
     session_state["spatial_matrix"] = spatial_matrix
     # 若用户说几点出发，now_str 设为该时间（引擎从该时间开始行走）
     if time_mode == "fixed":
         session_state["now_str"] = fixed_time
     else:
-        # 虚拟时间开启时优先使用虚拟时钟当前时间
+        # 虚拟时间控制台开着 → 用虚拟时间；否则用系统真实时间
         _tm = time_master.get_master()
         _cs = _tm.get_session(_CLOCK_SESSION_ID)
         if _cs and _cs.virtual_time:
@@ -671,6 +723,11 @@ def _run_schedule_from_session():
 def _run_schedule():
     """执行一次排程，处理 CONFIRM_REQUIRED / SUCCESS / 其他"""
     global session_state
+    # ★ 修复：从虚拟时钟重新获取当前时间，确保虚拟时间推进后重排使用最新时间
+    _tm = time_master.get_master()
+    _cs = _tm.get_session(_CLOCK_SESSION_ID)
+    if _cs and _cs.virtual_time:
+        session_state["now_str"] = _cs.virtual_time
     schedule_res = backend.skill_scheduler.solve_concurrent_timeline(
         session_state["task_list"],
         session_state["spatial_matrix"],
@@ -811,6 +868,29 @@ def _run_schedule():
         session_state["pitfall_localized_insights"] = pitfall_output.get("localized_insights", [])
         session_state["pitfall_intent_triggers"] = pending_triggers
 
+        # —— 异常传感器：检测当前环境上下文中是否有活跃异常，产 Plan B trigger ——
+        from skills.anomaly_sensor_skill import anomaly_sensor_skill as anomaly_sensor
+        anomaly_triggers = []
+        anomaly_insights = []
+        # 检查是否有未处理的异常注入
+        _pending_anomalies = session_state.get("pending_anomalies", [])
+        if _pending_anomalies:
+            sensor_input = {
+                "pipeline_nodes": pitfall_input["pipeline_nodes"],
+                "environmental_context": {
+                    "timestamp": int(datetime.now().timestamp()),
+                    "weather_summary": "多云",
+                    "active_anomalies": _pending_anomalies,
+                },
+            }
+            sensor_output = anomaly_sensor.execute_anomaly_sensor_skill(input_payload=sensor_input)
+            anomaly_triggers = sensor_output.get("intent_triggers", [])
+            anomaly_insights = sensor_output.get("localized_insights", [])
+            # 清空已处理的异常（避免重复弹窗）
+            session_state["pending_anomalies"] = []
+        session_state["anomaly_intent_triggers"] = anomaly_triggers
+        session_state["anomaly_insights"] = anomaly_insights
+
         return jsonify({
             "phase": "done",
             "departure_time": schedule_res["suggested_departure_time"],
@@ -819,6 +899,8 @@ def _run_schedule():
             "pitfall_reminders": pitfall_output.get("global_reminders", []),
             "pitfall_insights": pitfall_output.get("localized_insights", []),
             "pitfall_triggers": pending_triggers,
+            "anomaly_triggers": anomaly_triggers,
+            "anomaly_insights": anomaly_insights,
         })
 
     else:
@@ -856,23 +938,114 @@ def api_reset():
 
 @app.route("/api/reflect_trigger", methods=["POST"])
 def api_reflect_trigger():
-    """前端用户点击 intent_trigger 按钮后，执行反射动作"""
+    """前端用户点击 intent_trigger 按钮后，执行反射动作。
+    支持两种来源：
+    1. destination_anti_pitfall 产的 trigger（virtual_call_taxi/virtual_queue 等）
+    2. anomaly_sensor 产的 trigger（virtual_pipeline_mutate → 真正的管线变异）
+    """
     from skills.destination_anti_pitfall import destination_anti_pitfall as skill_pitfall
     data = request.get_json(silent=True) or {}
     trigger_id = data.get("trigger_id")
     if not trigger_id:
         return jsonify({"error": "缺少 trigger_id"}), 400
 
-    triggers = session_state.get("pitfall_intent_triggers", [])
+    # 搜索所有 trigger 来源
     target = None
-    for t in triggers:
+    # 1) pitfall_intent_triggers（防踩坑产的）
+    for t in session_state.get("pitfall_intent_triggers", []):
         if t.get("trigger_id") == trigger_id:
             target = t
             break
+    # 2) anomaly_intent_triggers（异常传感器产的）
+    if not target:
+        for t in session_state.get("anomaly_intent_triggers", []):
+            if t.get("trigger_id") == trigger_id:
+                target = t
+                break
 
     if not target:
         return jsonify({"error": "未找到对应 trigger"}), 404
 
+    # 判断是不是虚拟管线变异器 trigger
+    reflection = target.get("action_reflection", {})
+    target_tools = reflection.get("target_tools", [])
+
+    if "virtual_pipeline_mutate" in target_tools:
+        # —— 真正的管线变异：调用 /api/pipeline/mutate 的逻辑 ——
+        params = reflection.get("parameter_mapping", {})
+        if not params.get("execute_intercept_hook"):
+            result = skill_pitfall.dispatch_reflection(target)
+            return jsonify(result)
+
+        action = params.get("mutation_directive", "SWAP_NODE")
+        corrupted_node_id = params.get("corrupted_node_id", "")
+        delta_minutes = params.get("delta_delay_minutes", 30)
+
+        task_list = session_state.get("task_list", [])
+        spatial_matrix = session_state.get("spatial_matrix", {})
+
+        if not task_list:
+            return jsonify({"status": "ERROR", "message": "无行程数据"}), 400
+
+        # 找到受灾任务
+        corrupted_task = None
+        corrupted_idx = -1
+        for i, t in enumerate(task_list):
+            if t["task_id"] == corrupted_node_id:
+                corrupted_task = t
+                corrupted_idx = i
+                break
+
+        if not corrupted_task:
+            return jsonify({"status": "ERROR", "message": f"未找到节点 {corrupted_node_id}，可能已完成或不在本次行程"}), 404
+
+        if action == "SWAP_NODE":
+            corrupted_cat = corrupted_task.get("category", "")
+            candidates = []
+            for sid, shop in agent.poi_cache.items():
+                if shop.get("category") == corrupted_cat and sid != corrupted_node_id:
+                    candidates.append((sid, shop))
+            if not candidates:
+                return jsonify({"status": "ERROR", "message": f"品类 {corrupted_cat} 无替选店铺，建议改为跳过"}), 404
+
+            new_sid, new_shop = candidates[0]
+            task_list[corrupted_idx] = {
+                "task_id": new_sid,
+                "name": new_shop["name"],
+                "location_id": new_sid,
+                "duration_minutes": corrupted_task["duration_minutes"],
+                "human_needed": corrupted_task.get("human_needed", True),
+                "fixed_start_time": corrupted_task.get("fixed_start_time"),
+                "category": corrupted_cat,
+            }
+            spatial_matrix["locations"][new_sid] = {
+                "name": new_shop["name"],
+                "coord": f"{new_shop.get('lat', 39.93)},{new_shop.get('lng', 116.45)}",
+            }
+            session_state["task_list"] = task_list
+            session_state["spatial_matrix"] = spatial_matrix
+            session_state["confirmed_ids"] = []
+            session_state["rejected_ids"] = []
+            return _run_schedule()
+
+        elif action == "BYPASS_NODE":
+            task_list.pop(corrupted_idx)
+            session_state["task_list"] = task_list
+            session_state["confirmed_ids"] = []
+            session_state["rejected_ids"] = []
+            return _run_schedule()
+
+        elif action == "POSTPONE_NODE":
+            task_list.pop(corrupted_idx)
+            task_list.append(corrupted_task)
+            session_state["task_list"] = task_list
+            session_state["confirmed_ids"] = []
+            session_state["rejected_ids"] = []
+            return _run_schedule()
+
+        return jsonify({"status": "ERROR", "message": f"未知变异动作: {action}"}), 400
+
+    # 其他 trigger 走原有防踩坑反射逻辑
     result = skill_pitfall.dispatch_reflection(target)
     return jsonify(result)
 
@@ -1296,8 +1469,13 @@ def clock_init():
     tm = time_master.get_master()
     initial_time = data.get("initial_time", "08:00")
     nodes = data.get("schedule_nodes", [])
+    # 先注册排程节点
     tm.set_schedule(_CLOCK_SESSION_ID, nodes, initial_time=initial_time)
     clock = tm.get_or_create_session(_CLOCK_SESSION_ID, initial_time=initial_time)
+    # 强制覆盖虚拟时间为前端指定的初始时间（session 已存在时 get_or_create 不会改时间）
+    h, m = initial_time.split(":")
+    clock.virtual_minutes = float(int(h) * 60 + int(m))
+    clock.is_running = False
     return jsonify(clock.to_dict())
 
 
@@ -1399,18 +1577,78 @@ def clock_set_schedule():
 
 
 def _process_clock_triggers(res: dict):
-    """时钟事件产生后，调用 reminder_skill 处理并记录到 session_state"""
-    from flask import current_app as app
+    """时钟事件产生后，调用 reminder_skill 处理并注入事件队列"""
     ticked = res.get("ticked_minutes_list", [])
     events = res.get("triggered_nodes", [])
-    if not ticked and not events:
-        return
+    # 始终调用 process_reminder_pipeline：
+    # - 有新事件时：处理它们（响铃 + 状态初始化）
+    # - 无新事件时：检查挂起事件是否超时（催促链）
     alerts = reminder_skill.process_reminder_pipeline(
         _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
     )
-    # 将 alert 挂到全局以便前端 /api/clock/events 也能拉到
-    # alerts 直接返回给前端（offset/jump 的响应中已带 triggered_nodes）
-    # 更深的提醒通知通过 pop_triggered_events 拉取
+    # 将 reminder alerts 注入到 time_master 的事件队列
+    # 前端通过 /api/clock/events 拉取后会渲染为交互式 Dialog
+    _tm = time_master.get_master()
+    for alert in alerts:
+        _tm.push_triggered_event(_CLOCK_SESSION_ID, alert)
+
+    # ——— SSE 广播：通知所有连接的客户端 ———
+    _broadcast_sse_events(alerts if alerts else events)
+
+
+# ======================================================================
+# SSE 实时推送引擎
+# ======================================================================
+
+_sse_clients: list = []  # 存放所有活动 SSE 客户端的 queue
+
+
+def _broadcast_sse_events(events: list):
+    """向所有 SSE 客户端广播事件"""
+    if not events:
+        return
+    dead = []
+    payload = f"data: {json.dumps({'events': events}, ensure_ascii=False)}\n\n"
+    for q in _sse_clients:
+        try:
+            q.put_nowait(payload)
+        except Exception:
+            dead.append(q)
+    for q in dead:
+        if q in _sse_clients:
+            _sse_clients.remove(q)
+
+
+@app.route("/api/sse/events")
+def sse_events():
+    """SSE 端点：前端通过 EventSource 连接，实时接收时钟推进事件"""
+    q: queue.Queue = queue.Queue()
+    _sse_clients.append(q)
+
+    def generate():
+        try:
+            while True:
+                try:
+                    data = q.get(timeout=30)
+                    yield data
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            if q in _sse_clients:
+                _sse_clients.remove(q)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
 
 # ======================================================================
 # 提醒任务管理 API
@@ -1464,6 +1702,44 @@ def reminder_remove_task():
     return jsonify({"status": "SUCCESS"})
 
 
+@app.route("/api/reminder/action", methods=["POST"])
+def reminder_user_action():
+    """
+    接收用户对服药提醒的交互响应（五步强闭环状态机）。
+    输入：{"med_id": "med_001", "action": "1"|"2"|"swallow"}
+    其中 "1" = 确认去拿药, "2" = 延后30分钟, "swallow" = 我已吞服药片
+    """
+    data = request.get_json(silent=True) or {}
+    med_id = data.get("med_id", "")
+    action = data.get("action", "")
+    if not med_id or not action:
+        return jsonify({"status": "ERROR", "message": "缺少 med_id 或 action"}), 400
+
+    # 映射 action → user_input
+    action_map = {"1": "1", "2": "2", "swallow": "我已吞服药片"}
+    user_input = action_map.get(action, action)
+
+    result = reminder_skill.handle_user_action(
+        _CLOCK_SESSION_ID,
+        user_input,
+        datetime.now().strftime("%H:%M"),
+        time_master.get_master(),
+    )
+
+    # SSE 广播结果通知前端更新
+    _broadcast_sse_events([{
+        "type": "REMINDER_ACTION_RESULT",
+        "med_id": med_id,
+        "status": result.get("status"),
+        "message": result.get("message"),
+    }])
+
+    return jsonify({
+        "status": "SUCCESS",
+        "result": result,
+    })
+
+
 # ======================================================================
 # 管家长期记忆 API — 偏好谱读写
 # ======================================================================
@@ -1486,10 +1762,317 @@ def profile_set():
 
 
 # ======================================================================
+# Phase 3.1: 管线变异器 — 防踩坑 + 异常注入
+# ======================================================================
+
+_ANOMALY_EVENT_POOL = [
+    {"class": "STORE_CLOSURE", "template": "{shop}因突发电力故障暂停营业", "duration": 240},
+    {"class": "QUEUE_FULL", "template": "{shop}当前排队已满，预计等待90分钟", "duration": 90},
+    {"class": "WEATHER_EVENT", "template": "雷暴预警，建议减少步行出行", "duration": 120},
+    {"class": "TRAFFIC_CONTROL", "template": "{shop}周边交通管制，建议绕行", "duration": 60},
+]
+
+import random as _random
+
+
+@app.route("/api/pitfall/check", methods=["POST"])
+def pitfall_check():
+    """
+    防踩坑检查 API：对传入的 pipeline_nodes 做步行距离/交通/身份一致性校验。
+    复用 destination_anti_pitfall 的核心逻辑。
+    """
+    data = request.get_json(silent=True) or {}
+    pipeline_nodes = data.get("pipeline_nodes", [])
+    walking_tolerance = data.get("walking_tolerance_meters", 800)
+    transport = data.get("transport", "步行")
+
+    if not pipeline_nodes:
+        return jsonify({"status": "ERROR", "message": "缺少 pipeline_nodes"}), 400
+
+    from skills.destination_anti_pitfall import destination_anti_pitfall as skill_pitfall
+
+    input_payload = {
+        "trip_id": f"trip_{int(datetime.now().timestamp())}",
+        "current_node_index": 0,
+        "pipeline_nodes": pipeline_nodes,
+        "transport": transport,
+        "walking_tolerance_meters": walking_tolerance,
+        "environmental_context": {
+            "timestamp": int(datetime.now().timestamp()),
+            "weather_summary": "今日多云",
+            "client_platform": "WECHAT",
+        },
+    }
+
+    output = skill_pitfall.execute_anti_pitfall_skill(input_payload=input_payload)
+    pending = skill_pitfall.get_pending_triggers(output)
+
+    return jsonify({
+        "status": "SUCCESS",
+        "global_reminders": output.get("global_reminders", []),
+        "localized_insights": output.get("localized_insights", []),
+        "intent_triggers": pending,
+    })
+
+
+@app.route("/api/anomaly/inject", methods=["POST"])
+def anomaly_inject():
+    """
+    动态异常事件注入：从全局店铺池中随机选目标，注入异常。
+    将异常挂到 pending_anomalies，然后跑一次排程让 Plan B trigger 自动出现在结果里。
+    如果当前没有行程，则只返回异常信息（等下次排程时自动带上）。
+    """
+    data = request.get_json(silent=True) or {}
+    event_class = data.get("event_class", "")
+    shop_name = data.get("shop_name")
+
+    # 选事件模板
+    event_tmpl = None
+    for ev in _ANOMALY_EVENT_POOL:
+        if ev["class"] == event_class:
+            event_tmpl = ev
+            break
+    if not event_tmpl:
+        event_tmpl = _random.choice(_ANOMALY_EVENT_POOL)
+
+    # 选目标店铺（优先命中当前行程中的店铺）
+    target_shop = None
+    all_shops = list(agent.poi_cache.values()) if agent.poi_cache else []
+    # 先看当前行程里有没有匹配的
+    selected_pairs = session_state.get("selected_pairs", [])
+    if shop_name:
+        for cat, sid, sname in selected_pairs:
+            if sname == shop_name or sid == shop_name:
+                info = agent.poi_cache.get(sid, {})
+                target_shop = {"shop_id": sid, "name": sname, "category": cat, **info}
+                break
+        if not target_shop:
+            for s in all_shops:
+                if s.get("name") == shop_name:
+                    target_shop = s
+                    break
+    if not target_shop and selected_pairs:
+        # 从当前行程随机选一个
+        cat, sid, sname = _random.choice(selected_pairs)
+        info = agent.poi_cache.get(sid, {})
+        target_shop = {"shop_id": sid, "name": sname, "category": cat, **info}
+    if not target_shop and all_shops:
+        target_shop = _random.choice(all_shops)
+    if not target_shop:
+        target_shop = {"shop_id": "shop_rest_01", "name": "海底捞三里屯店", "category": "hotpot", "lat": 39.936, "lng": 116.449}
+
+    # 构建描述
+    desc = event_tmpl["template"].format(shop=target_shop.get("name", "未知店铺"))
+
+    anomaly_payload = {
+        "anomaly_id": f"anom_{int(datetime.now().timestamp())}",
+        "anomaly_class": event_tmpl["class"],
+        "target_node_id": target_shop["shop_id"],
+        "description": desc,
+        "impact_duration_minutes": event_tmpl["duration"],
+        "fallback_directives": {
+            "action_required": "SWAP_NODE",
+            "attribute_filter": {"category": target_shop.get("category", "restaurant")},
+        },
+    }
+
+    # 挂到 pending_anomalies，让下次 _run_schedule 自动处理
+    session_state.setdefault("pending_anomalies", []).append(anomaly_payload)
+
+    # 如果当前有行程，立即重排以产 Plan B trigger
+    if session_state.get("task_list"):
+        return _run_schedule()
+
+    return jsonify({
+        "status": "SUCCESS",
+        "message": f"异常已注入: {desc}，将在下次排程时触发 Plan B",
+        "injected_anomaly": anomaly_payload,
+    })
+
+
+@app.route("/api/memory/detect", methods=["POST"])
+def memory_detect():
+    """
+    语义偏好检测 API：用 LLM 分析用户最新消息，检测偏好变化并自动写入。
+    输入: { user_message: str, context_messages: [...] }
+    """
+    data = request.get_json(silent=True) or {}
+    user_message = data.get("user_message", "")
+    context = data.get("context_messages", [])
+    if not user_message:
+        return jsonify({"status": "ERROR", "message": "缺少 user_message"}), 400
+
+    current_profile = _read_profile()
+
+    detect_prompt = {
+        "role": "system",
+        "content": (
+            "你是偏好检测器。分析用户消息，提取四维度的偏好变化：\n"
+            "1. 口味(taste): taste_tolerance(无辣/微辣/中辣/重辣), dietary_restrictions(忌口列表), cuisine_preference(菜系列表)\n"
+            "2. 通勤(commute): walking_tolerance_meters(米), transport_priority(步行优先/打车优先/地铁优先)\n"
+            "3. 预算(budget): price_level(经济/中端/高端), rating_cutoff(评分)\n"
+            "4. 健康作息(lifestyle): hydration_interval_minutes(分钟), medication_schedule\n\n"
+            f"当前偏好: {json.dumps(current_profile, ensure_ascii=False)}\n\n"
+            "只返回 JSON，格式: {\"detected_updates\": {...}}。如果无变化返回空对象。"
+        ),
+    }
+
+    messages = [detect_prompt]
+    if context:
+        messages.extend(context)
+    messages.append({"role": "user", "content": user_message})
+
+    try:
+        llm_msg = agent._call_llm(messages)
+        content = llm_msg.content or "{}"
+        result = json.loads(content)
+        updates = result.get("detected_updates", {})
+        if updates:
+            _write_profile(updates)
+            return jsonify({"status": "SUCCESS", "detected_updates": updates, "applied": True})
+        return jsonify({"status": "SUCCESS", "detected_updates": {}, "applied": False, "message": "无偏好变化"})
+    except Exception as e:
+        return jsonify({"status": "ERROR", "message": str(e)}), 500
+
+
+@app.route("/api/pipeline/mutate", methods=["POST"])
+def pipeline_mutate():
+    """
+    管线变异器：对当前行程执行 swap/bypass/postpone。
+    输入: { action: "SWAP_NODE"|"BYPASS_NODE"|"POSTPONE_NODE", corrupted_node_id, ... }
+    """
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "POSTPONE_NODE")
+    corrupted_node_id = data.get("corrupted_node_id", "")
+    delta_minutes = data.get("delta_delay_minutes", 30)
+
+    task_list = session_state.get("task_list", [])
+    spatial_matrix = session_state.get("spatial_matrix", {})
+
+    if not task_list:
+        return jsonify({"status": "ERROR", "message": "无行程数据"}), 400
+
+    # 找到受灾任务
+    corrupted_task = None
+    corrupted_idx = -1
+    for i, t in enumerate(task_list):
+        if t["task_id"] == corrupted_node_id:
+            corrupted_task = t
+            corrupted_idx = i
+            break
+
+    if not corrupted_task:
+        return jsonify({"status": "ERROR", "message": f"未找到节点 {corrupted_node_id}"}), 404
+
+    if action == "SWAP_NODE":
+        # 从全局 POI 缓存中找同品类替选店铺
+        corrupted_cat = corrupted_task.get("category", "")
+        candidates = []
+        for sid, shop in agent.poi_cache.items():
+            if shop.get("category") == corrupted_cat and sid != corrupted_node_id:
+                candidates.append((sid, shop))
+        if not candidates:
+            return jsonify({"status": "ERROR", "message": f"品类 {corrupted_cat} 无替选店铺"}), 404
+
+        # 直接启用同品类替选店铺
+        new_sid, new_shop = candidates[0]
+        task_list[corrupted_idx] = {
+            "task_id": new_sid,
+            "name": new_shop["name"],
+            "location_id": new_sid,
+            "duration_minutes": corrupted_task["duration_minutes"],
+            "human_needed": corrupted_task.get("human_needed", True),
+            "fixed_start_time": corrupted_task.get("fixed_start_time"),
+            "category": corrupted_cat,
+        }
+        spatial_matrix["locations"][new_sid] = {
+            "name": new_shop["name"],
+            "coord": f"{new_shop.get('lat', 39.93)},{new_shop.get('lng', 116.45)}",
+        }
+        session_state["task_list"] = task_list
+        session_state["spatial_matrix"] = spatial_matrix
+
+        # 重排
+        session_state["confirmed_ids"] = []
+        session_state["rejected_ids"] = []
+        return _run_schedule()
+
+    elif action == "BYPASS_NODE":
+        # 直接移除受灾节点
+        task_list.pop(corrupted_idx)
+        session_state["task_list"] = task_list
+        session_state["confirmed_ids"] = []
+        session_state["rejected_ids"] = []
+        return _run_schedule()
+
+    elif action == "POSTPONE_NODE":
+        # 延后受灾节点，先跑其他任务再回来
+        task_list.pop(corrupted_idx)
+        task_list.append(corrupted_task)
+        # 增加缓冲时间标记
+        corrupted_task["delay_because_anomaly"] = delta_minutes
+        session_state["task_list"] = task_list
+        session_state["confirmed_ids"] = []
+        session_state["rejected_ids"] = []
+        return _run_schedule()
+
+    return jsonify({"status": "ERROR", "message": f"未知变异动作: {action}"}), 400
+
+
+# ======================================================================
+# 新 Skill API: 路径规划 / 排队监控 / 天气抽取
+# ======================================================================
+
+@app.route("/api/route/plan", methods=["POST"])
+def api_route_plan():
+    """
+    路径规划 API：给定起点+途经点+交通偏好，返回最优路径。
+    """
+    data = request.get_json(silent=True) or {}
+    start_coord = data.get("start_coord", "39.93,116.45")
+    waypoints = data.get("waypoints", [])
+    transport_pref = data.get("transport_preference", "步行优先")
+    walking_tol = data.get("walking_tolerance_meters", 800)
+    weather_cond = data.get("weather_condition")
+
+    result = _skill_route_planner(
+        start_coord=start_coord,
+        waypoints=waypoints,
+        transport_preference=transport_pref,
+        walking_tolerance_meters=walking_tol,
+        weather_condition=weather_cond,
+    )
+    return jsonify(result)
+
+
+@app.route("/api/queue/<action>", methods=["POST"])
+def api_queue(action):
+    """
+    排队监控 API：enqueue / query / poll_all。
+    """
+    data = request.get_json(silent=True) or {}
+    result = _skill_queue_monitor(action, **data)
+    return jsonify(result)
+
+
+@app.route("/api/weather", methods=["POST"])
+def api_weather():
+    """
+    天气查询 API：返回天气+活动建议+交通影响。
+    """
+    data = request.get_json(silent=True) or {}
+    coord = data.get("coord", "39.93,116.45")
+    date = data.get("date", "2026-06-06")
+    result = _skill_weather_extractor(coord=coord, date=date)
+    return jsonify(result)
+
+
+# ======================================================================
 # 启动
 # ======================================================================
 if __name__ == "__main__":
+    from waitress import serve
     port = int(os.getenv("PORT", 5000))
     print(f"🚀 美团 AI 助手服务启动: http://localhost:{port}")
     _reset_session()
-    app.run(host="0.0.0.0", port=port, debug=False)
+    serve(app, host="0.0.0.0", port=port, threads=8)

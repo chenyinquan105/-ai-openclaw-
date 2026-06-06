@@ -1,0 +1,6 @@
+[OpenClaw Bridge] 已注册 8 个 Skill
+🚀 美团 AI 助手服务启动: http://localhost:5000
+[DEBUG search_poi] LLM args: {"categories": ["cafe"], "min_rating": 4.3}
+[DEBUG search_poi] cat=cafe got 2 shops
+[DEBUG search_poi] LLM args: {"categories": ["hair"], "min_rating": 4.3}
+[DEBUG search_poi] cat=hair got 4 shops

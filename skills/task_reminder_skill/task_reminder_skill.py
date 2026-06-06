@@ -98,7 +98,7 @@ def process_reminder_pipeline(
         ev_type = event.get("type")
         ev_id = event.get("id")
         ev_time = event.get("time")
-        med_name = event.get("name", "未名药")
+        med_name = event.get("name") or event.get("label") or "未名药"
 
         if ev_type == "WATER":
             output_notifications.append({

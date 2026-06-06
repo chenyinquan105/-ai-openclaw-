@@ -119,6 +119,7 @@ def search_poi_matrix(
     radius_meters: int,
     min_rating: float,
     price_level: str = None,
+    dietary_restrictions: List[str] = None,
 ) -> dict:
     """
     通用空间商户检索器。
@@ -132,6 +133,8 @@ def search_poi_matrix(
             - 经济: signature_dishes[0].price 平均 < 50
             - 中端: 50-200
             - 高端: > 200
+        dietary_restrictions (list): 忌口关键词列表，如 ["羊肉","内脏","香菜"]。
+            会过滤掉 signature_dishes 和 top_comments 中包含忌口词的店铺。
 
     返回:
         dict: 符合物理契约的出参字典，可直接 json.dumps。
@@ -202,6 +205,16 @@ def search_poi_matrix(
         if price_level:
             avg_price = _extract_avg_price(shop)
             if not _price_in_level(avg_price, price_level):
+                continue
+
+        # 5) 膳食忌口过滤
+        if dietary_restrictions:
+            # 检查 signature_dishes 中的菜品名
+            sig_texts = [d.get("name", "") for d in shop.get("signature_dishes", [])]
+            # 检查 top_comments 中的评论文本
+            cmt_texts = [c.get("text", "") for c in shop.get("top_comments", [])]
+            all_text = " ".join(sig_texts + cmt_texts)
+            if any(kw in all_text for kw in dietary_restrictions):
                 continue
 
         # 构造出参条目
