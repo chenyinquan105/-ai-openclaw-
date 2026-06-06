@@ -24,11 +24,171 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, base_dir)
 import main as backend
 
-from skills import time_master
+from skills.time_master import time_master as time_master
 import skills.task_reminder_skill as reminder_skill
 
 app = Flask(__name__, static_folder=base_dir)
 CORS(app)
+
+# ======================================================================
+# 管家长期记忆 —— 偏好谱读写引擎
+# ======================================================================
+_MEMORY_PATH = os.path.join(base_dir, "管家记忆.md")
+
+
+def _read_profile() -> dict:
+    """从 管家记忆.md 解析四维度偏好，返回结构化字典"""
+    defaults = {
+        "taste": {
+            "taste_tolerance": "无辣",
+            "dietary_restrictions": [],
+            "cuisine_preference": [],
+        },
+        "commute": {
+            "walking_tolerance_meters": 800,
+            "transport_priority": "步行优先",
+        },
+        "budget": {
+            "price_level": "中端",
+            "rating_cutoff": 4.0,
+        },
+        "lifestyle": {
+            "hydration_interval_minutes": 90,
+            "medication_schedule": [],
+        },
+    }
+    if not os.path.exists(_MEMORY_PATH):
+        return defaults
+    try:
+        with open(_MEMORY_PATH, "r", encoding="utf-8") as f:
+            text = f.read()
+    except Exception:
+        return defaults
+
+    def _prune(v: str) -> str:
+        return v.strip().lstrip("-").strip()
+
+    # 逐节解析 Markdown 表格
+    for section_name, section_key, field_map in [
+        ("口味", "taste", {
+            "taste_tolerance": "taste_tolerance",
+            "dietary_restrictions": "dietary_restrictions",
+            "cuisine_preference": "cuisine_preference",
+        }),
+        ("通勤", "commute", {
+            "walking_tolerance_meters": "walking_tolerance_meters",
+            "transport_priority": "transport_priority",
+        }),
+        ("预算", "budget", {
+            "price_level": "price_level",
+            "rating_cutoff": "rating_cutoff",
+        }),
+        ("健康作息", "lifestyle", {
+            "hydration_interval_minutes": "hydration_interval_minutes",
+            "medication_schedule": "medication_schedule",
+        }),
+    ]:
+        # 定位到 ## section_name 并以 --- 或文件尾为界
+        import re as _re
+        pat = rf"## {section_name}\s*\n(.*?)(?=\n## |\Z)"
+        m = _re.search(pat, text, _re.DOTALL)
+        if not m:
+            continue
+        section_text = m.group(1)
+        for line in section_text.strip().split("\n"):
+            line = line.strip()
+            if not line.startswith("|"):
+                continue
+            cells = [c.strip() for c in line.split("|")[1:-1]]
+            if len(cells) < 2:
+                continue
+            key, val = cells[0], cells[1]
+            if key == "字段":
+                continue  # header row
+            if key in field_map:
+                target = field_map[key]
+                if target in ("dietary_restrictions", "cuisine_preference"):
+                    defaults[section_key][target] = [
+                        x.strip() for x in val.split(",") if x.strip()
+                    ]
+                elif target == "medication_schedule":
+                    items = []
+                    for chunk in [x.strip() for x in val.split(",") if x.strip()]:
+                        # "08:00:降压药" → time="08:00", name="降压药"
+                        parts = chunk.split(":")
+                        if len(parts) >= 3:
+                            items.append({"time": f"{parts[0]}:{parts[1]}", "name": parts[2]})
+                    defaults[section_key][target] = items
+                elif target == "walking_tolerance_meters":
+                    try:
+                        defaults[section_key][target] = int(val)
+                    except ValueError:
+                        pass
+                elif target == "rating_cutoff":
+                    try:
+                        defaults[section_key][target] = float(val)
+                    except ValueError:
+                        pass
+                elif target == "hydration_interval_minutes":
+                    try:
+                        defaults[section_key][target] = int(val)
+                    except ValueError:
+                        pass
+                else:
+                    defaults[section_key][target] = val
+    return defaults
+
+
+def _write_profile(updates: dict) -> dict:
+    """增量更新 管家记忆.md 中的字段，返回最终 profile"""
+    current = _read_profile()
+    # 合并 updates 到 current
+    for section_key, fields in updates.items():
+        if section_key in current:
+            if isinstance(fields, dict):
+                current[section_key].update(fields)
+
+    # 序列化为 Markdown
+    def _list_or_val(v, section):
+        if isinstance(v, list):
+            if section == "lifestyle" and all(isinstance(i, dict) for i in v):
+                return ", ".join([f"{i['time']}:{i['name']}" for i in v])
+            return ", ".join(v)
+        return str(v)
+
+    md = f"""# 管家记忆 — 用户长期偏好谱
+
+> 本文件由系统自动维护，人类可读 + LLM 可解析。每次交互结束后由管家语义提取并写入。
+
+## 口味
+| 字段 | 值 |
+|---|---|
+| taste_tolerance | {current['taste']['taste_tolerance']} |
+| dietary_restrictions | {_list_or_val(current['taste']['dietary_restrictions'], 'taste')} |
+| cuisine_preference | {_list_or_val(current['taste']['cuisine_preference'], 'taste')} |
+
+## 通勤
+| 字段 | 值 |
+|---|---|
+| walking_tolerance_meters | {current['commute']['walking_tolerance_meters']} |
+| transport_priority | {current['commute']['transport_priority']} |
+
+## 预算
+| 字段 | 值 |
+|---|---|
+| price_level | {current['budget']['price_level']} |
+| rating_cutoff | {current['budget']['rating_cutoff']} |
+
+## 健康作息
+| 字段 | 值 |
+|---|---|
+| hydration_interval_minutes | {current['lifestyle']['hydration_interval_minutes']} |
+| medication_schedule | {_list_or_val(current['lifestyle']['medication_schedule'], 'lifestyle')} |
+"""
+    with open(_MEMORY_PATH, "w", encoding="utf-8") as f:
+        f.write(md)
+    return current
+
 
 # ======================================================================
 # 虚拟时钟全局 session_id
@@ -85,11 +245,44 @@ def _duration(cat: str) -> int:
             "restaurant": 60, "gym": 60, "cinema": 120, "laundry": 30}.get(cat, 45)
 
 
-def _search_poi(agent_instance, user_text: str) -> dict:
-    """执行 LLM 解析 + POI 搜索，返回 (category_list, poi_data) 或错误"""
+def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
+    """执行 LLM 解析 + POI 搜索，返回 (category_list, poi_data) 或错误。
+    profile: 管家记忆偏好谱，用于注入口味/预算参数。
+    """
+    if profile is None:
+        profile = {
+            "taste": {}, "commute": {}, "budget": {}, "lifestyle": {},
+        }
+
+    # 组装偏好注入语段
+    taste = profile.get("taste", {})
+    budget = profile.get("budget", {})
+    cuisine_pref = taste.get("cuisine_preference", [])
+    taste_tol = taste.get("taste_tolerance", "")
+    diet_res = taste.get("dietary_restrictions", [])
+    rating_cutoff = budget.get("rating_cutoff", 4.0)
+    price_level = budget.get("price_level", "中端")
+
+    pref_lines = ["用户的长期偏好如下，请在搜索时酌情使用："]
+    if taste_tol:
+        pref_lines.append(f"- 辣度偏好: {taste_tol}")
+    if diet_res:
+        pref_lines.append(f"- 忌口/过敏: {', '.join(diet_res)}")
+    if cuisine_pref:
+        pref_lines.append(f"- 偏好菜系: {', '.join(cuisine_pref)}")
+    if rating_cutoff:
+        pref_lines.append(f"- 评分底线: {rating_cutoff} 分以上")
+    if price_level:
+        pref_lines.append(f"- 消费预算: {price_level}")
+    pref_text = "\n".join(pref_lines)
+
     system_prompt_1 = {
         "role": "system",
-        "content": "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡/宠物店→pet，咖啡→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry，火锅/海底捞/吃火锅→hotpot。"
+        "content": (
+            f"{pref_text}\n\n"
+            "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡/宠物店→pet，咖啡→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry，火锅/海底捞/吃火锅→hotpot。"
+            f"min_rating 参数请设为 {rating_cutoff}。"
+        )
     }
     agent_instance.context_memory = [system_prompt_1, {"role": "user", "content": user_text}]
 
@@ -130,11 +323,28 @@ def _search_poi(agent_instance, user_text: str) -> dict:
         raw_cats = args.get("categories", [])
         mapped_cats = list(set([backend.CATEGORY_MAP.get(c, c) for c in raw_cats]))
 
+        # 坐标兜底：LLM 可能传中文地名，直接 fallback 到三里屯默认坐标
+        raw_coord = args.get("center_coord", "")
+        coord = raw_coord
+        if raw_coord:
+            parts = raw_coord.strip().split(",")
+            if len(parts) != 2:
+                coord = "39.93,116.45"
+            else:
+                try:
+                    float(parts[0].strip())
+                    float(parts[1].strip())
+                except ValueError:
+                    coord = "39.93,116.45"
+        if not coord or not coord.strip():
+            coord = "39.93,116.45"
+
+        fallback_min_rating = budget.get("rating_cutoff", 0)
         search_res = backend.skill_poi.search_poi_matrix(
-            center_coord=args.get("center_coord", "39.93,116.45"),
+            center_coord=coord,
             categories=mapped_cats,
             radius_meters=args.get("radius_meters", 3000),
-            min_rating=args.get("min_rating", 0)
+            min_rating=args.get("min_rating", fallback_min_rating)
         )
 
         if search_res.get("status") == "SUCCESS":
@@ -151,6 +361,27 @@ def _search_poi(agent_instance, user_text: str) -> dict:
             "content": json.dumps(search_res)
         })
 
+    # 如果所有 tool_call 都失败了，用默认坐标重试一次
+    if not all_results:
+        fallback_cats = []
+        for tool_call in msg.tool_calls:
+            args = json.loads(tool_call.function.arguments)
+            raw_cats = args.get("categories", [])
+            fallback_cats.extend([backend.CATEGORY_MAP.get(c, c) for c in raw_cats])
+        if fallback_cats:
+            fallback_cats = list(set(fallback_cats))
+            retry_res = backend.skill_poi.search_poi_matrix(
+                center_coord="39.93,116.45",
+                categories=fallback_cats,
+                radius_meters=3000,
+                min_rating=fallback_min_rating
+            )
+            if retry_res.get("status") == "SUCCESS":
+                for cat, shoplist in retry_res["search_results"].items():
+                    all_results[cat] = shoplist
+                    for shop in shoplist:
+                        agent_instance.poi_cache[shop["shop_id"]] = shop
+
     # 按品类分组
     agent_instance.poi_cache_per_category = {}
     for sid, shop in agent_instance.poi_cache.items():
@@ -160,10 +391,31 @@ def _search_poi(agent_instance, user_text: str) -> dict:
     return {"categories": list(all_results.keys()), "results": all_results}
 
 
-def _build_categories_for_frontend(agent_instance) -> list:
-    """将 poi_cache_per_category 转为前端需要的格式（top3 + 评分）"""
+def _build_categories_for_frontend(agent_instance, profile: dict = None) -> list:
+    """将 poi_cache_per_category 转为前端需要的格式（top3 + 评分），偏好品类排前"""
+    # 偏好菜系优先排序
+    cuisine_pref = []
+    if profile:
+        cuisine_pref = profile.get("taste", {}).get("cuisine_preference", [])
+    # cuisine_preference 是中文偏好（如"日料", "轻食"），需映射到 category 编码
+    pref_cats = set()
+    for cn in cuisine_pref:
+        for cat_val, cn_val in backend.CATEGORY_NAME_CN.items():
+            if cn_val == cn or cn_val in cn or cn in cn_val:
+                pref_cats.add(cat_val)
+        # 也尝直接匹配 category 编码
+        if cn in backend.CATEGORY_NAME_CN:
+            pref_cats.add(cn)
+
+    def _sort_key(item):
+        cat = item[0]
+        # 偏好品类排前
+        return (0 if cat in pref_cats else 1, cat)
+
+    sorted_cats = sorted(agent_instance.poi_cache_per_category.items(), key=_sort_key)
+
     result = []
-    for cat, shops in agent_instance.poi_cache_per_category.items():
+    for cat, shops in sorted_cats:
         sorted_shops = sorted(shops, key=lambda s: s.get("rating", 0), reverse=True)
         top_n = sorted_shops[:3]
         shops_data = []
@@ -214,7 +466,7 @@ def index():
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
-    """阶段 1: 接收用户文字 → LLM解析 → POI搜索 → 返回品类+店铺列表给前端选择"""
+    """阶段 1: 接收用户文字 → 读偏好谱 → LLM解析 → POI搜索 → 返回品类+店铺列表给前端选择"""
     global agent, session_state
     data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
@@ -225,11 +477,15 @@ def api_start():
     agent.context_memory = []
     session_state["user_input"] = text
 
-    result = _search_poi(agent, text)
+    # 读取长期偏好谱并暂存
+    profile = _read_profile()
+    session_state["_profile"] = profile
+
+    result = _search_poi(agent, text, profile)
     if "error" in result:
         return jsonify({"error": result["error"]}), 500
 
-    categories = _build_categories_for_frontend(agent)
+    categories = _build_categories_for_frontend(agent, profile)
     if not categories:
         return jsonify({"error": "未搜索到任何商户"}), 404
 
@@ -501,14 +757,11 @@ def _run_schedule():
                     "action": item.get("action", ""),
                     "target_location_id": item.get("target_location_id"),
                 })
-            # 日常提醒
-            _schedule_nodes.append({"time": "10:00", "type": "WATER", "id": "wat_1", "name": "喝水提醒"})
-            _schedule_nodes.append({"time": "15:00", "type": "WATER", "id": "wat_2", "name": "喝水提醒"})
-            _schedule_nodes.append({"time": "08:30", "type": "MED", "id": "med_hypertension", "name": "高血压阿司匹林"})
+
             _tm.set_schedule(_CLOCK_SESSION_ID, _schedule_nodes)
 
         # 调用防踩坑 Skill
-        from skills import destination_anti_pitfall as skill_pitfall
+        from skills.destination_anti_pitfall import destination_anti_pitfall as skill_pitfall
         pitfall_input = {
             "trip_id": f"trip_{int(datetime.now().timestamp())}",
             "current_node_index": 0,
@@ -583,7 +836,7 @@ def api_reset():
 @app.route("/api/reflect_trigger", methods=["POST"])
 def api_reflect_trigger():
     """前端用户点击 intent_trigger 按钮后，执行反射动作"""
-    from skills import destination_anti_pitfall as skill_pitfall
+    from skills.destination_anti_pitfall import destination_anti_pitfall as skill_pitfall
     data = request.get_json(silent=True) or {}
     trigger_id = data.get("trigger_id")
     if not trigger_id:
@@ -931,6 +1184,86 @@ def api_swap_shop():
         })
 
 
+@app.route("/api/replan", methods=["POST"])
+def api_replan():
+    """
+    重新排程：修改 now_str（延后出发）并重新调排程引擎。
+    输入: { delay_minutes: int }  — 延后分钟数
+    """
+    data = request.get_json(silent=True) or {}
+    delay = int(data.get("delay_minutes", 0))
+
+    now_str = session_state.get("now_str", "10:00")
+    if delay > 0 and now_str:
+        parts = now_str.split(":")
+        if len(parts) == 2:
+            try:
+                h, m = int(parts[0]), int(parts[1])
+                total = h * 60 + m + delay
+                new_h = total // 60
+                new_m = total % 60
+                if new_h >= 24:
+                    new_h = 23
+                    new_m = 59
+                now_str = f"{new_h:02d}:{new_m:02d}"
+            except:
+                pass
+    session_state["now_str"] = now_str
+    session_state["confirmed_ids"] = []
+    session_state["rejected_ids"] = []
+
+    schedule_res = backend.skill_scheduler.solve_concurrent_timeline(
+        session_state["task_list"],
+        session_state["spatial_matrix"],
+        now_str,
+        session_state["confirmed_ids"],
+        session_state["rejected_ids"],
+    )
+
+    if schedule_res.get("status") == "SUCCESS":
+        cleaned = []
+        for item in schedule_res["timeline"]:
+            memo = item.get("memo", "")
+            task_list = session_state.get("task_list", [])
+            sub = None
+            if item["task_id"]:
+                for t in task_list:
+                    if t["task_id"] == item["task_id"]:
+                        sub = {"action": t["name"], "duration_minutes": t["duration_minutes"]}
+                        break
+            cleaned.append({
+                "time": item["time"],
+                "memo": memo,
+                "action": item["action"],
+                "sub_task": sub,
+            })
+        main_plan = {
+            "departure_time": schedule_res["suggested_departure_time"],
+            "total_minutes": schedule_res["total_duration_minutes"],
+            "timeline": cleaned,
+        }
+        session_state["main_plan"] = main_plan
+
+        return jsonify({
+            "status": "SUCCESS",
+            "departure_time": schedule_res["suggested_departure_time"],
+            "total_minutes": schedule_res["total_duration_minutes"],
+            "timeline": cleaned,
+        })
+    elif schedule_res.get("status") == "CONFIRM_REQUIRED":
+        session_state["phase"] = "conflict"
+        session_state["conflict_task"] = schedule_res["conflict_task"]
+        return jsonify({
+            "status": "CONFIRM_REQUIRED",
+            "conflict_task": {
+                "task_id": schedule_res["conflict_task"]["task_id"],
+                "name": session_state["conflict_task"]["name"],
+            }
+        })
+    else:
+        return jsonify({"status": "ERROR", "message": schedule_res.get("message", "重新排程失败")})
+
+
 # ======================================================================
 # 虚拟时钟 API
 # ======================================================================
@@ -1108,6 +1441,27 @@ def reminder_remove_task():
     current = [n for n in cs.schedule_nodes if n.get("id") != task_id]
     tm.set_schedule(_CLOCK_SESSION_ID, current)
     return jsonify({"status": "SUCCESS"})
+
+
+# ======================================================================
+# 管家长期记忆 API — 偏好谱读写
+# ======================================================================
+
+@app.route("/api/profile/get", methods=["GET"])
+def profile_get():
+    """读取用户长期偏好谱"""
+    return jsonify({"status": "SUCCESS", "profile": _read_profile()})
+
+
+@app.route("/api/profile/set", methods=["POST"])
+def profile_set():
+    """增量更新用户长期偏好谱"""
+    data = request.get_json(silent=True) or {}
+    updates = data.get("updates", {})
+    if not updates:
+        return jsonify({"status": "ERROR", "message": "缺少 updates 字段"}), 400
+    profile = _write_profile(updates)
+    return jsonify({"status": "SUCCESS", "profile": profile})
 
 
 # ======================================================================
