@@ -2137,13 +2137,77 @@ document.addEventListener('DOMContentLoaded', function() {
    if (data && data.virtual_time) clockUpdateUI(data);
  }).catch(() => {});
 
- // 初始化加载提醒列表
- setTimeout(reminderRefreshList, 500);
+ // 初始化：从偏好谱加载健康作息节点到虚拟时钟
+ reminderInitFromProfile().then(function() {
+   setTimeout(reminderRefreshList, 200);
+ });
 });
 
 // ======================================================================
 // 生活健康管家提醒管理
 // ======================================================================
+
+/**
+ * 从管家记忆偏好谱中读取健康作息配置，生成初始 WATER/MED 节点并注册到虚拟时钟。
+ * 仅在虚拟时钟无对应节点时才创建（幂等）。
+ */
+function reminderInitFromProfile() {
+  return fetch(API_BASE + '/api/profile/get')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var profile = (data && data.profile) ? data.profile : {};
+      var lifestyle = profile.lifestyle || {};
+      var hydraInterval = lifestyle.hydration_interval_minutes || 90;
+      var medSchedule = lifestyle.medication_schedule || [];
+
+      // 取现有节点 id 集合，避免重复注册
+      return fetch(API_BASE + '/api/reminder/tasks')
+        .then(function(r2) { return r2.json(); })
+        .then(function(td) {
+          var existingIds = new Set();
+          (td.tasks || []).forEach(function(t) { existingIds.add(t.id); });
+
+          var toAdd = [];
+
+          // 生成 WATER 节点：从 08:00 开始，按 hydration_interval 分钟间隔生成直到 22:00
+          var startMins = 8 * 60; // 08:00
+          var endMins = 22 * 60; // 22:00
+          for (var m = startMins; m <= endMins; m += hydraInterval) {
+            var hh = String(Math.floor(m / 60)).padStart(2, '0');
+            var mm = String(m % 60).padStart(2, '0');
+            var t = hh + ':' + mm;
+            var wid = 'WATER_PROFILE_' + t.replace(':', '');
+            if (!existingIds.has(wid)) {
+              toAdd.push({ id: wid, type: 'WATER', time: t, state: 'pending', label: '喝水', repeat: 'daily' });
+            }
+          }
+
+          // 生成 MED 节点：来自 medication_schedule
+          (medSchedule || []).forEach(function(med, idx) {
+            if (med.time && med.name) {
+              var mid = 'MED_PROFILE_' + med.time.replace(':', '') + '_' + idx;
+              if (!existingIds.has(mid)) {
+                toAdd.push({ id: mid, type: 'MED', time: med.time, state: 'pending', label: med.name, repeat: 'daily' });
+              }
+            }
+          });
+
+          // 批量注册
+          var chain = Promise.resolve();
+          toAdd.forEach(function(node) {
+            chain = chain.then(function() {
+              return fetch(API_BASE + '/api/reminder/add_task', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node: node })
+              });
+            });
+          });
+          return chain;
+        });
+    })
+    .catch(function() { /* 偏好谱读取失败（如文件不存在），静默 */ });
+}
 
 /**
  * 从后端拉取所有 WATER/MED 提醒节点

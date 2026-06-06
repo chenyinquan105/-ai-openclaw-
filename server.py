@@ -340,11 +340,13 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
             coord = "39.93,116.45"
 
         fallback_min_rating = budget.get("rating_cutoff", 0)
+        fallback_price_level = budget.get("price_level", None)
         search_res = backend.skill_poi.search_poi_matrix(
             center_coord=coord,
             categories=mapped_cats,
             radius_meters=args.get("radius_meters", 3000),
-            min_rating=args.get("min_rating", fallback_min_rating)
+            min_rating=args.get("min_rating", fallback_min_rating),
+            price_level=fallback_price_level,
         )
 
         if search_res.get("status") == "SUCCESS":
@@ -374,7 +376,8 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
                 center_coord="39.93,116.45",
                 categories=fallback_cats,
                 radius_meters=3000,
-                min_rating=fallback_min_rating
+                min_rating=fallback_min_rating,
+                price_level=fallback_price_level,
             )
             if retry_res.get("status") == "SUCCESS":
                 for cat, shoplist in retry_res["search_results"].items():
@@ -760,13 +763,31 @@ def _run_schedule():
 
             _tm.set_schedule(_CLOCK_SESSION_ID, _schedule_nodes)
 
+        # 读取管家偏好，注入通勤参数
+        _commute = _read_profile().get("commute", {})
+        _walk_tolerance = _commute.get("walking_tolerance_meters", 800)
+        _transport_priority = _commute.get("transport_priority", "步行优先")
+        # 若用户在前端选了交通方式 → 用前端的；否则用偏好默认
+        _user_transport = session_state.get("transport", "")
+        if not _user_transport or _user_transport == "步行":
+            _user_transport = _transport_priority
+
+        # 映射 transport_priority 到前端四个值
+        _transport_map = {
+            "步行优先": "步行",
+            "打车优先": "打车",
+            "地铁优先": "公共交通",
+        }
+        _user_transport = _transport_map.get(_user_transport, _user_transport)
+
         # 调用防踩坑 Skill
         from skills.destination_anti_pitfall import destination_anti_pitfall as skill_pitfall
         pitfall_input = {
             "trip_id": f"trip_{int(datetime.now().timestamp())}",
             "current_node_index": 0,
             "pipeline_nodes": [],
-            "transport": session_state.get("transport", "步行"),
+            "transport": _user_transport,
+            "walking_tolerance_meters": _walk_tolerance,
             "environmental_context": {
                 "timestamp": int(datetime.now().timestamp()),
                 "weather_summary": "今日多云，傍晚空气湿度较大，体感闷热",

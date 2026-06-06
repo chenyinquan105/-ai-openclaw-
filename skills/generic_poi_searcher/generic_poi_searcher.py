@@ -118,6 +118,7 @@ def search_poi_matrix(
     categories: List[str],
     radius_meters: int,
     min_rating: float,
+    price_level: str = None,
 ) -> dict:
     """
     通用空间商户检索器。
@@ -127,6 +128,10 @@ def search_poi_matrix(
         categories   (list): 品类字符串数组，如 ["hair", "pet"]
         radius_meters (int): 搜索半径（米）
         min_rating  (float): 最低评分过滤
+        price_level  (str): 消费预算过滤，可选 "经济"/"中端"/"高端", None=不过滤
+            - 经济: signature_dishes[0].price 平均 < 50
+            - 中端: 50-200
+            - 高端: > 200
 
     返回:
         dict: 符合物理契约的出参字典，可直接 json.dumps。
@@ -140,11 +145,38 @@ def search_poi_matrix(
         return {"status": "ERROR", "message": "radius_meters 必须是正整数"}
     if not isinstance(min_rating, (int, float)):
         return {"status": "ERROR", "message": "min_rating 必须是数字"}
+    if price_level is not None and price_level not in ("经济", "中端", "高端"):
+        return {"status": "ERROR", "message": f"price_level 必须是 '经济'/'中端'/'高端'/None，实际收到: {price_level!r}"}
 
     try:
         center_lat, center_lng = _parse_coord(center_coord)
     except ValueError as e:
         return {"status": "ERROR", "message": str(e)}
+
+    # ---------- 价格水平判定工具 ----------
+    import re as _price_re
+
+    def _extract_avg_price(shop: dict) -> float:
+        """从 signature_dishes[0].price 提取 ¥数字，无法提取返回无穷大"""
+        dishes = shop.get("signature_dishes", [])
+        if not dishes:
+            return float("inf")
+        prices = []
+        for d in dishes:
+            raw = d.get("price", "")
+            m = _price_re.search(r"[¥￥]?\s*(\d+)", raw)
+            if m:
+                prices.append(float(m.group(1)))
+        return sum(prices) / len(prices) if prices else float("inf")
+
+    def _price_in_level(avg: float, level: str) -> bool:
+        if level == "经济":
+            return avg < 50
+        elif level == "中端":
+            return 50 <= avg <= 200
+        elif level == "高端":
+            return avg > 200
+        return True
 
     # ---------- 核心过滤 ----------
     result_map: dict = {cat: [] for cat in categories}
@@ -165,6 +197,12 @@ def search_poi_matrix(
         dist_m = dist_km * 1000.0
         if dist_m > radius_meters:
             continue
+
+        # 4) 价格水平过滤
+        if price_level:
+            avg_price = _extract_avg_price(shop)
+            if not _price_in_level(avg_price, price_level):
+                continue
 
         # 构造出参条目
         entry = {
