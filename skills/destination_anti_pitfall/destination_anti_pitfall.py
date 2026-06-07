@@ -269,29 +269,29 @@ def execute_anti_pitfall_skill(input_payload: dict, client=None, model: str = "d
 
             # 填充局部空间节点体感指引域
             # 步行距离评估：超过 walking_tolerance 时自动建议打车
-        walking_tolerance = input_payload.get("walking_tolerance_meters", 800)
-        if node.get("distance_meters", 0) > walking_tolerance and user_transport == "步行":
-            final_content += f"\n\n🚕 距 {node_name} 步行约 {node.get('distance_meters', 0)}m，超过您的步行容忍距离({walking_tolerance}m)，建议打车前往。"
-            if not any(t.get("trigger_id", "").startswith(f"trig_taxi_{node_id}") for t in output_response["intent_triggers"]):
-                output_response["intent_triggers"].append({
-                    "trigger_id": f"trig_taxi_{node_id}_{int(time.time())}",
-                    "ui_manifest": {
-                        "component_type": "standard_button",
-                        "prompt_text": f"前往 [{node_name}] 步行距离({node.get('distance_meters', 0)}m)较远，是否一键叫车？",
-                        "confirm_label": "叫车",
-                        "cancel_label": "不需要",
-                    },
-                    "action_reflection": {
-                        "target_tools": ["virtual_call_taxi"],
-                        "parameter_mapping": {
-                            "taxi_target_name": node_name,
-                            "taxi_target_coord": coordinate,
-                            "request_timestamp": int(time.time()),
+            walking_tolerance = input_payload.get("walking_tolerance_meters", 800)
+            if node.get("distance_meters", 0) > walking_tolerance and user_transport == "步行":
+                final_content += f"\n\n🚕 距 {node_name} 步行约 {node.get('distance_meters', 0)}m，超过您的步行容忍距离({walking_tolerance}m)，建议打车前往。"
+                if not any(t.get("trigger_id", "").startswith(f"trig_taxi_{node_id}") for t in output_response["intent_triggers"]):
+                    output_response["intent_triggers"].append({
+                        "trigger_id": f"trig_taxi_{node_id}_{int(time.time())}",
+                        "ui_manifest": {
+                            "component_type": "standard_button",
+                            "prompt_text": f"前往 [{node_name}] 步行距离({node.get('distance_meters', 0)}m)较远，是否一键叫车？",
+                            "confirm_label": "叫车",
+                            "cancel_label": "不需要",
                         },
-                    },
-                })
+                        "action_reflection": {
+                            "target_tools": ["virtual_call_taxi"],
+                            "parameter_mapping": {
+                                "taxi_target_name": node_name,
+                                "taxi_target_coord": coordinate,
+                                "request_timestamp": int(time.time()),
+                            },
+                        },
+                    })
 
-        output_response["localized_insights"].append({
+            output_response["localized_insights"].append({
                 "associated_node_id": node_id,
                 "title": behavior_rule["title"],
                 "content": final_content
