@@ -1502,6 +1502,8 @@ function appendExecChatMessage(text) {
   });
   var cover = document.getElementById('exec-cover');
   if (cover && cover.classList.contains('hidden')) {
+    // 打开前先保存当前已追加的消息到缓存，防止 openExecCover 覆盖
+    execContentCache = content.innerHTML;
     openExecCover();
   }
 }
@@ -1712,7 +1714,12 @@ function closeShopDetail() {
  * PlanB 统一刷新：清执行计划缓存 + 重渲主页面 + 如 exec-cover 打开则关闭后重新打开
  */
 function _planbFlushExecCover() {
-  execContentCache = null;
+  // 关闭前把当前 exec-plan-content 中的聊天消息保存下来，
+  // 这样重建时不会丢失 Plan B 执行过程中 append 的消息。
+  var content = document.getElementById('exec-plan-content');
+  if (content) {
+    execContentCache = content.innerHTML;
+  }
   var execCover = document.getElementById('exec-cover');
   if (execCover && !execCover.classList.contains('hidden')) {
     execCover.classList.add('hidden');
@@ -1751,12 +1758,12 @@ function executePlanB() {
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕，行程时间已重新计算。');
+      appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕，因暴雨天气影响出行安全。待暴雨解除后会自动提醒您雨停了，可恢复步行/原出行方式。');
       if (data.timeline) { renderSchedule(data); }
       _planbFlushExecCover();
     })
     .catch(function() {
-      appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕。');
+      appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕。待暴雨解除后会自动提醒您雨停了，可恢复步行/原出行方式。');
       if (lastScheduleData) { renderSchedule(lastScheduleData); }
       _planbFlushExecCover();
     });
@@ -1801,14 +1808,14 @@ function executePlanB() {
           .then(function(r) { return r.json(); })
           .then(function(insRes) {
             var name = insRes.shelter_name || shelterShopName || '附近饮品店';
-            appendExecChatMessage('为您添加了避雨点 <b>' + name + '</b> ☕，已安排为行程第一个目的地。请等雨势减弱后再出发前往后续节点。');
+            appendExecChatMessage('已为您更换行程，前往 <b>' + name + '</b> ☕ 进行避雨。待暴雨解除后会自动提醒您雨停了，继续行程。');
             if (insRes.timeline) {
               renderSchedule(insRes);
               _planbFlushExecCover();
             }
           })
           .catch(function() {
-            appendExecChatMessage('已为您安排避雨点 ☕，已加入行程第一站。');
+            appendExecChatMessage('已为您更换行程前往避雨点 ☕。待暴雨解除后会自动提醒您雨停了，继续行程。');
           });
         }
       );
@@ -1956,12 +1963,12 @@ function executePlanB() {
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段，行程时间已重新计算。');
+          appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。待拥堵解除后会自动提醒您恢复原出行方式。');
           if (data.timeline) { renderSchedule(data); }
           _planbFlushExecCover();
         })
         .catch(function() {
-          appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。');
+          appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。待拥堵解除后会自动提醒您恢复原出行方式。');
           if (lastScheduleData) { renderSchedule(lastScheduleData); }
           _planbFlushExecCover();
         });
@@ -2008,7 +2015,7 @@ function executePlanB() {
           .then(function(r) { return r.json(); })
           .then(function(swapRes) {
             var extraMsg = isQueue ? '，已自动为您 <b>一键排号</b> 🎫' : '';
-            appendExecChatMessage('已将异常店铺替换为 <b>' + (swapShopName || '新店铺') + '</b>' + extraMsg + '，行程已更新。');
+            appendExecChatMessage('已为您更换行程，前往 <b>' + (swapShopName || '新店铺') + '</b>' + extraMsg + '，已更新行程。待原店铺恢复正常后会自动提醒您。');
             if (swapRes.timeline) {
               renderSchedule(swapRes);
               _planbFlushExecCover();
@@ -2089,9 +2096,27 @@ function renderActiveExceptions() {
 }
 
 function removeActiveException(id) {
- activeExceptions = activeExceptions.filter(exc => exc.id !== id);
+ var removedExc = activeExceptions.find(function(exc) { return exc.id === id; });
+ activeExceptions = activeExceptions.filter(function(exc) { return exc.id !== id; });
  renderActiveExceptions();
- alert('异常环境干扰已清除，行程重新对齐美团原生规划航线。');
+
+ // 异常关闭钩子：按类型在聊天面板自动生成恢复消息
+ if (removedExc) {
+   var excType = removedExc.type || '';
+   if (excType.indexOf('暴雨') !== -1) {
+     appendExecChatMessage('🌤️ <b>暴雨已解除</b>，天气转好，雨停了，继续您的行程吧！');
+   } else if (excType.indexOf('堵车') !== -1 || excType.indexOf('拥堵') !== -1) {
+     appendExecChatMessage('🚗 <b>拥堵已缓解</b>，道路恢复畅通，可恢复正常出行。');
+   } else if (excType.indexOf('停电') !== -1) {
+     appendExecChatMessage('💡 <b>餐厅供电已恢复</b>，该店铺已正常营业，可前往用餐。');
+   } else if (excType.indexOf('排号') !== -1) {
+     appendExecChatMessage('📋 <b>排号已恢复</b>，当前排队人数恢复正常，可继续前去。');
+   } else {
+     appendExecChatMessage('✅ <b>' + excType + '已解除</b>，环境恢复正常。');
+   }
+ } else {
+   appendExecChatMessage('✅ 异常环境干扰已清除，行程重新对齐美团原生规划航线。');
+ }
 }
 
 // ======================================================================
