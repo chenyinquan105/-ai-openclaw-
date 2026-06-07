@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 import queue
+import threading
+import time as _time
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 
@@ -492,6 +494,13 @@ def _build_categories_for_frontend(agent_instance, profile: dict = None) -> list
 # API 路由
 # ======================================================================
 
+@app.after_request
+def _add_no_cache(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 @app.route("/")
 def index():
     return send_from_directory(base_dir, "index.html")
@@ -816,7 +825,10 @@ def _run_schedule():
         _tm = time_master.get_master()
         _cs = _tm.get_session(_CLOCK_SESSION_ID)
         if _cs:
-            _schedule_nodes = []
+            # 保留 WATER/MED 提醒节点，只替换 SCHEDULE 节点
+            _old_nodes = list(_cs.schedule_nodes) if _cs.schedule_nodes else []
+            _reminder_nodes = [n for n in _old_nodes if n.get("type") in ("WATER", "MED")]
+            _schedule_nodes = _reminder_nodes[:]  # 先放提醒节点
             for item in schedule_res["timeline"]:
                 _schedule_nodes.append({
                     "time": item["time"],
@@ -1498,15 +1510,17 @@ def api_replan():
 
 @app.route("/api/clock/init", methods=["POST"])
 def clock_init():
-    """初始化或重置虚拟时钟，接收 schedule_nodes JSON"""
+    """初始化或重置虚拟时钟，保留现有 WATER/MED 提醒节点"""
     data = request.get_json() or {}
     tm = time_master.get_master()
     initial_time = data.get("initial_time", "08:00")
     nodes = data.get("schedule_nodes", [])
-    # 先创建/获取 session，再注册排程节点
     clock = tm.get_or_create_session(_CLOCK_SESSION_ID, initial_time=initial_time)
-    tm.set_schedule(_CLOCK_SESSION_ID, nodes, initial_time=initial_time)
-    # 强制覆盖虚拟时间为前端指定的初始时间（session 已存在时 get_or_create 不会改时间）
+    # 保留现有 WATER/MED 提醒节点，合并前端传的非提醒节点
+    existing = list(clock.schedule_nodes) if clock.schedule_nodes else []
+    reminder_nodes = [n for n in existing if n.get("type") in ("WATER", "MED")]
+    merged = reminder_nodes + [n for n in nodes if n.get("type") not in ("WATER", "MED")]
+    tm.set_schedule(_CLOCK_SESSION_ID, merged, initial_time=initial_time)
     h, m = initial_time.split(":")
     clock.virtual_minutes = float(int(h) * 60 + int(m))
     clock.is_running = False
@@ -1689,6 +1703,110 @@ def sse_events():
             "Connection": "keep-alive",
         },
     )
+
+
+# ======================================================================
+# 独立于虚拟时钟的后台提醒轮询线程
+# 无论虚拟时钟开或关，用系统真实时间独立检测提醒节点到期
+# ======================================================================
+
+# 记录每个提醒节点今天是否已触发过（key: task_id），每天清零
+_realtime_reminder_fired_today: dict = {}
+_realtime_reminder_date: str = ""
+_realtime_reminder_lock = threading.Lock()
+
+
+def _realtime_reminder_poller():
+    """
+    后台线程：每 30 秒用系统真实时间轮询一次。
+    - 不依赖虚拟时钟
+    - 不依赖 clock_enabled
+    - 到时间的 WATER/MED 节点直接 SSE 广播弹窗事件
+    - repeat=daily 的节点每天自动重新就绪
+    """
+    global _realtime_reminder_fired_today, _realtime_reminder_date
+    while True:
+        try:
+            now = datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            now_time = now.strftime("%H:%M")
+
+            # 日期变了，清空已触发标记（允许次日重新提醒）
+            with _realtime_reminder_lock:
+                if _realtime_reminder_date != today_str:
+                    _realtime_reminder_fired_today = {}
+                    _realtime_reminder_date = today_str
+
+            # 从虚拟时钟 session 读取所有 WATER/MED 节点
+            tm = time_master.get_master()
+            cs = tm.get_session(_CLOCK_SESSION_ID)
+            if cs and cs.schedule_nodes:
+                alerts = []
+                for n in cs.schedule_nodes:
+                    ntype = n.get("type", "")
+                    if ntype not in ("WATER", "MED"):
+                        continue
+                    tid = n.get("id", "")
+                    node_time = n.get("time", "")  # "HH:MM"
+                    if not tid or not node_time:
+                        continue
+
+                    # 只有到达提醒时间才触发（误差 1 分钟内）
+                    if node_time != now_time:
+                        continue
+
+                    # 今天已触发过则跳过（防重复）
+                    with _realtime_reminder_lock:
+                        if _realtime_reminder_fired_today.get(tid):
+                            continue
+                        _realtime_reminder_fired_today[tid] = True
+
+                    label = n.get("label", "喝水" if ntype == "WATER" else "吃药")
+                    if ntype == "WATER":
+                        alerts.append({
+                            "type": "WATER_RINGING_ALERT",
+                            "med_id": tid,
+                            "task_id": tid,
+                            "message": f"⏰ {label}时间到了！该喝水了 💧",
+                            "label": label,
+                            "time": node_time,
+                        })
+                    else:
+                        alerts.append({
+                            "type": "MED_RINGING_ALERT",
+                            "med_id": tid,
+                            "task_id": tid,
+                            "message": f"⏰ {label}时间到了！请按时服药 💊",
+                            "label": label,
+                            "time": node_time,
+                        })
+
+                if alerts:
+                    _broadcast_sse_events(alerts)
+
+        except Exception:
+            pass  # 静默，不因一次异常终止
+
+        _time.sleep(30)
+
+
+_realtime_poller_started = False
+_realtime_poller_thread = None
+
+
+def _ensure_realtime_poller():
+    """确保独立轮询线程已启动（幂等）"""
+    global _realtime_poller_started, _realtime_poller_thread
+    if _realtime_poller_started:
+        return
+    _realtime_poller_started = True
+    _realtime_poller_thread = threading.Thread(
+        target=_realtime_reminder_poller,
+        daemon=True,
+        name="realtime-reminder-poller"
+    )
+    _realtime_poller_thread.start()
+    print("⏰ 独立提醒轮询线程已启动（不依赖虚拟时钟）")
 
 
 # ======================================================================
@@ -2112,4 +2230,5 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     print(f"🚀 美团 AI 助手服务启动: http://localhost:{port}")
     _reset_session()
+    _ensure_realtime_poller()
     app.run(host="0.0.0.0", port=port, threaded=True, debug=False)

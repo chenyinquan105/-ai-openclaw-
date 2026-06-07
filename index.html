@@ -47,6 +47,11 @@
 .reminder-pulse { animation: reminder-pulse 1.2s ease-in-out infinite; }
 .reminder-shake { animation: reminder-shake 0.4s ease-in-out; }
 .reminder-fade-in { animation: reminder-fade-in 0.35s ease-out; }
+/* 提醒弹窗由 JS 动态创建到 body，display 由 JS 控制，CSS 只做定位兜底 */
+#reminder-dialog {
+  align-items: center !important;
+  justify-content: center !important;
+}
 .glass-panel {
  background: rgba(255, 255, 255, 0.45);
  backdrop-filter: blur(30px) saturate(190%);
@@ -159,9 +164,9 @@
  <div class="space-y-2">
  <label class="block text-xs font-bold text-gray-400 tracking-wider">🚀 倍速</label>
  <div class="grid grid-cols-3 gap-2">
- <button onclick="clockSetSpeed(2)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center active:border-green-400" id="speed-1x-btn">2x</button>
- <button onclick="clockSetSpeed(5)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center" id="speed-2x-btn">5x</button>
- <button onclick="clockSetSpeed(10)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center" id="speed-3x-btn">10x</button>
+ <button onclick="clockSetSpeed(1)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center active:border-green-400" id="speed-1x-btn">1x</button>
+ <button onclick="clockSetSpeed(2)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center" id="speed-2x-btn">2x</button>
+ <button onclick="clockSetSpeed(3)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center" id="speed-3x-btn">3x</button>
  </div>
  <button onclick="clockResetSpeed()" class="w-full bg-gray-800 hover:bg-red-900/50 text-xs font-bold py-2.5 rounded-xl border border-gray-700 transition text-center mt-1">
  ⏹ 关闭倍速
@@ -380,25 +385,6 @@
     <div class="mt-3 text-center">
       <span onclick="closeNlReminderModal();reminderOpenAdd(window._nlReminderType||'WATER')" class="text-xs text-gray-400 underline cursor-pointer hover:text-gray-600">或选择预设时间</span>
     </div>
-  </div>
- </div>
-
- <!-- 五步强闭环提醒弹窗 -->
- <div id="reminder-dialog" class="absolute inset-0 flex items-center justify-center z-[65] hidden" style="background: rgba(0,0,0,0.5);">
-  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 reminder-fade-in">
-   <div class="text-center mb-4">
-    <div id="reminder-dialog-icon" class="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3 reminder-pulse">
-     <span class="text-3xl">🔔</span>
-    </div>
-    <h3 id="reminder-dialog-title" class="text-lg font-black text-gray-900"></h3>
-    <p id="reminder-dialog-body" class="text-sm text-gray-600 mt-2 leading-relaxed whitespace-pre-line"></p>
-   </div>
-   <!-- 操作按钮区 -->
-   <div id="reminder-dialog-actions" class="space-y-2 mb-0"></div>
-   <!-- 关闭按钮（非强制不可关闭场景） -->
-   <div id="reminder-dialog-close-wrap" class="mt-3 hidden">
-    <button onclick="closeReminderDialog()" class="w-full bg-gray-100 text-gray-600 font-bold py-2.5 rounded-2xl hover:bg-gray-200 transition text-sm">我知道了</button>
-   </div>
   </div>
  </div>
 
@@ -2183,7 +2169,7 @@ function removeActiveException(id) {
 // ======================================================================
 
 let clockPowerOn = false;  // 默认关闭（采用真实时间）
-let clockCurrentSpeed = 1;  // 当前倍率，默认 1x（每秒 1 虚拟分钟）
+let clockCurrentSpeed = 1;  // 当前倍率，默认 1x = 每秒 1 虚拟分钟
 
 function clockTogglePower() {
   clockPowerOn = !clockPowerOn;
@@ -2205,15 +2191,28 @@ function clockTogglePower() {
     body.style.opacity = '1';
     body.style.pointerEvents = 'auto';
     playBtn.classList.remove('hidden');
-    playBtn.textContent = '▶';
+    playBtn.textContent = '\u25B6';
     slider.classList.remove('hidden');
     sliderLabel.classList.remove('hidden');
     slider.value = initMins;
     clockFetch('POST', '/api/clock/speed', {speed: 1}).catch(() => {});
+    // 开启虚拟时钟时保留已有提醒节点，避免清空
+    var existingNodes = window._clockScheduleNodes || [];
     clockFetch('POST', '/api/clock/init', {
       initial_time: initTime,
-      schedule_nodes: []
-    }).catch(() => {});
+      schedule_nodes: existingNodes
+    }).then(function() {
+      // 如果还有后端持久化的提醒节点，同步回来
+      return fetch(API_BASE + '/api/reminder/tasks').then(function(r) { return r.json(); });
+    }).then(function(td) {
+      var tasks = td.tasks || [];
+      if (tasks.length > 0) {
+        window._clockScheduleNodes = tasks.map(function(t) {
+          return {time: t.time, type: t.type, id: t.id, memo: (t.label || '') + '提醒', action: (t.label || '') + '提醒', duration_minutes: 0};
+        });
+        return clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes});
+      }
+    }).catch(function() {});
     clockUpdateUI({virtual_time: initTime, is_running: false, speed: 1});
   } else {
     // 关
@@ -2225,23 +2224,30 @@ function clockTogglePower() {
     slider.classList.add('hidden');
     sliderLabel.classList.add('hidden');
     clockFetch('POST', '/api/clock/stop').catch(() => {});
-    updateRealTimeDisplay();
+    // 立即同步一次真实时间（复用下方真实时钟 setInterval 的内联逻辑）
+    (function() {
+      var display = document.getElementById('clock-display');
+      if (display) {
+        var now = new Date();
+        var hh = String(now.getHours()).padStart(2, '0');
+        var mm = String(now.getMinutes()).padStart(2, '0');
+        display.textContent = hh + ':' + mm;
+      }
+    })();
   }
 }
 
 function clockTogglePlay() {
-  const playBtn = document.getElementById('clock-play-btn');
-  if (playBtn.textContent === '▶') {
+  var playBtn = document.getElementById('clock-play-btn');
+  if (playBtn.textContent === '▶' || playBtn.textContent === '\u25B6') {
     // 继续 — 以当前倍率启动
     clockFetch('POST', '/api/clock/start').then(data => {
       clockUpdateUI({...data, is_running: true});
-      playBtn.textContent = '⏸';
       clockLogEvent('▶ 自动走时已继续', 'info');
     }).catch(() => {});
   } else {
-    // 暂停
+    // 暂停 — clockStop 内部已处理 playBtn.textContent 和 clockLogEvent
     clockStop();
-    playBtn.textContent = '▶';
   }
 }
 
@@ -2249,7 +2255,12 @@ function clockSliderPreview(val) {
   const mins = parseInt(val);
   const hh = String(Math.floor(mins / 60)).padStart(2,'0');
   const mm = String(mins % 60).padStart(2,'0');
-  document.getElementById('clock-display').textContent = hh + ':' + mm;
+  var target = hh + ':' + mm;
+  var display = document.getElementById('clock-display');
+  // 防频闪：只在值变化时写入 DOM
+  if (display && display.textContent !== target) {
+    display.textContent = target;
+  }
 }
 
 function clockSliderChange(val) {
@@ -2275,18 +2286,18 @@ function clockSliderChange(val) {
   });
 }
 
-function updateRealTimeDisplay() {
-  const display = document.getElementById('clock-display');
+// 每秒更新真实时间（关闭时不更新 → 不闪烁）
+var _realTimeUpdatePaused = false;
+setInterval(function() {
+  if (_realTimeUpdatePaused) return;
+  var display = document.getElementById('clock-display');
   if (display && !clockPowerOn) {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, '0');
+    var mm = String(now.getMinutes()).padStart(2, '0');
     display.textContent = hh + ':' + mm;
   }
-}
-
-// 每秒更新真实时间
-setInterval(updateRealTimeDisplay, 1000);
+}, 1000);
 
 // ======================================================================
 // 虚拟时钟 UI
@@ -2302,66 +2313,92 @@ async function clockFetch(method, path, body) {
   return res.json();
 }
 
+// 速度按钮高亮状态缓存（防 class 抖动）
+var _clockLastHighlightedSpeedBtn = null;
 function clockUpdateUI(data) {
   const display = document.getElementById('clock-display');
   const playBtn = document.getElementById('clock-play-btn');
   const slider = document.getElementById('clock-slider');
   if (data.virtual_time) {
-    display.textContent = data.virtual_time;
-    // 同步滑块
+    // 防频闪：只在值变化时才写入 DOM
+    if (display.textContent !== data.virtual_time) {
+      display.textContent = data.virtual_time;
+    }
+    // 同步滑块（同样只在值变化时写入）
     if (slider) {
       const parts = data.virtual_time.split(':');
-      slider.value = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      const targetVal = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      if (parseInt(slider.value) !== targetVal) {
+        slider.value = targetVal;
+      }
     }
   }
-  // 暂停/继续按钮状态
+  // 暂停/继续按钮状态（防频闪：比较后再写）
   if (playBtn) {
-    playBtn.textContent = data.is_running ? '⏸' : '▶';
-  }
-  // 更新速度按钮高亮
-  const speedBtns = ['speed-1x-btn', 'speed-2x-btn', 'speed-3x-btn'];
-  speedBtns.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.remove('border-green-400', 'bg-green-900/30');
-  });
-  if (data.is_running && data.speed) {
-    const speedMap = {2:0, 5:1, 10:2};
-    const idx = speedMap[Math.round(data.speed)];
-    if (idx !== undefined) {
-      const el = document.getElementById(speedBtns[idx]);
-      if (el) el.classList.add('border-green-400', 'bg-green-900/30');
+    var wantPlayText = data.is_running ? '\u23F8' : '\u25B6';
+    if (playBtn.textContent !== wantPlayText) {
+      playBtn.textContent = wantPlayText;
     }
+  }
+  // 更新速度按钮高亮（防 class 抖动：只在变化时切换）
+  var speedBtns = ['speed-1x-btn', 'speed-2x-btn', 'speed-3x-btn'];
+  var targetSpeedBtnId = null;
+  if (data.is_running && data.speed) {
+    var speedMap = {1:0, 2:1, 3:2};
+    var idx = speedMap[Math.round(data.speed)];
+    if (idx !== undefined) {
+      targetSpeedBtnId = speedBtns[idx];
+    }
+  }
+  // 仅在目标按钮不同于上次高亮按钮时才切换
+  if (_clockLastHighlightedSpeedBtn !== targetSpeedBtnId) {
+    // 移除旧高亮
+    if (_clockLastHighlightedSpeedBtn) {
+      var oldEl = document.getElementById(_clockLastHighlightedSpeedBtn);
+      if (oldEl) oldEl.classList.remove('border-green-400', 'bg-green-900/30');
+    }
+    // 添加新高亮
+    if (targetSpeedBtnId) {
+      var newEl = document.getElementById(targetSpeedBtnId);
+      if (newEl) newEl.classList.add('border-green-400', 'bg-green-900/30');
+    }
+    _clockLastHighlightedSpeedBtn = targetSpeedBtnId;
   }
 }
 
-function clockLogEvent(msg, type) {
-  const log = document.getElementById('clock-event-log');
-  const placeholder = log.querySelector('.text-gray-500');
-  if (placeholder) placeholder.remove();
-  const div = document.createElement('div');
-  div.className = 'py-1 px-2 rounded-lg ' + (type === 'event' ? 'bg-green-900/20 text-green-300' : type === 'alert' ? 'bg-yellow-900/20 text-yellow-300' : 'bg-gray-800/50 text-gray-300');
-  div.textContent = msg;
-  log.appendChild(div);
-  // 环形缓冲：保留最多 3 条
-  while (log.children.length > 3) {
-    log.removeChild(log.firstChild);
+// 日志环形缓冲：预渲染 3 个固定 div（避免频繁创建/销毁 DOM 造成布局抖动）
+var _clockLogSlots = [];
+var _clockLogPtr = 0;
+function _clockLogEnsureSlots() {
+  var log = document.getElementById('clock-event-log');
+  if (_clockLogSlots.length > 0) return;
+  // 移除占位符
+  var ph = log.querySelector('.text-gray-500');
+  if (ph) ph.remove();
+  // 预创建 3 个 div
+  for (var i = 0; i < 3; i++) {
+    var div = document.createElement('div');
+    div.className = 'py-1 px-2 rounded-lg hidden';
+    div.textContent = '';
+    log.appendChild(div);
+    _clockLogSlots.push(div);
   }
+}
+function clockLogEvent(msg, type) {
+  _clockLogEnsureSlots();
+  var slot = _clockLogSlots[_clockLogPtr];
+  slot.textContent = msg;
+  slot.className = 'py-1 px-2 rounded-lg ' + (type === 'event' ? 'bg-green-900/20 text-green-300' : type === 'alert' ? 'bg-yellow-900/20 text-yellow-300' : 'bg-gray-800/50 text-gray-300');
+  slot.classList.remove('hidden');
+  _clockLogPtr = (_clockLogPtr + 1) % 3;
+  // 滚动到最新
+  var log = document.getElementById('clock-event-log');
   log.scrollTop = log.scrollHeight;
 }
 
 async function clockFastForward(delta) {
   if (!clockPowerOn) { clockLogEvent('⚠️ 请先开启虚拟时间控制台', 'alert'); return; }
-  // 先乐观更新显示（无延迟）
-  const display = document.getElementById('clock-display');
-  const slider = document.getElementById('clock-slider');
-  const curTime = display.textContent;
-  const curMins = parseInt(curTime.split(':')[0])*60 + parseInt(curTime.split(':')[1]);
-  const newMins = Math.min(1440, curMins + delta);
-  const newHh = String(Math.floor(newMins/60)).padStart(2,'0');
-  const newMm = String(newMins%60).padStart(2,'0');
-  display.textContent = newHh + ':' + newMm;
-  slider.value = newMins;
-  // 再调后端确认
+  // 直接调后端，由 clockUpdateUI 统一更新 DOM，避免乐观+确认两次写入造成频闪
   const data = await clockFetch('POST', '/api/clock/offset', {delta});
   if (data.status === 'SUCCESS') {
     clockUpdateUI(data);
@@ -2398,8 +2435,6 @@ async function clockStop() {
   const data = await clockFetch('POST', '/api/clock/stop');
   clockUpdateUI({virtual_time: data.virtual_time, is_running: false, speed: 0});
   clockLogEvent('⏹ 自动走时已停止', 'info');
-  const playBtn = document.getElementById('clock-play-btn');
-  if (playBtn) playBtn.textContent = '▶';
 }
 
 async function clockResetSpeed() {
@@ -2437,10 +2472,11 @@ async function clockGoto() {
   }
 }
 
-// 轮询自动走时事件（每 2 秒检查一次）
+// 轮询虚拟时钟状态（每秒一次，匹配后端每秒 tick 的频率）
 setInterval(async function() {
   if (!clockPowerOn) return;
   const st = await clockFetch('GET', '/api/clock/status');
+  // 防频闪：clockUpdateUI 内已有值比较，不会无谓重绘
   clockUpdateUI(st);
   window._clockVirtualTime = st.virtual_time;
   if (st.is_running) {
@@ -2461,7 +2497,59 @@ document.addEventListener('DOMContentLoaded', function() {
    if (data && data.virtual_time) clockUpdateUI(data);
  }).catch(() => {});
 
+ // —— 动态创建提醒弹窗（挂到 body，脱离卡片翻转 transform 上下文） ——
+ initReminderDialog();
+
+ // —— SSE 实时提醒连接 ——
+ connectReminderSSE();
 });
+
+/** 动态创建 reminder-dialog 到 document.body（脱离卡片翻转 transform 上下文） */
+function initReminderDialog() {
+  if (document.getElementById('reminder-dialog')) return;
+  var dlg = document.createElement('div');
+  dlg.id = 'reminder-dialog';
+  dlg.style.cssText = 'display:none;position:fixed;inset:0;z-index:99999;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
+  dlg.innerHTML = '<div style="background:white;margin:0 16px;border-radius:32px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);max-width:360px;width:100%;padding:24px;animation:reminder-fade-in 0.35s ease-out;">' +
+    '<div style="text-align:center;margin-bottom:16px;">' +
+    '<div id="reminder-dialog-icon" style="width:56px;height:56px;background:#fef3c7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;animation:reminder-pulse 1.2s ease-in-out infinite;">' +
+    '<span style="font-size:28px;">🔔</span></div>' +
+    '<h3 id="reminder-dialog-title" style="font-size:18px;font-weight:900;color:#111827;"></h3>' +
+    '<p id="reminder-dialog-body" style="font-size:14px;color:#4b5563;margin-top:8px;line-height:1.6;white-space:pre-line;"></p>' +
+    '</div>' +
+    '<div id="reminder-dialog-actions" style="display:flex;flex-direction:column;gap:8px;"></div>' +
+    '<div id="reminder-dialog-close-wrap" style="margin-top:12px;display:none;">' +
+    '<button onclick="closeReminderDialog()" style="width:100%;background:#f3f4f6;color:#4b5563;font-weight:700;padding:10px 0;border-radius:16px;border:none;font-size:14px;cursor:pointer;">我知道了</button>' +
+    '</div></div>';
+  document.body.appendChild(dlg);
+  console.log('[提醒弹窗] ✅ 已挂载到 document.body（脱离卡片翻转上下文）');
+}
+
+/** 连接 SSE 端点，接收后台推送的提醒弹窗事件 */
+function connectReminderSSE() {
+  if (window._reminderSSE) return; // 已连接
+  console.log('[提醒SSE] 正在连接...');
+  var es = new EventSource(API_BASE + '/api/sse/events');
+  window._reminderSSE = es;
+  es.onopen = function() {
+    console.log('[提醒SSE] ✅ 已连接');
+  };
+  es.onmessage = function(event) {
+    try {
+      var payload = JSON.parse(event.data);
+      var evts = payload.events || [];
+      console.log('[提醒SSE] 📩 收到 ' + evts.length + ' 个事件:', evts.map(function(e){return e.type;}).join(', '));
+      evts.forEach(function(ev) {
+        handleReminderEvent(ev);
+      });
+    } catch(e) { console.log('[提醒SSE] 解析失败:', e); }
+  };
+  es.onerror = function() {
+    console.log('[提醒SSE] ❌ 断开，5秒后重连');
+    window._reminderSSE = null;
+    setTimeout(connectReminderSSE, 5000);
+  };
+}
 
 // ======================================================================
 // 生活健康管家提醒管理
@@ -2680,12 +2768,17 @@ function handleReminderEvent(ev) {
   var msg = ev.message || '';
   var medId = ev.med_id || '';
 
+  console.log('[handleReminderEvent] type=' + type + ' msg=' + (msg||'').substring(0,50));
+
   // 防御：无类型跳过
   if (!type) return false;
 
-  // —— 喝水提醒：轻量 toast ——
-  if (type === 'WATER_UI_ALERT') {
-    toast(msg, 4000);
+  // —— 喝水提醒：中央弹窗 ——
+  if (type === 'WATER_RINGING_ALERT' || type === 'WATER_UI_ALERT') {
+    console.log('[handleReminderEvent] → renderWaterDialog');
+    _reminderActiveMedId = ev.med_id || ev.task_id || '';
+    _reminderActiveState = type;
+    renderWaterDialog(type, msg, ev.label || '喝水', ev.time || '');
     return true;
   }
 
@@ -2725,68 +2818,93 @@ function renderReminderDialog(type, msg, medId) {
   var closeWrap = document.getElementById('reminder-dialog-close-wrap');
   var iconEl = document.getElementById('reminder-dialog-icon');
 
-  // 图标 + 样式
+  // 图标 + 颜色
   var iconEmoji = '🔔';
-  var iconBg = 'bg-yellow-100';
-  var pulseClass = 'reminder-pulse';
+  var iconBg = '#fef3c7';
 
   switch (type) {
     case 'MED_RINGING_ALERT':
       titleEl.textContent = '💊 服药时间到！';
       bodyEl.textContent = msg;
-      iconEmoji = '💊'; iconBg = 'bg-green-100'; break;
+      iconEmoji = '💊'; iconBg = '#d1fae5'; break;
     case 'MED_URGE_LIGHT':
       titleEl.textContent = '⏰ 服药提醒（第1次催促）';
       bodyEl.textContent = msg;
-      iconEmoji = '🔔'; iconBg = 'bg-yellow-100'; break;
+      iconEmoji = '🔔'; iconBg = '#fef3c7'; break;
     case 'MED_URGE_HEAVY':
       titleEl.textContent = '🚨 服药超时（第2次催促）';
       bodyEl.textContent = msg;
-      iconEmoji = '⚠️'; iconBg = 'bg-orange-100'; pulseClass = 'reminder-shake'; break;
+      iconEmoji = '⚠️'; iconBg = '#ffedd5'; break;
     case 'MED_ESCALATION_CRITICAL':
       titleEl.textContent = '🆘 紧急联络已触发';
       bodyEl.textContent = msg;
-      iconEmoji = '🆘'; iconBg = 'bg-red-100'; pulseClass = ''; break;
+      iconEmoji = '🆘'; iconBg = '#fee2e2'; break;
     default:
       titleEl.textContent = '提醒';
       bodyEl.textContent = msg;
   }
 
-  iconEl.innerHTML = '<span class="text-3xl">' + iconEmoji + '</span>';
-  iconEl.className = 'w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 ' + iconBg + (pulseClass ? ' ' + pulseClass : '');
+  iconEl.innerHTML = '<span style="font-size:28px;">' + iconEmoji + '</span>';
+  iconEl.style.background = iconBg;
 
   // 操作按钮
   var isEscalation = (type === 'MED_ESCALATION_CRITICAL');
-  actionsEl.innerHTML = '';
 
   if (isEscalation) {
-    // 紧急联络：只能关闭
     actionsEl.innerHTML = '';
-    closeWrap.classList.remove('hidden');
+    closeWrap.style.display = 'block';
   } else {
-    // 响铃 / 催促：展示 1/2 按钮
-    closeWrap.classList.add('hidden');
+    closeWrap.style.display = 'none';
     actionsEl.innerHTML =
-      '<button onclick="reminderUserAction(\'1\')" class="w-full bg-green-500 text-white font-black py-3.5 rounded-2xl hover:bg-green-600 transition text-base reminder-pulse">' +
+      '<button onclick="reminderUserAction(\'1\')" style="width:100%;background:#22c55e;color:white;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:16px;cursor:pointer;">' +
         '✅ 确认，我现在就去拿药' +
       '</button>' +
-      '<button onclick="reminderUserAction(\'2\')" class="w-full bg-gray-100 text-gray-700 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition text-sm mt-2">' +
+      '<button onclick="reminderUserAction(\'2\')" style="width:100%;background:#f3f4f6;color:#374151;font-weight:700;padding:14px 0;border-radius:16px;border:none;font-size:14px;cursor:pointer;margin-top:8px;">' +
         '⏰ 还没吃饭，帮我延后30分钟提醒' +
       '</button>';
   }
 
-  dlg.classList.remove('hidden');
-  // 重新触发入场动画
-  var card = dlg.querySelector('.bg-white');
+  dlg.style.display = 'flex';
+  var card = dlg.querySelector('div > div');
   if (card) {
-    card.classList.remove('reminder-fade-in');
-    void card.offsetWidth;
-    card.classList.add('reminder-fade-in');
+    card.style.animation = 'none';
+    card.offsetHeight;
+    card.style.animation = 'reminder-fade-in 0.35s ease-out';
+  }
+}
+
+/** 渲染喝水提醒弹窗（轻量——只确认按钮） */
+function renderWaterDialog(type, msg, label, time) {
+  var dlg = document.getElementById('reminder-dialog');
+  var titleEl = document.getElementById('reminder-dialog-title');
+  var bodyEl = document.getElementById('reminder-dialog-body');
+  var actionsEl = document.getElementById('reminder-dialog-actions');
+  var closeWrap = document.getElementById('reminder-dialog-close-wrap');
+  var iconEl = document.getElementById('reminder-dialog-icon');
+
+  titleEl.textContent = '💧 ' + (label || '喝水提醒');
+  bodyEl.textContent = msg;
+  iconEl.innerHTML = '<span style="font-size:28px;">💧</span>';
+  iconEl.style.background = '#dbeafe';
+  closeWrap.style.display = 'none';
+  actionsEl.innerHTML =
+    '<button onclick="closeReminderDialog()" style="width:100%;background:#3b82f6;color:white;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:16px;cursor:pointer;">' +
+      '✅ 知道了' +
+    '</button>';
+
+  dlg.style.display = 'flex';
+  // 入场动画
+  var card = dlg.querySelector('div > div');
+  if (card) {
+    card.style.animation = 'none';
+    card.offsetHeight;
+    card.style.animation = 'reminder-fade-in 0.35s ease-out';
   }
 }
 
 function closeReminderDialog() {
-  document.getElementById('reminder-dialog').classList.add('hidden');
+  var dlg = document.getElementById('reminder-dialog');
+  if (dlg) dlg.style.display = 'none';
   _reminderActiveMedId = null;
   _reminderActiveState = null;
 }
@@ -3068,6 +3186,16 @@ function toggleButlerOptions() {
 // ======================================================================
 // 自然语言提醒输入 — 解析 + 创建
 // ======================================================================
+
+/** 轻量 toast 提示 */
+function toast(msg) {
+  var el = document.createElement('div');
+  el.textContent = msg;
+  el.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm font-bold px-5 py-3 rounded-2xl shadow-2xl z-[100] animate-fade-in pointer-events-none';
+  document.body.appendChild(el);
+  setTimeout(function() { el.style.opacity = '0'; el.style.transition = 'opacity 0.4s'; }, 2000);
+  setTimeout(function() { el.remove(); }, 2500);
+}
 
 var _nlReminderType = 'WATER';
 var _nlParsedPreview = null;

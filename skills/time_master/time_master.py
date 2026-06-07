@@ -12,7 +12,7 @@ time_master.py —— 时间管家（沙盒虚拟时钟芯片）
   - 倍速走时服务端定时器驱动，客户端只需发 start/stop
   - 走时范围：只模拟 24h 虚拟时间，不跨天
   - 1 倍速 = 1 秒走 1 虚拟分钟，speed 为每秒推进的虚拟分钟数
-    speed 枚举: 60(1x) / 120(2x) / 180(3x)
+    speed 枚举: 1(1x) / 2(2x) / 3(3x)
   - 排程联动：推进后返回 triggered_nodes，由上层调用方处理节点完成
 
 输出统一格式:
@@ -42,7 +42,7 @@ class ClockState:
         # 底层统一用绝对浮点数分钟维护时钟
         h, m = initial_time.split(":")
         self.virtual_minutes: float = float(int(h) * 60 + int(m))
-        self.speed = 1.0                       # 每秒推进的虚拟分钟数，默认 1x = 1
+        self.speed = 1.0                       # 每秒推进的虚拟分钟数，默认 1x = 1 分钟/秒
         self.is_running = False               # 自动走时是否开启
         self.schedule_nodes: list = []        # 排程节点列表 [{"time":"HH:MM","node_id":"...","name":"..."}]
         self.triggered_queue: list = []       # 事件消费队列，自动走时触发的事件推入
@@ -229,10 +229,10 @@ class TimeMaster:
                 new_minutes=cs.virtual_minutes,
             )
 
-    def start_auto_tick(self, session_id: str, speed: float = 60.0) -> dict:
+    def start_auto_tick(self, session_id: str, speed: float = 1.0) -> dict:
         """
         模式 3：AUTO_TICK — 启动自动走时。
-        speed: 每秒推进的虚拟分钟数 (60/120/180)
+        speed: 每秒推进的虚拟分钟数 (1/2/3)
         """
         with self._lock:
             cs = self._get_or_create_session_nolock(session_id)
@@ -335,7 +335,9 @@ class TimeMaster:
     def _slice_triggered(self, cs: ClockState, start_m: float, end_m: float) -> list:
         """
         时间切片扫描器（不跨天版本）。
-        从 start_m 推进到 end_m，找出在此区间内触发的节点并移除。
+        从 start_m 推进到 end_m，找出在此区间内触发的节点。
+        - repeat=daily 的节点触发生成事件后保留原节点（次日继续提醒）
+        - 非 daily 节点触发后移除
 
         ticked_minutes_list 由 _build_output 自动从 start_m/end_m 生成，
         此方法只负责区间命中判定。
@@ -350,6 +352,9 @@ class TimeMaster:
             nm = _parse_minutes(nt["time"])
             if s_today < nm <= e_today:
                 triggered.append(nt)
+                # daily 节点保留，次日继续提醒
+                if nt.get("repeat") == "daily":
+                    remaining.append(nt)
             else:
                 remaining.append(nt)
 
