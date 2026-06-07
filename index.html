@@ -1154,6 +1154,10 @@ function openExecCover() {
  if (execContentCache && content) {
  content.innerHTML = execContentCache;
  } else if (content) {
+ // 保存已有的聊天消息气泡，重建后追加回去
+ var chatBubbles = content.querySelectorAll('.bg-blue-50');
+ var chatHTML = '';
+ chatBubbles.forEach(function(b) { chatHTML += b.outerHTML; });
  const scheduleSection = document.getElementById('schedule-section');
  if (scheduleSection && content) {
  // 1. 取竖向布局的 innerHTML
@@ -1220,6 +1224,13 @@ function openExecCover() {
  }
  _renderTriggers(lastScheduleData.pitfall_triggers, 'bg-yellow-50');
  _renderTriggers(lastScheduleData.anomaly_triggers, 'bg-orange-50');
+ // 把之前保存的聊天消息追加回底部
+ if (chatHTML) {
+ var divider = document.createElement('hr');
+ divider.className = 'my-4 border-gray-200';
+ content.appendChild(divider);
+ content.insertAdjacentHTML('beforeend', chatHTML);
+ }
  execContentCache = content.innerHTML;
  }
  }
@@ -1502,8 +1513,9 @@ function appendExecChatMessage(text) {
   });
   var cover = document.getElementById('exec-cover');
   if (cover && cover.classList.contains('hidden')) {
-    // 打开前先保存当前已追加的消息到缓存，防止 openExecCover 覆盖
-    execContentCache = content.innerHTML;
+    // 不设 execContentCache，让 openExecCover 从 schedule-section 重建行程方案
+    // 这样聊天消息会通过 bg-blue-50 气泡保留机制被追加回去
+    execContentCache = null;
     openExecCover();
   }
 }
@@ -1714,12 +1726,8 @@ function closeShopDetail() {
  * PlanB 统一刷新：清执行计划缓存 + 重渲主页面 + 如 exec-cover 打开则关闭后重新打开
  */
 function _planbFlushExecCover() {
-  // 关闭前把当前 exec-plan-content 中的聊天消息保存下来，
-  // 这样重建时不会丢失 Plan B 执行过程中 append 的消息。
-  var content = document.getElementById('exec-plan-content');
-  if (content) {
-    execContentCache = content.innerHTML;
-  }
+  // Plan B 执行后强制刷新 exec-cover：清缓存 + 从 schedule-section 重建行程方案
+  execContentCache = null;
   var execCover = document.getElementById('exec-cover');
   if (execCover && !execCover.classList.contains('hidden')) {
     execCover.classList.add('hidden');

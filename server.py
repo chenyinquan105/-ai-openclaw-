@@ -1092,104 +1092,46 @@ def api_insert_shelter():
                 break
 
     if not cafe_shop_id:
-        for sid, shop in agent.poi_cache.items():
-            cat = shop.get("category", "")
-            if cat in ("cafe",):
-                cafe_shop_id = sid
-                cafe_name = shop.get("name", "附近店铺")
-                break
+        # 兜底：尝试触发一次 cafe 品类独立搜索
+        try:
+            extra = backend.skill_poi.search_poi_matrix(
+                center_coord="39.93,116.45",
+                categories=["cafe"],
+                radius_meters=5000,
+                min_rating=3.5
+            )
+            if extra.get("status") == "SUCCESS":
+                cafes = extra.get("search_results", {}).get("cafe", [])
+                for s in cafes:
+                    sid = s.get("shop_id")
+                    if sid and sid not in agent.poi_cache:
+                        agent.poi_cache[sid] = s
+                # 重试取第一个
+                for sid, shop in agent.poi_cache.items():
+                    if shop.get("category") == "cafe":
+                        cafe_shop_id = sid
+                        cafe_name = shop.get("name", "附近饮品店")
+                        break
+        except Exception:
+            pass
 
     if not cafe_shop_id:
         return jsonify({"error": "未找到附近的避雨店铺"}), 404
 
-    # 构造避雨节点
-    shelter_info = agent.poi_cache[cafe_shop_id]
-    raw_coord = shelter_info.get('coord', '')
-    if raw_coord and ',' in raw_coord:
-        coord = raw_coord
-    else:
-        coord = "39.93,116.45"
+    # 构造避雨节点，插入 selected_pairs 第0位
+    selected_pairs = session_state.get("selected_pairs", [])
+    selected_pairs.insert(0, ("cafe", cafe_shop_id, cafe_name))
+    session_state["selected_pairs"] = selected_pairs
 
-    shelter_task = {
-        "task_id": cafe_shop_id,
-        "name": cafe_name,
-        "location_id": cafe_shop_id,
-        "duration_minutes": 20,  # 歇脚20分钟
-        "human_needed": True,
-        "fixed_start_time": None,
-        "category": "cafe",
-    }
+    # 重跑完整排程链路（含时间重算 + 交通模式 + 防踩坑 + 异常传感器）
+    result = _run_schedule_from_session()
+    if not result:
+        return jsonify({"error": "排程失败"}), 500
 
-    # 插入 task_list 第0位
-    task_list = session_state["task_list"]
-    task_list.insert(0, shelter_task)
-    session_state["task_list"] = task_list
-
-    # 更新 spatial_matrix
-    session_state["spatial_matrix"]["locations"][cafe_shop_id] = {
-        "name": cafe_name,
-        "coord": coord
-    }
-
-    # 清除之前的排程缓存，重算
-    session_state["confirmed_ids"] = []
-    session_state["rejected_ids"] = []
-
-    schedule_res = backend.skill_scheduler.solve_concurrent_timeline(
-        task_list,
-        session_state["spatial_matrix"],
-        session_state["now_str"],
-        session_state["confirmed_ids"],
-        session_state["rejected_ids"],
-    )
-
-    if schedule_res.get("status") == "SUCCESS":
-        # 防踩坑走一遍（简化）
-        cleaned_timeline = []
-        for item in schedule_res["timeline"]:
-            memo = item.get("memo", "")
-            sub = None
-            if item["task_id"]:
-                for t in task_list:
-                    if t["task_id"] == item["task_id"]:
-                        sub = {"action": t["name"], "duration_minutes": t["duration_minutes"]}
-                        break
-            cleaned_timeline.append({
-                "time": item["time"],
-                "memo": memo,
-                "action": item["action"],
-                "sub_task": sub,
-                "task_id": item.get("task_id", ""),
-            })
-        return jsonify({
-            "phase": "done",
-            "shelter_name": cafe_name,
-            "shelter_id": cafe_shop_id,
-            "departure_time": schedule_res["suggested_departure_time"],
-            "total_minutes": schedule_res["total_duration_minutes"],
-            "timeline": cleaned_timeline,
-            "pitfall_reminders": [],
-            "pitfall_insights": [],
-            "pitfall_triggers": [],
-        })
-        # 注册到虚拟时钟（如果已开启）
-        _tm = time_master.get_master()
-        _cs = _tm.get_session(_CLOCK_SESSION_ID)
-        if _cs:
-            _sn = []
-            for item in schedule_res["timeline"]:
-                _sn.append({"time": item["time"], "type": "SCHEDULE", "node_id": item.get("task_id",""), "name": item.get("memo",""), "action": item.get("action","")})
-            _sn.append({"time": "10:00", "type": "WATER", "id": "wat_1", "name": "喝水提醒"})
-            _sn.append({"time": "15:00", "type": "WATER", "id": "wat_2", "name": "喝水提醒"})
-            _sn.append({"time": "08:30", "type": "MED", "id": "med_hypertension", "name": "高血压阿司匹林"})
-            _tm.set_schedule(_CLOCK_SESSION_ID, _sn)
-    else:
-        return jsonify({
-            "phase": "inserted",
-            "shelter_name": cafe_name,
-            "shelter_id": cafe_shop_id,
-            "message": schedule_res.get("message", "避雨点已加入，但排程需要进一步确认")
-        })
+    result_json = result.get_json()
+    result_json["shelter_name"] = cafe_name
+    result_json["shelter_id"] = cafe_shop_id
+    return jsonify(result_json)
 
 
 @app.route("/api/get_swap_candidates", methods=["POST"])
@@ -1270,11 +1212,33 @@ def api_get_swap_candidates():
 def api_get_nearby_cafes():
     """
     返回 poi_cache 中所有 category 为 "cafe" 的店铺列表，按评分降序，最多5个。
+    若 cache 中没有 cafe，则自动触发一次独立搜索补充到 cache。
     """
     if not agent or not agent.poi_cache:
         return jsonify({"error": "无店铺缓存"}), 400
 
     import math
+
+    # 先检查 cache 里有没有 cafe
+    has_cafe_in_cache = any(s.get("category") == "cafe" for s in agent.poi_cache.values())
+
+    if not has_cafe_in_cache:
+        # 自动触发 cafe 品类搜索，补充到 poi_cache
+        try:
+            extra = backend.skill_poi.search_poi_matrix(
+                center_coord="39.93,116.45",
+                categories=["cafe"],
+                radius_meters=5000,
+                min_rating=3.5
+            )
+            if extra.get("status") == "SUCCESS":
+                cafes = extra.get("search_results", {}).get("cafe", [])
+                for s in cafes:
+                    sid = s.get("shop_id")
+                    if sid and sid not in agent.poi_cache:
+                        agent.poi_cache[sid] = s
+        except Exception as e:
+            pass  # 搜索失败则继续用 cache 中已有的（可能为空）
 
     shops_data = []
     for sid, shop in agent.poi_cache.items():
