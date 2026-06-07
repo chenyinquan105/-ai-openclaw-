@@ -161,12 +161,13 @@ class TimeMaster:
     # ---------- 排程节点 ----------
 
     def set_schedule(self, session_id: str, nodes: list, initial_time: str = "08:00"):
-        """注册排程节点，按时间升序存储"""
+        """注册排程节点，按时间升序存储。session 不存在时拒绝写入（防止意外创建）"""
         with self._lock:
             if session_id not in self._sessions:
-                self._sessions[session_id] = ClockState(session_id, initial_time)
+                return False
             cs = self._sessions[session_id]
             cs.schedule_nodes = sorted(nodes, key=lambda n: _parse_minutes(n["time"]))
+            return True
 
     # ---------- 三种控制模式 ----------
 

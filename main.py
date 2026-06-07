@@ -23,7 +23,10 @@ CATEGORY_MAP = {
     "理发": "hair", "剪头": "hair", "理发店": "hair", "美发": "hair",
     "狗洗澡": "pet", "宠物店": "pet", "给宠物洗澡": "pet",
     "干洗": "laundry", "洗衣服": "laundry", "咖啡": "cafe", "健身": "gym",
-    "火锅": "hotpot"
+    "火锅": "hotpot",
+    "餐饮": "restaurant", "餐厅": "restaurant", "吃饭": "restaurant", "饭店": "restaurant", "中餐": "restaurant",
+    "日料": "japanese", "日本料理": "japanese", "日式": "japanese", "居酒屋": "japanese",
+    "电影": "cinema", "电影院": "cinema", "看电影": "cinema",
 }
 
 CATEGORY_NAME_CN = {

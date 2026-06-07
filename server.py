@@ -217,6 +217,7 @@ session_state = {
     "user_input": "",
     "time_desc": "",
     "has_time_from_input": False,
+    "clock_enabled": False,
 }
 
 
@@ -247,17 +248,14 @@ def _reset_session():
         "user_input": "",
         "time_desc": "",
         "has_time_from_input": False,
+        "clock_enabled": False,
         "pending_anomalies": [],
         "anomaly_intent_triggers": [],
         "pitfall_intent_triggers": [],
         "pitfall_global_reminders": [],
     }
-    # 清空虚拟时钟 session（reset 后应回到真实时间模式）
-    try:
-        tm = time_master.get_master()
-        tm.remove_session(_CLOCK_SESSION_ID)
-    except Exception:
-        pass
+    # 清空虚拟时钟 session — gunicorn 模式下跳过（time_master 线程锁不兼容）
+    # 原代码: tm = time_master.get_master(); tm.remove_session(_CLOCK_SESSION_ID)
 
 
 def _duration(cat: str) -> int:
@@ -717,10 +715,10 @@ def _run_schedule_from_session():
         session_state["now_str"] = fixed_time
     else:
         # 虚拟时间控制台开着 → 用虚拟时间；否则用系统真实时间
-        _tm = time_master.get_master()
-        _cs = _tm.get_session(_CLOCK_SESSION_ID)
-        if _cs and _cs.virtual_time:
-            session_state["now_str"] = _cs.virtual_time
+        if session_state.get("clock_enabled"):
+            _tm = time_master.get_master()
+            _cs = _tm.get_session(_CLOCK_SESSION_ID)
+            session_state["now_str"] = _cs.virtual_time if (_cs and _cs.virtual_time) else datetime.now().strftime("%H:%M")
         else:
             session_state["now_str"] = datetime.now().strftime("%H:%M")
     session_state["confirmed_ids"] = []
@@ -733,10 +731,11 @@ def _run_schedule():
     """执行一次排程，处理 CONFIRM_REQUIRED / SUCCESS / 其他"""
     global session_state
     # ★ 修复：从虚拟时钟重新获取当前时间，确保虚拟时间推进后重排使用最新时间
-    _tm = time_master.get_master()
-    _cs = _tm.get_session(_CLOCK_SESSION_ID)
-    if _cs and _cs.virtual_time:
-        session_state["now_str"] = _cs.virtual_time
+    if session_state.get("clock_enabled"):
+        _tm = time_master.get_master()
+        _cs = _tm.get_session(_CLOCK_SESSION_ID)
+        if _cs and _cs.virtual_time:
+            session_state["now_str"] = _cs.virtual_time
     schedule_res = backend.skill_scheduler.solve_concurrent_timeline(
         session_state["task_list"],
         session_state["spatial_matrix"],
@@ -1543,13 +1542,14 @@ def clock_init():
     tm = time_master.get_master()
     initial_time = data.get("initial_time", "08:00")
     nodes = data.get("schedule_nodes", [])
-    # 先注册排程节点
-    tm.set_schedule(_CLOCK_SESSION_ID, nodes, initial_time=initial_time)
+    # 先创建/获取 session，再注册排程节点
     clock = tm.get_or_create_session(_CLOCK_SESSION_ID, initial_time=initial_time)
+    tm.set_schedule(_CLOCK_SESSION_ID, nodes, initial_time=initial_time)
     # 强制覆盖虚拟时间为前端指定的初始时间（session 已存在时 get_or_create 不会改时间）
     h, m = initial_time.split(":")
     clock.virtual_minutes = float(int(h) * 60 + int(m))
     clock.is_running = False
+    session_state["clock_enabled"] = True
     return jsonify(clock.to_dict())
 
 
@@ -1622,6 +1622,7 @@ def clock_start():
 @app.route("/api/clock/stop", methods=["POST"])
 def clock_stop():
     """停止自动走时"""
+    session_state["clock_enabled"] = False
     tm = time_master.get_master()
     tm.stop_auto_tick(_CLOCK_SESSION_ID)
     cs = tm.get_session(_CLOCK_SESSION_ID)
@@ -1642,10 +1643,15 @@ def clock_pop_events():
 
 @app.route("/api/clock/set_schedule", methods=["POST"])
 def clock_set_schedule():
-    """设置排程节点"""
+    """设置排程节点（仅虚拟时间开启时有效）"""
+    if not session_state.get("clock_enabled"):
+        return jsonify({"status": "SKIPPED", "count": 0, "reason": "clock_disabled"})
     data = request.get_json() or {}
     nodes = data.get("nodes", [])
     tm = time_master.get_master()
+    _cs = tm.get_session(_CLOCK_SESSION_ID)
+    if not _cs:
+        return jsonify({"status": "SKIPPED", "count": 0, "reason": "no_clock_session"})
     tm.set_schedule(_CLOCK_SESSION_ID, nodes)
     return jsonify({"status": "SUCCESS", "count": len(nodes)})
 
@@ -1744,7 +1750,9 @@ def reminder_get_tasks():
 
 @app.route("/api/reminder/add_task", methods=["POST"])
 def reminder_add_task():
-    """添加一个提醒节点到虚拟时钟"""
+    """添加一个提醒节点到虚拟时钟（仅虚拟时间开启时有效）"""
+    if not session_state.get("clock_enabled"):
+        return jsonify({"status": "ERROR", "message": "虚拟时间控制台未开启"}), 400
     data = request.get_json(silent=True) or {}
     node = data.get("node", {})
     if not node or not node.get("id") or not node.get("time") or not node.get("type"):
@@ -1752,8 +1760,7 @@ def reminder_add_task():
     tm = time_master.get_master()
     cs = tm.get_session(_CLOCK_SESSION_ID)
     if not cs:
-        tm.set_schedule(_CLOCK_SESSION_ID, [])
-        cs = tm.get_session(_CLOCK_SESSION_ID)
+        return jsonify({"status": "ERROR", "message": "虚拟时钟会话不存在"}), 400
     current = list(cs.schedule_nodes) if cs else []
     current.append(node)
     tm.set_schedule(_CLOCK_SESSION_ID, current)
