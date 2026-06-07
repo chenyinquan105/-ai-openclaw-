@@ -236,13 +236,36 @@
        <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
       </button>
       <h1 class="text-2xl font-bold text-gray-900">全天候私人管家</h1>
-      <div class="w-9"></div>
+      <button onclick="clearAllReminders()" class="w-9 h-9 flex items-center justify-center bg-white border border-gray-200 rounded-full hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition" title="清除所有提醒">
+       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+      </button>
      </div>
     </header>
     <!-- 内容区 -->
     <main class="flex-1 overflow-y-auto p-6 space-y-4" id="butler-scroll">
      <div id="butler-task-list" class="space-y-3">
       <div class="text-center py-8"><p class="text-gray-400">⏳ 加载中...</p></div>
+     </div>
+
+     <!-- 添加提醒按钮区域（始终可见） -->
+     <div id="butler-add-section" class="mt-8 flex flex-col items-center space-y-5">
+      <button onclick="toggleButlerOptions()" class="bg-gray-900 text-yellow-400 font-black text-sm px-10 py-4 rounded-2xl shadow-xl hover:bg-gray-800 active:scale-95 transition-all flex items-center gap-2.5 border border-gray-800 meituan-shadow">
+       <span class="text-lg font-light">+</span> 添加提醒
+      </button>
+      <div id="butler-options-panel" class="grid grid-cols-3 gap-3 w-full transition-all duration-500 ease-out max-h-0 opacity-0 overflow-hidden px-1">
+       <div onclick="butlerAddReminder('WATER')" class="bg-gradient-to-b from-blue-50/60 to-white border border-blue-100 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-blue-400 hover:shadow-md active:scale-95 transition-all group">
+        <div class="w-11 h-11 rounded-full bg-blue-500 text-white flex items-center justify-center text-xl shadow-md group-hover:scale-110 transition-transform">💧</div>
+        <span class="text-xs font-black text-gray-800 mt-3 tracking-wide">喝水提醒</span>
+       </div>
+       <div onclick="butlerAddReminder('MED')" class="bg-gradient-to-b from-orange-50/60 to-white border border-orange-100 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-orange-400 hover:shadow-md active:scale-95 transition-all group">
+        <div class="w-11 h-11 rounded-full bg-orange-500 text-white flex items-center justify-center text-xl shadow-md group-hover:scale-110 transition-transform">💊</div>
+        <span class="text-xs font-black text-gray-800 mt-3 tracking-wide">吃药提醒</span>
+       </div>
+       <div onclick="alert('自定义提醒正在深度学习中...')" class="bg-gradient-to-b from-gray-50/60 to-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-gray-500 hover:shadow-md active:scale-95 transition-all group">
+        <div class="w-11 h-11 rounded-full bg-gray-700 text-white flex items-center justify-center text-xl shadow-md group-hover:scale-110 transition-transform">📊</div>
+        <span class="text-xs font-black text-gray-800 mt-3 tracking-wide">自定义提醒</span>
+       </div>
+      </div>
      </div>
     </main>
 
@@ -330,6 +353,32 @@
       <button onclick="closeSecondModal()" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition text-sm">返回</button>
       <button id="second-modal-confirm" onclick="confirmSecondModal()"
               class="flex-1 bg-gray-900 text-yellow-400 font-black py-3.5 rounded-2xl hover:bg-gray-800 transition text-sm meituan-shadow">确认</button>
+    </div>
+  </div>
+ </div>
+
+ <!-- 自然语言提醒弹窗 -->
+ <div id="nl-reminder-modal" class="absolute inset-0 flex items-center justify-center z-[66] hidden" style="background: rgba(0,0,0,0.5);">
+  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 animate-fade-in">
+    <div class="text-center mb-4">
+      <div id="nl-reminder-icon" class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <span class="text-3xl">💧</span>
+      </div>
+      <h3 id="nl-reminder-title" class="text-lg font-black text-gray-900">设置喝水提醒</h3>
+      <p class="text-xs text-gray-500 mt-1">用自然语言告诉我你的提醒规则</p>
+    </div>
+    <div class="mb-4">
+      <textarea id="nl-reminder-input" rows="3" placeholder="例如：每天早上八点到晚上十点，每隔一个小时提醒我喝一次水" 
+        onkeydown="if(event.key==='Enter'){event.preventDefault();parseNlReminder();}else if(event.key==='Escape'){closeNlReminderModal();}"
+        class="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-none transition"></textarea>
+    </div>
+    <div id="nl-reminder-preview" class="mb-4 hidden bg-gray-50 rounded-2xl p-3 text-xs text-gray-600"></div>
+    <div class="flex space-x-3">
+      <button onclick="closeNlReminderModal()" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition text-sm">返回</button>
+      <button id="nl-reminder-submit-btn" onclick="parseNlReminder()" class="flex-1 bg-blue-500 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition text-sm shadow-md">解析并创建</button>
+    </div>
+    <div class="mt-3 text-center">
+      <span onclick="closeNlReminderModal();reminderOpenAdd(window._nlReminderType||'WATER')" class="text-xs text-gray-400 underline cursor-pointer hover:text-gray-600">或选择预设时间</span>
     </div>
   </div>
  </div>
@@ -2412,10 +2461,6 @@ document.addEventListener('DOMContentLoaded', function() {
    if (data && data.virtual_time) clockUpdateUI(data);
  }).catch(() => {});
 
- // 初始化：从偏好谱加载健康作息节点到虚拟时钟
- reminderInitFromProfile().then(function() {
-   setTimeout(reminderRefreshList, 200);
- });
 });
 
 // ======================================================================
@@ -2562,11 +2607,16 @@ function reminderOpenAdd(type) {
         body: JSON.stringify({node: node})
       }).then(function(r) { return r.json(); }).then(function(data) {
         if (data.status === 'SUCCESS') {
-          // 也加到虚拟时钟 schedule 中
-          var tmNodes = window._clockScheduleNodes || [];
-          tmNodes.push({time: val, type: type, id: node.id, memo: label + '提醒', action: label + '提醒', duration_minutes: 0});
-          window._clockScheduleNodes = tmNodes;
-          clockFetch('POST', '/api/clock/set_schedule', {nodes: tmNodes});
+          // 从服务端同步完整排程节点，避免 stripped 格式覆盖
+          fetch(API_BASE + '/api/reminder/tasks').then(function(r2) { return r2.json(); }).then(function(td) {
+            var fullNodes = (td.tasks || []).map(function(t) {
+              return {time: t.time, type: t.type, id: t.id, memo: (t.label || label) + '提醒', action: (t.label || label) + '提醒', duration_minutes: 0};
+            });
+            window._clockScheduleNodes = fullNodes;
+            if (fullNodes.length > 0) {
+              clockFetch('POST', '/api/clock/set_schedule', {nodes: fullNodes});
+            }
+          }).catch(function() {});
           toast('✅ ' + label + '提醒 (' + val + ') 已添加');
           reminderRefreshList();
         } else {
@@ -2590,11 +2640,18 @@ function reminderDeleteTask(taskId) {
     body: JSON.stringify({task_id: taskId})
   }).then(function(r) { return r.json(); }).then(function(data) {
     if (data.status === 'SUCCESS') {
-      // 也从 clock schedule 中移除
-      if (window._clockScheduleNodes) {
-        window._clockScheduleNodes = window._clockScheduleNodes.filter(function(n) { return n.id !== taskId; });
-        clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes});
-      }
+      // 从服务端同步完整节点列表
+      fetch(API_BASE + '/api/reminder/tasks').then(function(r2) { return r2.json(); }).then(function(td) {
+        var fullNodes = (td.tasks || []).map(function(t) {
+          return {time: t.time, type: t.type, id: t.id, memo: (t.label || '') + '提醒', action: (t.label || '') + '提醒', duration_minutes: 0};
+        });
+        window._clockScheduleNodes = fullNodes;
+        if (fullNodes.length > 0) {
+          clockFetch('POST', '/api/clock/set_schedule', {nodes: fullNodes});
+        } else {
+          clockFetch('POST', '/api/clock/set_schedule', {nodes: []});
+        }
+      }).catch(function() {});
       toast('🗑️ 已删除');
       reminderRefreshList();
     } else {
@@ -2957,27 +3014,6 @@ function butlerRenderContent() {
  <p class="text-xs text-gray-500 mt-2 leading-relaxed">点击下方按钮添加喝水或吃药提醒</p>
  </div>
  </div>
-
- <div class="mt-8 flex flex-col items-center space-y-5">
- <button onclick="toggleButlerOptions()" class="bg-gray-900 text-yellow-400 font-black text-sm px-10 py-4 rounded-2xl shadow-xl hover:bg-gray-800 active:scale-95 transition-all flex items-center gap-2.5 border border-gray-800 meituan-shadow">
- <span class="text-lg font-light">+</span> 添加提醒
- </button>
-
- <div id="butler-options-panel" class="grid grid-cols-3 gap-3 w-full transition-all duration-500 ease-out max-h-0 opacity-0 overflow-hidden px-1">
- <div onclick="butlerAddReminder('WATER')" class="bg-gradient-to-b from-blue-50/60 to-white border border-blue-100 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-blue-400 hover:shadow-md active:scale-95 transition-all group">
- <div class="w-11 h-11 rounded-full bg-blue-500 text-white flex items-center justify-center text-xl shadow-md group-hover:scale-110 transition-transform">💧</div>
- <span class="text-xs font-black text-gray-800 mt-3 tracking-wide">喝水提醒</span>
- </div>
- <div onclick="butlerAddReminder('MED')" class="bg-gradient-to-b from-orange-50/60 to-white border border-orange-100 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-orange-400 hover:shadow-md active:scale-95 transition-all group">
- <div class="w-11 h-11 rounded-full bg-orange-500 text-white flex items-center justify-center text-xl shadow-md group-hover:scale-110 transition-transform">💊</div>
- <span class="text-xs font-black text-gray-800 mt-3 tracking-wide">吃药提醒</span>
- </div>
- <div onclick="alert('自定义提醒正在深度学习中...')" class="bg-gradient-to-b from-gray-50/60 to-white border border-gray-200 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-gray-500 hover:shadow-md active:scale-95 transition-all group">
- <div class="w-11 h-11 rounded-full bg-gray-700 text-white flex items-center justify-center text-xl shadow-md group-hover:scale-110 transition-transform">📊</div>
- <span class="text-xs font-black text-gray-800 mt-3 tracking-wide">自定义提醒</span>
- </div>
- </div>
- </div>
  `;
  return;
  }
@@ -3029,9 +3065,415 @@ function toggleButlerOptions() {
  }
 }
 
+// ======================================================================
+// 自然语言提醒输入 — 解析 + 创建
+// ======================================================================
+
+var _nlReminderType = 'WATER';
+var _nlParsedPreview = null;
+
+/** 打开自然语言提醒输入弹窗 */
+function openNlReminderModal(type) {
+  _nlReminderType = type;
+  _nlParsedPreview = null;
+  document.getElementById('nl-reminder-input').value = '';
+  document.getElementById('nl-reminder-preview').classList.add('hidden');
+  document.getElementById('nl-reminder-preview').innerHTML = '';
+  var submitBtn = document.getElementById('nl-reminder-submit-btn');
+  submitBtn.textContent = '解析并创建';
+  submitBtn.className = 'flex-1 bg-blue-500 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition text-sm shadow-md';
+
+  var iconWrap = document.getElementById('nl-reminder-icon');
+  var titleEl = document.getElementById('nl-reminder-title');
+  if (type === 'WATER') {
+    iconWrap.className = 'w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3';
+    iconWrap.querySelector('span').textContent = '💧';
+    titleEl.textContent = '设置喝水提醒';
+    submitBtn.className = 'flex-1 bg-blue-500 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition text-sm shadow-md';
+  } else {
+    iconWrap.className = 'w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3';
+    iconWrap.querySelector('span').textContent = '💊';
+    titleEl.textContent = '设置吃药提醒';
+    submitBtn.className = 'flex-1 bg-orange-500 text-white font-bold py-3 rounded-2xl hover:bg-orange-600 transition text-sm shadow-md';
+  }
+  document.getElementById('nl-reminder-modal').classList.remove('hidden');
+}
+
+/** 关闭自然语言弹窗 */
+function closeNlReminderModal() {
+  document.getElementById('nl-reminder-modal').classList.add('hidden');
+  document.getElementById('nl-reminder-input').value = '';
+  document.getElementById('nl-reminder-preview').classList.add('hidden');
+}
+
+/** 中文时间词 → 小时映射 */
+function _parseChineseHour(token) {
+  var t = token.trim();
+  // 凌晨 0-5
+  if (/凌晨/.test(t)) { var m = t.match(/(\d+)/); return m ? parseInt(m[1]) : 0; }
+  // 早上/早晨/上午 6-11
+  if (/早上|早晨|上午/.test(t)) {
+    var m = t.match(/(\d+)/);
+    var numStr = (t.match(/[零一二三四五六七八九十百]+/) || [''])[0];
+    var h = numStr ? _parseChineseNum(numStr) : (m ? parseInt(m[1]) : 8);
+    return h;
+  }
+  // 中午 12
+  if (/中午|正午/.test(t)) return 12;
+  // 下午 13-18 (下午1点→13)
+  if (/下午/.test(t)) {
+    var m = t.match(/(\d+)/);
+    var numStr = (t.match(/[零一二三四五六七八九十百]+/) || [''])[0];
+    var h = numStr ? _parseChineseNum(numStr) : (m ? parseInt(m[1]) : 2);
+    if (h < 12) h += 12;
+    return h;
+  }
+  // 傍晚/黄昏 17-19
+  if (/傍晚|黄昏/.test(t)) {
+    var m = t.match(/(\d+)/);
+    return m ? parseInt(m[1]) + 12 : 18;
+  }
+  // 晚上/夜里 20-23 (晚上8点→20)
+  if (/晚上|夜里|夜晚/.test(t)) {
+    var m = t.match(/(\d+)/);
+    var numStr = (t.match(/[零一二三四五六七八九十百]+/) || [''])[0];
+    var h = numStr ? _parseChineseNum(numStr) : (m ? parseInt(m[1]) : 8);
+    // 晚上十二点=0点, 但保留为24便于范围判断
+    if (h === 12) h = 24;
+    else if (h < 12) h += 12;
+    if (h > 23) h = 23;
+    return h;
+  }
+  // 纯数字
+  var m = t.match(/(\d{1,2})/);
+  if (m) {
+    var raw = parseInt(m[1]);
+    return raw;
+  }
+  return null;
+}
+
+/** 解析中文数字字符串（如"十一"→11,"二十三"→23） */
+function _parseChineseNum(s) {
+  var map = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10};
+  if (s === '十') return 10;
+  var m = s.match(/^(.)十(.)?$/);
+  if (m) {
+    var tens = m[1] === '一' ? 10 : (map[m[1]]||1)*10;
+    return tens + (m[2] ? (map[m[2]]||0) : 0);
+  }
+  m = s.match(/^十(.)$/);
+  if (m) return 10 + (map[m[1]]||0);
+  return map[s] || 0;
+}
+
+/** 从自然语言文本中提取时间范围，返回 {startHour, endHour} 或 null */
+function parseChineseTimeRange(text) {
+  // 模式: "早上八点到晚上十点" / "上午9点到下午6点" / "8:00到22:00"
+  // 中文描述性时间
+  var cnPattern = /(早上|早晨|上午|中午|下午|傍晚|晚上|夜里|凌晨)\s*[零一二三四五六七八九十\d]+\s*点?\s*到\s*(早上|早晨|上午|中午|下午|傍晚|晚上|夜里|凌晨)\s*[零一二三四五六七八九十\d]+\s*点?/;
+  var m = text.match(cnPattern);
+  if (m) {
+    var startStr = m[0].split(/到/)[0].trim();
+    var endStr = m[0].split(/到/)[1].trim();
+    var startH = _parseChineseHour(startStr);
+    var endH = _parseChineseHour(endStr);
+    if (startH !== null && endH !== null && startH < endH) {
+      return {startHour: startH, endHour: endH};
+    }
+  }
+  // 纯数字模式: "8:00-22:00" 或 "8点到22点"
+  var numPattern = /(\d{1,2})\s*[:：点]\s*00\s*[到\-至~]\s*(\d{1,2})\s*[:：点]/;
+  m = text.match(numPattern);
+  if (m) {
+    var sh = parseInt(m[1]), eh = parseInt(m[2]);
+    if (sh < eh) return {startHour: sh, endHour: eh};
+  }
+  // 宽松模式: "8点到22点" / "8-22"
+  var looseP = /(\d{1,2})\s*点?\s*[到\-至~]\s*(\d{1,2})\s*点/;
+  m = text.match(looseP);
+  if (m) {
+    var sh2 = parseInt(m[1]), eh2 = parseInt(m[2]);
+    if (sh2 < eh2 && sh2 >= 0 && eh2 <= 24) return {startHour: sh2, endHour: eh2};
+  }
+  return null;
+}
+
+/** 从自然语言文本中提取单个时间点（如"中午十二点"→12,"下午3点"→15），返回小时数或 null */
+function parseSingleTime(text) {
+  var clean = text.replace(/每天|提醒我|记得|要|需要|别忘了|请/g, '');
+  var patterns = ['中午','下午','晚上','上午','早上','凌晨','傍晚','黄昏','夜里','夜晚'];
+  for (var i = 0; i < patterns.length; i++) {
+    var p = patterns[i];
+    if (clean.indexOf(p) >= 0) {
+      var idx = clean.indexOf(p);
+      var token = clean.substring(idx, Math.min(idx + 8, clean.length));
+      var h = _parseChineseHour(token);
+      if (h !== null && h >= 0 && h <= 23) return h;
+    }
+  }
+  // 纯数字时间兜底：匹配 "9:00"、"9点"、"9点半"、"14:30" 等
+  var numM = clean.match(/(\d{1,2})\s*[:：点]\s*(\d{1,2}|半)/);
+  if (numM) {
+    var rawH = parseInt(numM[1]);
+    if (rawH >= 0 && rawH <= 23) return rawH;
+  }
+  // 纯数字 "9" / "14"
+  var pureM = clean.match(/(\d{1,2})/);
+  if (pureM) {
+    var hh = parseInt(pureM[1]);
+    if (hh >= 0 && hh <= 23) return hh;
+  }
+  return null;
+}
+
+/** 从自然语言文本中提取间隔（分钟），返回数字或 null */
+function parseInterval(text) {
+  // "每隔一个小时" → 60
+  // "每半小时" → 30
+  // "每15分钟" → 15
+  // "每隔两小时" → 120
+  // "每1小时" → 60
+  var patterns = [
+    {re: /每隔?\s*(\d+)\s*个?\s*(小时|钟头)/, mult: 60},
+    {re: /每隔?\s*(一个?|半)\s*(小时|钟头)/, mult: 60, handler: function(m) {
+      if (m[1].indexOf('半') >= 0) return 30;
+      return 60;
+    }},
+    {re: /每\s*(\d+)\s*分/, mult: 1},
+    {re: /每\s*(半)\s*小?时/, mult: 1, handler: function() { return 30; }},
+    {re: /每\s*(\d+)\s*小?时/, mult: 60},
+    {re: /间隔\s*(\d+)\s*分/, mult: 1},
+    {re: /(\d+)\s*分钟\s*一次/, mult: 1},
+    {re: /每隔?\s*(\d+)\s*分钟/, mult: 1},
+  ];
+  for (var i = 0; i < patterns.length; i++) {
+    var p = patterns[i];
+    var m = text.match(p.re);
+    if (m) {
+      if (p.handler) return p.handler(m);
+      var val = parseInt(m[1]);
+      return val * p.mult;
+    }
+  }
+  return null;
+}
+
+/** 生成时间点列表，返回字符串数组 ["08:00","09:00",...] */
+function generateTimeSlots(startHour, endHour, intervalMin) {
+  var slots = [];
+  var cur = startHour * 60;
+  var end = endHour * 60;
+  while (cur <= end) {
+    var h = Math.floor(cur / 60);
+    var m = cur % 60;
+    slots.push(String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0'));
+    cur += intervalMin;
+  }
+  return slots;
+}
+
+/** 核心：解析自然语言并预览/创建 */
+function parseNlReminder() {
+  // 如果已经解析且预览了，第二次点击=确认创建
+  if (_nlParsedPreview) {
+    confirmNlReminderCreate();
+    return;
+  }
+
+  var input = document.getElementById('nl-reminder-input').value.trim();
+  if (!input) {
+    toast('⚠️ 请输入提醒规则');
+    return;
+  }
+
+  var timeRange = parseChineseTimeRange(input);
+  var intervalMin = parseInterval(input);
+
+  var previewDiv = document.getElementById('nl-reminder-preview');
+  var typeLabel = _nlReminderType === 'WATER' ? '喝水' : '吃药';
+
+  // ── 优先级1：有时间范围 + 有间隔 → 批量生成时间点 ──
+  if (timeRange && intervalMin) {
+    var slots = generateTimeSlots(timeRange.startHour, timeRange.endHour, intervalMin);
+    if (slots.length === 0) {
+      previewDiv.innerHTML = '<div class="text-red-500">⚠️ 时间范围与间隔无法生成有效提醒时间点</div>';
+      previewDiv.classList.remove('hidden');
+      return;
+    }
+    if (slots.length > 48) {
+      previewDiv.innerHTML = '<div class="text-red-500">⚠️ 提醒过于频繁（超过48次/天），请减小范围或增大间隔</div>';
+      previewDiv.classList.remove('hidden');
+      return;
+    }
+    _nlParsedPreview = {
+      type: _nlReminderType,
+      timeRange: timeRange,
+      intervalMin: intervalMin,
+      slots: slots
+    };
+    var timeStr = String(timeRange.startHour).padStart(2,'0') + ':00 ~ ' + String(timeRange.endHour).padStart(2,'0') + ':00';
+    var previewHTML = '<div class="space-y-1.5">' +
+      '<p class="font-bold text-gray-700 mb-1">📋 解析结果预览</p>' +
+      '<p>🏷️ 类型：<b>' + typeLabel + '提醒</b></p>' +
+      '<p>⏰ 时间范围：<b>' + timeStr + '</b></p>' +
+      '<p>🔄 间隔：<b>每' + intervalMin + '分钟</b></p>' +
+      '<p>📌 共 <b>' + slots.length + '</b> 个时间点：</p>' +
+      '<p class="text-gray-500">' + slots.slice(0,8).join('、') + (slots.length > 8 ? '…' : '') + '</p>' +
+      '</div>';
+    previewDiv.innerHTML = previewHTML;
+    previewDiv.classList.remove('hidden');
+    var btn = document.getElementById('nl-reminder-submit-btn');
+    btn.textContent = '确认创建';
+    btn.className = 'flex-1 bg-green-500 text-white font-bold py-3 rounded-2xl hover:bg-green-600 transition text-sm shadow-md';
+    return;
+  }
+
+  // ── 优先级2：有时间范围 + 无间隔 → 提示需要间隔 ──
+  if (timeRange && !intervalMin) {
+    previewDiv.innerHTML = '<div class="text-red-500">⚠️ 未能识别间隔，请补充如"每隔一个小时"或"每30分钟"</div>';
+    previewDiv.classList.remove('hidden');
+    return;
+  }
+
+  // ── 优先级3：无时间范围 → 尝试单次时间（不管有没有间隔信息） ──
+  if (!timeRange) {
+    var singleTime = parseSingleTime(input);
+    if (singleTime !== null) {
+      var singleSlot = String(singleTime).padStart(2,'0') + ':00';
+      _nlParsedPreview = {
+        type: _nlReminderType,
+        timeRange: {startHour: singleTime, endHour: singleTime},
+        intervalMin: 0,
+        slots: [singleSlot]
+      };
+      var singleTimeStr = String(singleTime).padStart(2,'0') + ':00';
+      previewDiv.innerHTML = '<div class="space-y-1.5">' +
+        '<p class="font-bold text-gray-700 mb-1">📋 解析结果预览</p>' +
+        '<p>🏷️ 类型：<b>' + typeLabel + '提醒</b></p>' +
+        '<p>⏰ 时间：<b>' + singleTimeStr + '</b></p>' +
+        '<p>📌 <b>单次提醒</b></p>' +
+        '</div>';
+      previewDiv.classList.remove('hidden');
+      var btn3 = document.getElementById('nl-reminder-submit-btn');
+      btn3.textContent = '确认创建';
+      btn3.className = 'flex-1 bg-green-500 text-white font-bold py-3 rounded-2xl hover:bg-green-600 transition text-sm shadow-md';
+      return;
+    }
+
+    // ── 优先级4：单次解析失败 + 有间隔 → 提示还需要时间 ──
+    if (intervalMin) {
+      previewDiv.innerHTML = '<div class="text-red-500">⚠️ 已识别间隔（每' + intervalMin + '分钟），但未能识别时间点或时间范围，请补充如"早上八点"或"早上八点到晚上十点"</div>';
+      previewDiv.classList.remove('hidden');
+      return;
+    }
+
+    // ── 优先级5：都失败 → 报错 ──
+    previewDiv.innerHTML = '<div class="text-red-500">⚠️ 未能识别时间或间隔，请尝试更明确的表述。<br>例如："每天早上八点到晚上十点，每隔一个小时"<br>或："每天中午十二点"</div>';
+    previewDiv.classList.remove('hidden');
+    return;
+  }
+}
+
+/** 确认创建：批量调用后端 API */
+function confirmNlReminderCreate() {
+  if (!_nlParsedPreview) return;
+  var p = _nlParsedPreview;
+  closeNlReminderModal();
+  var type = p.type;
+  var label = type === 'WATER' ? '喝水' : '吃药';
+  var slots = p.slots;
+  var created = 0;
+  var errors = [];
+  var total = slots.length;
+
+  function createOne(idx) {
+    if (idx >= slots.length) {
+      // 全部完成：从服务端同步数据，然后刷新管家页面
+      fetch(API_BASE + '/api/reminder/tasks').then(function(r) { return r.json(); }).then(function(td) {
+        var fullNodes = (td.tasks || []).map(function(t) {
+          return {time: t.time, type: t.type, id: t.id, memo: (t.label || label) + '提醒', action: (t.label || label) + '提醒', duration_minutes: 0};
+        });
+        window._clockScheduleNodes = fullNodes;
+        if (fullNodes.length > 0) {
+          clockFetch('POST', '/api/clock/set_schedule', {nodes: fullNodes});
+        }
+        butlerRenderContent();
+      }).catch(function() { butlerRenderContent(); });
+      _nlParsedPreview = null;
+      if (errors.length > 0) {
+        toast('⚠️ ' + created + '/' + total + ' 个提醒已创建，' + errors.length + ' 个失败');
+      } else if (total === 1) {
+        toast('✅ ' + label + '提醒已创建（单次提醒）');
+      } else {
+        toast('✅ ' + label + '提醒已创建（共' + total + '个时间点）');
+      }
+      return;
+    }
+    var timeVal = slots[idx];
+    var node = {
+      id: type + '_nl_' + Date.now() + '_' + idx,
+      type: type,
+      time: timeVal,
+      state: 'pending',
+      label: label,
+      repeat: 'daily'
+    };
+    fetch(API_BASE + '/api/reminder/add_task', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({node: node})
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.status === 'SUCCESS') {
+        created++;
+      } else {
+        errors.push(timeVal);
+      }
+    }).catch(function() {
+      errors.push(timeVal);
+    }).finally(function() {
+      createOne(idx + 1);
+    });
+  }
+
+  createOne(0);
+}
+
+/** 清除所有提醒任务 */
+function clearAllReminders() {
+  if (!confirm('确定要清除所有喝水/吃药提醒任务吗？此操作不可恢复。')) return;
+  fetch(API_BASE + '/api/reminder/tasks')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var tasks = data.tasks || [];
+      if (tasks.length === 0) {
+        toast('📋 当前无提醒任务');
+        return;
+      }
+      var chain = Promise.resolve();
+      var count = 0;
+      tasks.forEach(function(t) {
+        chain = chain.then(function() {
+          return fetch(API_BASE + '/api/reminder/remove_task', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({task_id: t.id})
+          });
+        }).then(function() { count++; });
+      });
+      chain.then(function() {
+        window._clockScheduleNodes = [];
+        clockFetch('POST', '/api/clock/set_schedule', {nodes: []});
+        butlerRenderContent();
+        toast('🗑️ 已清除 ' + count + ' 个提醒任务');
+      });
+    })
+    .catch(function() { toast('❌ 清除失败'); });
+}
+
 function butlerAddReminder(type) {
-  // 复用已有的添加弹窗
-  reminderOpenAdd(type);
+  // 打开自然语言输入弹窗
+  openNlReminderModal(type);
 }
 
 function butlerDeleteTask(taskId) {
@@ -3042,10 +3484,18 @@ function butlerDeleteTask(taskId) {
     body: JSON.stringify({task_id: taskId})
   }).then(function(r) { return r.json(); }).then(function(data) {
     if (data.status === 'SUCCESS') {
-      if (window._clockScheduleNodes) {
-        window._clockScheduleNodes = window._clockScheduleNodes.filter(function(n) { return n.id !== taskId; });
-        clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes});
-      }
+      // 从服务端同步完整节点列表
+      fetch(API_BASE + '/api/reminder/tasks').then(function(r2) { return r2.json(); }).then(function(td) {
+        var fullNodes = (td.tasks || []).map(function(t) {
+          return {time: t.time, type: t.type, id: t.id, memo: (t.label || '') + '提醒', action: (t.label || '') + '提醒', duration_minutes: 0};
+        });
+        window._clockScheduleNodes = fullNodes;
+        if (fullNodes.length > 0) {
+          clockFetch('POST', '/api/clock/set_schedule', {nodes: fullNodes});
+        } else {
+          clockFetch('POST', '/api/clock/set_schedule', {nodes: []});
+        }
+      }).catch(function() {});
       butlerRenderContent();
     } else {
       alert('❌ 删除失败: ' + (data.message || '未知错误'));

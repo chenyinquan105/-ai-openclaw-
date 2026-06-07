@@ -1403,9 +1403,6 @@ def api_swap_shop():
             _sn = []
             for item in schedule_res["timeline"]:
                 _sn.append({"time": item["time"], "type": "SCHEDULE", "node_id": item.get("task_id",""), "name": item.get("memo",""), "action": item.get("action","")})
-            _sn.append({"time": "10:00", "type": "WATER", "id": "wat_1", "name": "喝水提醒"})
-            _sn.append({"time": "15:00", "type": "WATER", "id": "wat_2", "name": "喝水提醒"})
-            _sn.append({"time": "08:30", "type": "MED", "id": "med_hypertension", "name": "高血压阿司匹林"})
             _tm.set_schedule(_CLOCK_SESSION_ID, _sn)
     else:
         return jsonify({
@@ -1714,17 +1711,13 @@ def reminder_get_tasks():
 
 @app.route("/api/reminder/add_task", methods=["POST"])
 def reminder_add_task():
-    """添加一个提醒节点到虚拟时钟（仅虚拟时间开启时有效）"""
-    if not session_state.get("clock_enabled"):
-        return jsonify({"status": "ERROR", "message": "虚拟时间控制台未开启"}), 400
+    """添加一个提醒节点到虚拟时钟（自动初始化时钟会话）"""
     data = request.get_json(silent=True) or {}
     node = data.get("node", {})
     if not node or not node.get("id") or not node.get("time") or not node.get("type"):
         return jsonify({"status": "ERROR", "message": "缺少必填字段"}), 400
     tm = time_master.get_master()
-    cs = tm.get_session(_CLOCK_SESSION_ID)
-    if not cs:
-        return jsonify({"status": "ERROR", "message": "虚拟时钟会话不存在"}), 400
+    cs = tm.get_or_create_session(_CLOCK_SESSION_ID)
     current = list(cs.schedule_nodes) if cs else []
     current.append(node)
     tm.set_schedule(_CLOCK_SESSION_ID, current)
@@ -1741,7 +1734,7 @@ def reminder_remove_task():
     tm = time_master.get_master()
     cs = tm.get_session(_CLOCK_SESSION_ID)
     if not cs:
-        return jsonify({"status": "ERROR", "message": "无 session"}), 400
+        return jsonify({"status": "SUCCESS"})
     current = [n for n in cs.schedule_nodes if n.get("id") != task_id]
     tm.set_schedule(_CLOCK_SESSION_ID, current)
     return jsonify({"status": "SUCCESS"})
