@@ -1762,11 +1762,30 @@ function closeShopDetail() {
  */
 function _planbFlushExecCover() {
   // Plan B 执行后强制刷新 exec-cover：清缓存 + 从 schedule-section 重建行程方案
+  // 无论 exec-cover 是否打开都强制执行：先关后开，确保展示最新行程
   execContentCache = null;
   var execCover = document.getElementById('exec-cover');
-  if (execCover && !execCover.classList.contains('hidden')) {
+  if (execCover) {
     execCover.classList.add('hidden');
     setTimeout(function() { openExecCover(); }, 200);
+  }
+}
+
+/**
+ * 虚拟时间变更后的统一重排函数。
+ * 用当前虚拟时间重新触发排程，刷新行程方案展示。
+ * 仅在存在已排程数据（lastScheduleData）时执行。
+ */
+async function _rescheduleWithVirtualTime() {
+  if (!lastScheduleData || !lastScheduleData.timeline) return;
+  try {
+    const res = await clockFetch('POST', '/api/replan', { delay_minutes: 0 });
+    if (res.timeline) {
+      renderSchedule(res);
+      _planbFlushExecCover();
+    }
+  } catch (e) {
+    // 静默失败，不阻塞用户操作
   }
 }
 
@@ -2214,6 +2233,8 @@ function clockTogglePower() {
       }
     }).catch(function() {});
     clockUpdateUI({virtual_time: initTime, is_running: false, speed: 1});
+    // ★ 虚拟时钟开启后触发重新排程，用虚拟时间重算行程
+    _rescheduleWithVirtualTime();
   } else {
     // 关
     knob.style.left = '3px';
@@ -2277,6 +2298,8 @@ function clockSliderChange(val) {
           clockLogEvent('🔄 [' + ev.time + '] ' + (ev.name || ev.type || '事件'), 'event');
         });
       }
+      // ★ 虚拟时间跳转后触发重新排程
+      _rescheduleWithVirtualTime();
     }
     clockFetch('GET', '/api/clock/events').then(ed => {
       if (ed.events && ed.events.length) {
@@ -2409,6 +2432,8 @@ async function clockFastForward(delta) {
         clockLogEvent('🔄 [' + ev.time + '] ' + name, 'event');
       });
     }
+    // ★ 虚拟时间变更后触发重新排程，用新虚拟时间重算行程时间线
+    _rescheduleWithVirtualTime();
   } else {
     clockLogEvent('⚠️ ' + (data.error_message || '快进失败'), 'alert');
   }
@@ -2463,6 +2488,8 @@ async function clockGoto() {
         clockLogEvent('🔄 [' + ev.time + '] ' + (ev.name || ev.type || '事件'), 'event');
       });
     }
+    // ★ 虚拟时间变更后触发重新排程，用新虚拟时间重算行程时间线
+    _rescheduleWithVirtualTime();
   } else {
     clockLogEvent('⚠️ ' + (data.error_message || '跳转失败'), 'alert');
   }

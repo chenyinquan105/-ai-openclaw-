@@ -1428,11 +1428,21 @@ def api_replan():
     """
     重新排程：修改 now_str（延后出发）并重新调排程引擎。
     输入: { delay_minutes: int }  — 延后分钟数
+    当虚拟时钟开启时，优先使用虚拟时间作为基础。
     """
     data = request.get_json(silent=True) or {}
     delay = int(data.get("delay_minutes", 0))
 
-    now_str = session_state.get("now_str", "10:00")
+    # 虚拟时钟开启时优先用虚拟时间
+    if session_state.get("clock_enabled"):
+        _tm = time_master.get_master()
+        _cs = _tm.get_session(_CLOCK_SESSION_ID)
+        if _cs and _cs.virtual_time:
+            now_str = _cs.virtual_time
+        else:
+            now_str = session_state.get("now_str", "10:00")
+    else:
+        now_str = session_state.get("now_str", "10:00")
     if delay > 0 and now_str:
         parts = now_str.split(":")
         if len(parts) == 2:
