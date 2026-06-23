@@ -58,7 +58,7 @@ if base_dir not in sys.path: sys.path.insert(0, base_dir)
 if skills_path not in sys.path: sys.path.append(skills_path)
 
 try:
-    from skills.generic_poi_searcher import generic_poi_searcher as skill_poi
+    from skills.amap_poi import amap_poi as skill_poi
     from skills.concurrent_pipeline_scheduler import concurrent_pipeline_scheduler as skill_scheduler
 except ImportError as e:
     print(f"❌ 导入 Skill 失败: {e}")

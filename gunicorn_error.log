@@ -1,0 +1,72 @@
+[2026-06-23 20:41:51 +0800] [62481] [INFO] Starting gunicorn 26.0.0
+[2026-06-23 20:41:51 +0800] [62481] [INFO] Listening at: http://0.0.0.0:5000 (62481)
+[2026-06-23 20:41:51 +0800] [62481] [INFO] Using worker: sync
+[2026-06-23 20:41:51 +0800] [62486] [INFO] Booting worker with pid: 62486
+[2026-06-23 20:41:51 +0800] [62481] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 8 个 Skill
+[DEBUG search_poi] LLM args: {"categories": ["cafe"], "min_rating": 4.3}, keywords='咖啡'
+[DEBUG search_poi] cat=cafe got 24 shops
+[DEBUG search_poi] LLM args: {"categories": ["cafe"], "min_rating": 4.3}, keywords='咖啡'
+[DEBUG search_poi] cat=cafe got 24 shops
+[DEBUG search_poi] LLM args: {"categories": ["hair"], "min_rating": 4.3}, keywords='理发'
+[DEBUG search_poi] cat=hair got 21 shops
+[2026-06-23 20:44:58 +0800] [62623] [INFO] Starting gunicorn 26.0.0
+[2026-06-23 20:44:58 +0800] [62623] [INFO] Listening at: http://0.0.0.0:5000 (62623)
+[2026-06-23 20:44:58 +0800] [62623] [INFO] Using worker: sync
+[2026-06-23 20:44:58 +0800] [62625] [INFO] Booting worker with pid: 62625
+[2026-06-23 20:44:58 +0800] [62623] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 8 个 Skill
+[DEBUG search_poi] LLM args: {"categories": ["cafe"], "min_rating": 4.3}, keywords='咖啡'
+[DEBUG search_poi] cat=cafe got 24 shops
+[2026-06-23 20:48:55 +0800] [62778] [INFO] Starting gunicorn 26.0.0
+[2026-06-23 20:48:55 +0800] [62778] [INFO] Listening at: http://0.0.0.0:5000 (62778)
+[2026-06-23 20:48:55 +0800] [62778] [INFO] Using worker: sync
+[2026-06-23 20:48:55 +0800] [62784] [INFO] Booting worker with pid: 62784
+[2026-06-23 20:48:55 +0800] [62778] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-23 20:51:30 +0800] [62778] [CRITICAL] WORKER TIMEOUT (pid:62784)
+[2026-06-23 20:51:30 +0800] [62784] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 1903, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-23 20:51:30 +0800] [62784] [INFO] Worker exiting (pid: 62784)
+[OpenClaw Bridge] 已注册 8 个 Skill
+[2026-06-23 20:51:30 +0800] [62778] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-23 20:51:30 +0800] [62820] [INFO] Booting worker with pid: 62820
+[OpenClaw Bridge] 已注册 8 个 Skill
+[DEBUG search_poi] LLM args: {"categories": ["hotpot"], "min_rating": 4.3}, keywords='火锅'
+[DEBUG search_poi] cat=hotpot got 17 shops
+[DEBUG search_poi] LLM args: {"categories": ["cafe"], "min_rating": 4.3}, keywords='咖啡'
+[DEBUG search_poi] cat=cafe got 24 shops
+[2026-06-23 20:52:09 +0800] [62866] [INFO] Starting gunicorn 26.0.0
+[2026-06-23 20:52:09 +0800] [62866] [INFO] Listening at: http://0.0.0.0:5000 (62866)
+[2026-06-23 20:52:09 +0800] [62866] [INFO] Using worker: gthread
+[2026-06-23 20:52:09 +0800] [62868] [INFO] Booting worker with pid: 62868
+[2026-06-23 20:52:09 +0800] [62866] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 8 个 Skill
+[DEBUG search_poi] LLM args: {"categories": ["hotpot"], "min_rating": 4.3}, keywords='火锅'
+[DEBUG search_poi] cat=hotpot got 17 shops
+[DEBUG search_poi] LLM args: {"categories": ["hotpot"], "min_rating": 4.3}, keywords='火锅'
+[DEBUG search_poi] cat=hotpot got 17 shops

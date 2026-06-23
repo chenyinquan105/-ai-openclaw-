@@ -1738,6 +1738,7 @@ function openShopDetail(event, cardEl) {
 }
 
 function closeShopDetail() {
+  _detailAnimating = false;
   var overlay = document.getElementById('shop-detail-overlay');
   var card = document.getElementById('shop-detail-card');
   // 直接关闭
@@ -1752,6 +1753,7 @@ function closeShopDetail() {
     card.style.top = '';
     card.style.left = '';
     card.style.width = '';
+    card.style.maxWidth = '';
     card.style.margin = '';
     card.style.borderRadius = '';
   }, 200);

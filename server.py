@@ -302,11 +302,36 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
 
     system_prompt_1 = {
         "role": "system",
-        "content": (
-            f"{pref_text}\n\n"
-            "你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。品类映射规则：理发/美发/沙宣→hair，宠物/狗/猫/洗澡/宠物店→pet，咖啡→cafe，健身→gym，餐饮/吃饭/餐厅→restaurant，电影/影院→cinema，洗衣/干洗→laundry，火锅/海底捞/吃火锅→hotpot。"
-            f"min_rating 参数请设为 {rating_cutoff}。"
-        )
+        "content": f"""{pref_text}
+
+你是一个生活秘书。第一步必须调用 search_poi 搜索各品类商户。
+
+## 品类映射规则
+理发/美发/造型/沙宣->hair，宠物/狗/猫/洗澡/宠物店->pet，咖啡/奶茶/茶饮/水吧->cafe，
+健身/瑜伽/游泳->gym，餐饮/吃饭/餐厅/中餐->restaurant，电影/影院->cinema，
+洗衣/干洗->laundry，火锅/海底捞/吃火锅->hotpot，日料/寿司/居酒屋->japanese。
+
+## 模糊语义处理（核心能力）
+当用户使用抽象/口语描述时，你必须推理出「用户真正想找的场所类型」，转为具体可搜索的关键词。**严禁把形容词、感受词直接放进 keywords。**
+
+翻译规则：
+- "安静的地方看书" → 推导：可能是图书馆、书店、书吧 → keywords: "图书馆|书店|书吧"
+- "适合小孩玩" → 推导：游乐园、儿童乐园、亲子 → keywords: "游乐园|儿童乐园|亲子"
+- "有变形金刚的游乐园" → keywords: "变形金刚|主题乐园"
+- "圆的湖能玩帆船" → 推导：公园、湖泊景区 → keywords: "公园|湖|帆船"
+- "浪漫的约会餐厅" → keywords: "西餐|日料|观景餐厅"
+- "便宜又好吃的" → 同时设 min_rating 为 3.5，categories 按品类填
+
+**关键原则：keywords 里必须是高德地图能搜到的场所名称/类型词，不能是"安静""浪漫""舒服""好玩"这类形容词。**
+
+## 多目的地串联
+用户一句话含多个目的地时，每次 tool call 代表一个目的地，可分多次调用 search_poi：
+- "去环球影城吃冰淇淋然后去世贸天阶买蛋糕"：
+  第1次: keywords: "环球影城|冰淇淋", categories: []
+  第2次: keywords: "世贸天阶|蛋糕|烘焙", categories: []
+- 每个目的地独立搜索，便于后续分别排程。
+
+min_rating 参数请设为 {rating_cutoff}。"""
     }
     agent_instance.context_memory = [system_prompt_1, {"role": "user", "content": user_text}]
 
@@ -317,7 +342,8 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "categories": {"type": "array", "items": {"type": "string"}},
+                    "categories": {"type": "array", "items": {"type": "string"}, "description": "品类编码数组，如 ['hair','cafe']。模糊描述时可传空数组"},
+                    "keywords": {"type": "string", "description": "模糊语义关键词，如'变形金刚 游乐园''安静的咖啡厅'。品类明确时可不填"},
                     "center_coord": {"type": "string"},
                     "radius_meters": {"type": "integer"},
                     "min_rating": {"type": "number"}
@@ -342,6 +368,7 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
     agent_instance.context_memory.append(msg)
 
     all_results = {}
+    llm_keywords = ""  # P0-1: 模糊关键词，在循环和重试中复用
     for tool_call in msg.tool_calls:
         args = json.loads(tool_call.function.arguments)
         raw_cats = args.get("categories", [])
@@ -368,14 +395,44 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
         # price_level 仅对餐饮品类生效（hair/pet/cafe/gym/cinema/laundry 不过滤）
         food_cats = {"restaurant", "hotpot"}
         effective_price_level = fallback_price_level if any(c in food_cats for c in mapped_cats) else None
-        print(f"[DEBUG search_poi] LLM args: {json.dumps(args, ensure_ascii=False)}", flush=True)
+        llm_keywords = args.get("keywords", "").strip() if isinstance(args.get("keywords"), str) else ""
+        # 强制过滤：把 LLM 可能误传的抽象形容词从关键词中剔除
+        _abstract_words = ['安静', '舒服', '好玩', '便宜', '浪漫', '好吃', '好看', '方便', '近', '快',
+                           '看书', '学习', '工作', '约会', '聊天', '休息', '发呆', '放松', '拍照',
+                           '热闹', '人少', '小众', '网红', '高级', '温馨', '干净', '大', '小', '新']
+        for _aw in _abstract_words:
+            llm_keywords = llm_keywords.replace(_aw, '')
+        llm_keywords = ' '.join(llm_keywords.split())
+        # 过滤后关键词太短或只是品类名 → 清空，退回品类自动关键词
+        if llm_keywords and len(llm_keywords) <= 3:
+            llm_keywords = ''
+        # 兜底：LLM 没给关键词时，用清洗后的用户输入
+        if not llm_keywords:
+            cleaned = user_text
+            # 去掉虚词
+            for filler in ['有', '的', '一个', '那个', '哪个', '帮我', '我想', '我要', '找', '一下',
+                           '附近', '周边', '有没有', '哪里', '什么地方', '怎么', '和', '想', '个']:
+                cleaned = cleaned.replace(filler, ' ')
+            # 去掉抽象形容词（API 不认）
+            for adj in ['安静', '舒服', '好玩', '便宜', '浪漫', '好吃', '好看', '方便', '近', '快']:
+                cleaned = cleaned.replace(adj, ' ')
+            cleaned = ' '.join(cleaned.split())
+            llm_keywords = cleaned if cleaned else user_text
+        print(f"[DEBUG search_poi] LLM args: {json.dumps(args, ensure_ascii=False)}, keywords={llm_keywords!r}", flush=True)
+        # 模糊搜索时放宽评分+扩大半径（关键词优先于精确匹配）
+        effective_min_rating = args.get("min_rating", fallback_min_rating)
+        effective_radius = args.get("radius_meters", 3000)
+        if llm_keywords:
+            effective_min_rating = min(effective_min_rating, 3.0)
+            effective_radius = max(effective_radius, 10000)  # 模糊搜索扩大范围
         search_res = backend.skill_poi.search_poi_matrix(
             center_coord=coord,
-            categories=mapped_cats,
-            radius_meters=args.get("radius_meters", 3000),
-            min_rating=args.get("min_rating", fallback_min_rating),
+            categories=mapped_cats if mapped_cats else (["restaurant"] if not llm_keywords else ["restaurant"]),
+            radius_meters=effective_radius,
+            min_rating=effective_min_rating,
             price_level=effective_price_level,
             dietary_restrictions=diet_res if diet_res else None,
+            keywords=llm_keywords if llm_keywords else None,
         )
 
         if search_res.get("status") == "SUCCESS":
@@ -406,10 +463,11 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
             retry_price_level = fallback_price_level if any(c in food_cats for c in fallback_cats) else None
             retry_res = backend.skill_poi.search_poi_matrix(
                 center_coord="39.93,116.45",
-                categories=fallback_cats,
-                radius_meters=3000,
-                min_rating=fallback_min_rating,
+                categories=fallback_cats if fallback_cats else ["restaurant"],
+                radius_meters=10000 if llm_keywords else 3000,
+                min_rating=min(fallback_min_rating, 3.0) if llm_keywords else fallback_min_rating,
                 price_level=retry_price_level,
+                keywords=llm_keywords if llm_keywords else None,
             )
             if retry_res.get("status") == "SUCCESS":
                 for cat, shoplist in retry_res["search_results"].items():
@@ -568,9 +626,26 @@ def api_start():
     session_state["fixed_time"] = fixed_time
     session_state["time_mode"] = time_mode
 
+    # P0-2: auto 模式 — 自动选店+排程，一步到位
+    auto_mode = data.get("auto", False)
+    if auto_mode:
+        # 每个品类自动选评分最高的店
+        auto_pairs = []
+        for cat, shops in agent.poi_cache_per_category.items():
+            if shops:
+                best = max(shops, key=lambda s: s.get("rating", 0))
+                auto_pairs.append((cat, best["shop_id"], best["name"]))
+        if auto_pairs:
+            session_state["selected_pairs"] = auto_pairs
+            session_state["transport"] = data.get("transport", "步行")
+            session_state["phase"] = "running"
+            return _run_schedule_from_session()
+
+    # 交互模式：返回品类列表让用户选
     return jsonify({
         "phase": "choose_shop",
-        "categories": categories
+        "categories": categories,
+        "auto_available": len(session_state.get("searched_categories", [])) > 0,
     })
 
 
@@ -652,6 +727,137 @@ def api_set_time():
     # 构建排程输入
     return _run_schedule_from_session()
 
+
+# ======================================================================
+# P0-3 + P0-4: 多轮对话路线编辑 + 行中动态修改目的地
+# ======================================================================
+@app.route("/api/edit_trip", methods=["POST"])
+def api_edit_trip():
+    """行程编辑端点：用户用自然语言微调已有行程。
+    支持：改路线/换交通/增删目的地/调整时间/换偏好。
+    """
+    global agent, session_state
+    data = request.get_json(silent=True) or {}
+    edit_text = (data.get("text") or "").strip()
+    if not edit_text:
+        return jsonify({"error": "请输入编辑指令"}), 400
+
+    if session_state.get("phase") != "done" and not session_state.get("selected_pairs"):
+        return jsonify({"error": "没有活跃行程，请先发起一个行程"}), 400
+
+    # 用 LLM 解析编辑意图
+    current_plan_desc = ""
+    for cat, sid, sname in session_state.get("selected_pairs", []):
+        current_plan_desc += f"- {sname} ({cat})\n"
+
+    edit_prompt = f"""当前行程：
+{current_plan_desc}
+用户编辑指令：{edit_text}
+
+请判断用户意图，返回 JSON（只返回 JSON，不要其他文字）：
+{{
+  "action": "add_stop" | "remove_stop" | "reroute" | "change_time" | "change_transport",
+  "params": {{}}
+}}
+
+意图说明：
+- add_stop: 新增目的地。params: {{keywords: 搜索关键词, category: 品类或空}}
+- remove_stop: 删除目的地。params: {{name: 要删的店名关键词}}
+- reroute: 换路线。params: {{preference: fast|short|scenic|avoid_highway}}
+- change_time: 调整时间。params: {{time: HH:MM 或 now 或 +30}}
+- change_transport: 换交通方式。params: {{mode: WALK|TAXI|METRO|DRIVE}}"""
+
+    edit_messages = [
+        {"role": "system", "content": "你是行程编辑助手，解析用户编辑意图。只返回 JSON。"},
+        {"role": "user", "content": edit_prompt}
+    ]
+    try:
+        edit_resp = agent._call_llm(edit_messages, max_tokens=500)
+        raw = (edit_resp.content or "").strip()
+        # 提取 JSON（可能被 markdown 包裹）
+        json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', raw, re.DOTALL)
+        if not json_match:
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if json_match:
+            intent = json.loads(json_match.group(0))
+        else:
+            intent = {"action": "reroute", "params": {"preference": "fast"}}
+    except Exception as e:
+        print(f"[edit_trip] LLM 解析失败: {e}, raw={raw if 'raw' in dir() else 'N/A'}")
+        return jsonify({"error": f"无法理解编辑指令: {str(e)}"}), 400
+
+    action = intent.get("action", "reroute")
+    params = intent.get("params", {})
+
+    # ── 执行编辑 ──
+    if action == "add_stop":
+        # 搜索新目的地
+        kw = params.get("keywords", edit_text)
+        cat = params.get("category")
+        try:
+            new_res = backend.skill_poi.search_poi_matrix(
+                center_coord="39.93,116.45",
+                categories=[cat] if cat else ["restaurant"],
+                radius_meters=5000,
+                min_rating=3.5,
+                keywords=kw if kw else None,
+            )
+            # 取第一个有结果的品类
+            added = False
+            for c, shops in new_res.get("search_results", {}).items():
+                if shops:
+                    best = max(shops, key=lambda s: s.get("rating", 0))
+                    agent.poi_cache[best["shop_id"]] = best
+                    session_state["selected_pairs"].append((c, best["shop_id"], best["name"]))
+                    added = True
+                    break
+            if not added:
+                return jsonify({"error": f"未找到匹配' {kw} '的目的地"}), 404
+        except Exception as e:
+            return jsonify({"error": f"搜索失败: {str(e)}"}), 500
+
+    elif action == "remove_stop":
+        name_kw = params.get("name", "")
+        before = len(session_state["selected_pairs"])
+        session_state["selected_pairs"] = [
+            (cat, sid, sname)
+            for cat, sid, sname in session_state["selected_pairs"]
+            if name_kw not in sname
+        ]
+        if len(session_state["selected_pairs"]) == before:
+            return jsonify({"error": f"未找到含'{name_kw}'的目的地"}), 404
+        if not session_state["selected_pairs"]:
+            return jsonify({"error": "行程已清空，请重新发起"}), 400
+
+    elif action == "change_time":
+        t = params.get("time", "now")
+        if t == "now":
+            session_state["fixed_time"] = None
+            session_state["time_mode"] = "now"
+        elif t.startswith("+") or t.startswith("-"):
+            # 相对时间偏移
+            try:
+                delta = int(t)
+                from datetime import datetime, timedelta
+                new_dt = datetime.now() + timedelta(minutes=delta)
+                session_state["fixed_time"] = new_dt.strftime("%H:%M")
+                session_state["time_mode"] = "fixed"
+            except ValueError:
+                pass
+        else:
+            session_state["fixed_time"] = t
+            session_state["time_mode"] = "fixed"
+
+    elif action == "change_transport":
+        mode = params.get("mode", "WALK")
+        session_state["transport"] = {"WALK": "步行", "TAXI": "打车", "METRO": "公共交通", "DRIVE": "驾车"}.get(mode, "步行")
+
+    # reroute / 其他: 直接重跑排程（可能用新偏好）
+    session_state["phase"] = "running"
+    return _run_schedule_from_session()
+
+
+# ── 排程辅助函数 ──
 
 def _run_schedule_from_session():
     """从 session_state 构建排程输入并执行"""
