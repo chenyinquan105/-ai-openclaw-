@@ -47,6 +47,13 @@
 .reminder-pulse { animation: reminder-pulse 1.2s ease-in-out infinite; }
 .reminder-shake { animation: reminder-shake 0.4s ease-in-out; }
 .reminder-fade-in { animation: reminder-fade-in 0.35s ease-out; }
+@keyframes taxi-dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-6px); }
+}
+.taxi-dot { display: inline-block; animation: taxi-dot-bounce 1.2s ease-in-out infinite; }
+.taxi-dot:nth-child(2) { animation-delay: 0.2s; }
+.taxi-dot:nth-child(3) { animation-delay: 0.4s; }
 /* 提醒弹窗由 JS 动态创建到 body，display 由 JS 控制，CSS 只做定位兜底 */
 #reminder-dialog {
   align-items: center !important;
@@ -301,7 +308,7 @@
  <!-- 底部固定：输入框+语音 -->
  <div class="flex-shrink-0 bg-white border-t border-gray-200 px-3 py-3 flex items-center space-x-3">
  <div class="flex-1 flex items-center bg-gray-100 rounded-full px-4 py-2.5 border border-gray-200">
- <input type="text" id="exec-chat-input" placeholder="输入消息..." class="flex-1 bg-transparent border-none outline-none text-gray-900 text-sm placeholder-gray-400">
+ <input type="text" id="exec-chat-input" placeholder="输入消息..." class="flex-1 bg-transparent border-none outline-none text-gray-900 text-sm placeholder-gray-400" onkeydown="if(event.key==='Enter')sendExecMessage()">
  <button onclick="sendExecMessage()" class="ml-2 text-yellow-500 font-bold text-sm hover:text-yellow-400 transition">发送</button>
  </div>
  <button onclick="alert('语音输入')" class="w-10 h-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition">
@@ -1111,7 +1118,7 @@ function renderMetroTimeline(data) {
    const subLine = node.sub ? `<span class="block text-[10px] text-gray-400 whitespace-nowrap">${node.sub} ${durText}</span>` : '';
    const nodeW = 140;
    return `
-     <div style="display:inline-block; vertical-align:top; text-align:center; width:${nodeW}px; margin-right:16px;">
+     <div style="display:inline-block; vertical-align:top; text-align:center; width:${nodeW}px; margin-right:16px; overflow:hidden;">
        <!-- 时间 -->
        <div style="height:32px; line-height:32px;">
          <span class="text-xs text-yellow-400 font-bold whitespace-nowrap">${node.time}</span>
@@ -1122,7 +1129,7 @@ function renderMetroTimeline(data) {
        </div>
        <!-- 名称 + 子任务 -->
        <div style="max-width:${nodeW}px; margin-top:10px;">
-         <div class="text-sm font-bold text-white leading-tight whitespace-nowrap">${node.name}</div>
+         <div class="text-sm font-bold text-white leading-snug" style="overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; word-break:break-all;">${node.name}</div>
          ${subLine}
        </div>
      </div>`;
@@ -1358,11 +1365,75 @@ function closeExecCover() {
  }
 }
 
-function sendExecMessage() {
+function _escHtml(s) {
+ var d = document.createElement('div');
+ d.textContent = s;
+ return d.innerHTML;
+}
+
+async function sendExecMessage() {
  const input = document.getElementById('exec-chat-input');
  if (!input || !input.value.trim()) return;
- alert('发送: ' + input.value.trim());
+ var msg = input.value.trim();
  input.value = '';
+ input.disabled = true;
+
+ // 用户消息气泡
+ var content = document.getElementById('exec-plan-content');
+ if (content) {
+   var userBubble = document.createElement('div');
+   userBubble.className = 'bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 ml-8 text-right animate-fade-in';
+   userBubble.innerHTML = '<p class="text-sm text-gray-900">' + _escHtml(msg) + '</p>';
+   content.appendChild(userBubble);
+   // 加载态
+   var loadingBubble = document.createElement('div');
+   loadingBubble.id = 'exec-loading-bubble';
+   loadingBubble.className = 'bg-gray-50 border border-gray-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in';
+   loadingBubble.innerHTML = '<p class="text-sm text-gray-400 italic">🤖 思考中...</p>';
+   content.appendChild(loadingBubble);
+   requestAnimationFrame(function() { content.scrollTop = content.scrollHeight; });
+ }
+
+ try {
+   var res = await fetch(API_BASE + '/api/edit_trip', {
+     method: 'POST',
+     headers: {'Content-Type': 'application/json'},
+     body: JSON.stringify({ text: msg })
+   });
+   var data = await res.json();
+   // 移除加载态
+   var lb = document.getElementById('exec-loading-bubble');
+   if (lb) lb.remove();
+
+   if (data.error) {
+     var errBubble = document.createElement('div');
+     errBubble.className = 'bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in';
+     errBubble.innerHTML = '<p class="text-sm text-red-700">❌ ' + _escHtml(data.error) + '</p>';
+     if (content) { content.appendChild(errBubble); requestAnimationFrame(function() { content.scrollTop = content.scrollHeight; }); }
+   } else if (data.timeline || data.phase === 'done') {
+     var okBubble = document.createElement('div');
+     okBubble.className = 'bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in';
+     okBubble.innerHTML = '<p class="text-sm text-gray-800">🤖 已按你的要求更新行程 ✅</p>';
+     if (content) { content.appendChild(okBubble); requestAnimationFrame(function() { content.scrollTop = content.scrollHeight; }); }
+     if (data.timeline) { renderSchedule(data); }
+     _planbFlushExecCover();
+   } else {
+     var okBubble2 = document.createElement('div');
+     okBubble2.className = 'bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in';
+     okBubble2.innerHTML = '<p class="text-sm text-gray-800">🤖 行程已更新</p>';
+     if (content) { content.appendChild(okBubble2); requestAnimationFrame(function() { content.scrollTop = content.scrollHeight; }); }
+     _planbFlushExecCover();
+   }
+ } catch(e) {
+   var lb2 = document.getElementById('exec-loading-bubble');
+   if (lb2) lb2.remove();
+   var errBubble2 = document.createElement('div');
+   errBubble2.className = 'bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in';
+   errBubble2.innerHTML = '<p class="text-sm text-red-700">❌ 网络异常，请稍后重试</p>';
+   if (content) { content.appendChild(errBubble2); requestAnimationFrame(function() { content.scrollTop = content.scrollHeight; }); }
+ }
+ input.disabled = false;
+ input.focus();
 }
 
 function endTrip() {
@@ -1433,6 +1504,12 @@ function getPlanBOptions(type) {
  ],
  '餐厅停电': [
  { id: 'swap_shop', title: '更换附近同品类餐厅', subtitle: '检索附近营业中的同品类餐厅替代', emoji: '🔄' },
+ { id: 'postpone', title: '延后就餐，先去其他节点', subtitle: '将该餐厅延后，等待电力恢复后再前往', emoji: '⏳' },
+ { id: 'cancel_node', title: '取消该节点', subtitle: '从行程中移除该节点', emoji: '❌' }
+ ],
+ '店铺关门': [
+ { id: 'swap_shop', title: '更换附近同品类店铺', subtitle: '检索附近营业中的同品类店铺替代', emoji: '🔄' },
+ { id: 'postpone', title: '暂缓该节点', subtitle: '将该节点延后，先执行其他行程', emoji: '⏳' },
  { id: 'cancel_node', title: '取消该节点', subtitle: '从行程中移除该节点', emoji: '❌' }
  ],
  '堵车': [
@@ -1556,6 +1633,72 @@ function appendExecChatMessage(text) {
     execContentCache = null;
     openExecCover();
   }
+}
+
+/**
+ * 模拟叫车：先展示加载动画（3秒），然后展示车辆信息卡片。
+ * 返回 Promise，resolve 时带车辆信息对象。
+ */
+function _simulateTaxiCall() {
+  var content = document.getElementById('exec-plan-content');
+  if (!content) return Promise.resolve(null);
+
+  // 生成随机车辆信息
+  var plates = ['京B·A8K32', '京B·F2L91', '京B·D7R56', '京B·M3X18', '京B·T9W44'];
+  var colors = ['白色', '黑色', '银色', '蓝色'];
+  var models = ['丰田卡罗拉', '大众帕萨特', '现代伊兰特', '日产轩逸', '比亚迪秦'];
+  var surnames = ['王', '李', '张', '刘', '陈', '杨', '赵', '周'];
+  var carInfo = {
+    plate: plates[Math.floor(Math.random() * plates.length)],
+    color: colors[Math.floor(Math.random() * colors.length)],
+    model: models[Math.floor(Math.random() * models.length)],
+    driver: surnames[Math.floor(Math.random() * surnames.length)] + '师傅',
+    phone: '1' + String(Math.floor(Math.random() * 9000000000 + 1000000000)),
+    eta: '3',
+  };
+
+  // 加载气泡
+  var loadBubble = document.createElement('div');
+  loadBubble.id = 'taxi-calling-bubble';
+  loadBubble.className = 'bg-yellow-50 border border-yellow-300 rounded-2xl p-4 mb-3 animate-fade-in';
+  loadBubble.innerHTML = '<div class="flex items-center gap-3">' +
+    '<div class="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center flex-shrink-0">' +
+      '<svg class="w-5 h-5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+        '<path d="M16 3h3a2 2 0 012 2v12a2 2 0 01-2 2h-2M8 3H5a2 2 0 00-2 2v12a2 2 0 002 2h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><rect x="8" y="5" width="8" height="10" rx="1"/>' +
+      '</svg>' +
+    '</div>' +
+    '<div class="min-w-0 flex-1">' +
+      '<p class="text-sm font-bold text-gray-900">🚕 正在为您叫车...</p>' +
+      '<p class="text-xs text-gray-500 mt-0.5">预计等待 <b>' + carInfo.eta + ' 分钟</b>' +
+        '<span class="taxi-dot ml-1">.</span><span class="taxi-dot">.</span><span class="taxi-dot">.</span></p>' +
+    '</div></div>';
+  content.appendChild(loadBubble);
+  requestAnimationFrame(function() { content.scrollTop = content.scrollHeight; });
+
+  return new Promise(function(resolve) {
+    setTimeout(function() {
+      // 移除加载泡
+      var lb = document.getElementById('taxi-calling-bubble');
+      if (lb) lb.remove();
+
+      // 车辆信息卡片
+      var carBubble = document.createElement('div');
+      carBubble.className = 'bg-green-50 border border-green-300 rounded-2xl p-4 mb-3 animate-fade-in';
+      carBubble.innerHTML = '<div class="flex items-center gap-3 mb-3">' +
+        '<div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">🚕</div>' +
+        '<div><p class="text-sm font-bold text-gray-900">车辆已就位</p><p class="text-xs text-gray-500">请及时上车</p></div>' +
+        '</div>' +
+        '<div class="bg-white rounded-xl p-3 space-y-2 text-sm">' +
+          '<div class="flex justify-between"><span class="text-gray-500">车牌号</span><span class="font-bold text-gray-900">' + carInfo.plate + '</span></div>' +
+          '<div class="flex justify-between"><span class="text-gray-500">车型颜色</span><span class="text-gray-900">' + carInfo.color + ' ' + carInfo.model + '</span></div>' +
+          '<div class="flex justify-between"><span class="text-gray-500">司机</span><span class="text-gray-900">' + carInfo.driver + '</span></div>' +
+          '<div class="flex justify-between"><span class="text-gray-500">联系电话</span><span class="font-bold text-blue-600">📞 ' + carInfo.phone + '</span></div>' +
+        '</div>';
+      content.appendChild(carBubble);
+      requestAnimationFrame(function() { content.scrollTop = content.scrollHeight; });
+      resolve(carInfo);
+    }, 3000);
+  });
 }
 
 /**
@@ -1818,6 +1961,8 @@ function executePlanB() {
     activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
+    // 并行：叫车动画 + 后端重排
+    _simulateTaxiCall();
     fetch(API_BASE + '/api/replan', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -1825,35 +1970,136 @@ function executePlanB() {
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕，因暴雨天气影响出行安全。待暴雨解除后会自动提醒您雨停了，可恢复步行/原出行方式。');
       if (data.timeline) { renderSchedule(data); }
       _planbFlushExecCover();
     })
     .catch(function() {
-      appendExecChatMessage('已为您将后续所有路段切换为 <b>打车</b> 接驳 🚕。待暴雨解除后会自动提醒您雨停了，可恢复步行/原出行方式。');
       if (lastScheduleData) { renderSchedule(lastScheduleData); }
       _planbFlushExecCover();
     });
     return;
   }
 
-  // ---- 2. 避雨：先拉附近饮品店列表→二级弹窗选店→插入行程 ----
+  // ---- 2. 避雨：先拉附近饮品店列表→三级分流 ----
   if (optId === 'find_shelter') {
     activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
-    // 先获取附近饮品店列表
     fetch(API_BASE + '/api/get_nearby_cafes', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'}
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data.error || !data.shops || data.shops.length === 0) {
-        appendExecChatMessage('附近暂无可避雨的饮品店，建议改用打车或暂缓行程。');
+      var allShops = (data.shops && data.shops.length) ? data.shops : [];
+      var nearbyShops = allShops.filter(function(s) { return (s.distance_meters || 9999) <= 1000; });
+      var farShops = allShops.filter(function(s) { return (s.distance_meters || 9999) > 1000; });
+
+      // 辅助函数：插入避雨店
+      function _doInsertShelter(shopId, shopName) {
+        fetch(API_BASE + '/api/insert_shelter', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ shop_id: shopId })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(insRes) {
+          var name = insRes.shelter_name || shopName || '附近饮品店';
+          appendExecChatMessage('已为您更换行程，前往 <b>' + name + '</b> ☕ 避雨。雨停后可通过聊天框说「雨停了继续行程」恢复计划。');
+          if (insRes.timeline) { renderSchedule(insRes); _planbFlushExecCover(); }
+        })
+        .catch(function() {
+          appendExecChatMessage('已为您更换行程前往避雨点 ☕。雨停后可通过聊天框说「雨停了继续行程」恢复计划。');
+        });
+      }
+
+      // 辅助函数：回退方案弹窗
+      function _showShelterFallback() {
+        showSecondModal(
+          '☔ 附近无合适避雨点，请选择替代方案',
+          '1公里内没有饮品店，选择其他应对方式：',
+          [
+            { value: 'switch_to_taxi', emoji: '🚕', title: '改步行为打车', subtitle: '将后续步行路段切换为打车接驳' },
+            { value: 'postpone', emoji: '⏳', title: '暂缓行程', subtitle: '等待雨停后再出发' },
+            { value: 'cancel_trip', emoji: '❌', title: '取消计划', subtitle: '取消整个行程' }
+          ],
+          function(fallbackVal, fallbackName) {
+            if (fallbackVal === 'switch_to_taxi') {
+              selectedTransport = '打车';
+              _simulateTaxiCall();
+              fetch(API_BASE + '/api/replan', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ transport_mode: 'taxi' })
+              })
+              .then(function(r) { return r.json(); })
+              .then(function(d) {
+                if (d.timeline) { renderSchedule(d); _planbFlushExecCover(); }
+              })
+              .catch(function() {});
+            } else if (fallbackVal === 'postpone') {
+              // 延后30分钟
+              fetch(API_BASE + '/api/replan', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ delay_minutes: 30 })
+              })
+              .then(function(r) { return r.json(); })
+              .then(function(d) {
+                appendExecChatMessage('已暂缓行程 ⏳（延后 30 分钟），等待雨势减小。');
+                if (d.timeline) { renderSchedule(d); _planbFlushExecCover(); }
+              })
+              .catch(function() {
+                appendExecChatMessage('已暂缓行程 ⏳。');
+              });
+            } else if (fallbackVal === 'cancel_trip') {
+              execContentCache = '';
+              document.getElementById('exec-plan-content').innerHTML = '';
+              var ss = document.getElementById('schedule-section');
+              if (ss) ss.innerHTML = '<p class="text-gray-500 italic py-8 text-center">行程已取消</p>';
+              lastScheduleData = null;
+              var ec = document.getElementById('exec-cover');
+              if (ec) ec.classList.add('hidden');
+              appendExecChatMessage('已取消行程，如需重新规划请随时告诉我。');
+              fetch(API_BASE + '/api/cancel_trip', { method: 'POST' }).catch(function(){});
+            }
+          }
+        );
+      }
+
+      // === Case 3: 无店铺 ===
+      if (data.error || allShops.length === 0) {
+        appendExecChatMessage('⚠️ 附近暂无可避雨的饮品店。');
+        _showShelterFallback();
         return;
       }
-      var shopOpts = data.shops.map(function(s, i) {
+
+      // === Case 2: 有店但全超过 1km ===
+      if (nearbyShops.length === 0 && farShops.length > 0) {
+        var nearest = farShops[0];
+        var distText = nearest.distance_km ? nearest.distance_km + 'km' : (nearest.distance || '较远');
+        // 用 confirm 对话框让用户确认
+        var confirmMsg = '⚠️ 1公里内没有饮品店，最近的饮品店是【' + nearest.name + '】在 ' + distText + ' 外，需要前往吗？';
+        showSecondModal(
+          '☕ 1公里内无饮品店',
+          confirmMsg,
+          [
+            { value: nearest.shop_id, emoji: '☕', title: '前往 ' + nearest.name, subtitle: '距离 ' + distText },
+            { value: '__fallback__', emoji: '🔄', title: '换其他方案', subtitle: '打车、暂缓或取消行程' }
+          ],
+          function(chosenVal, chosenName) {
+            if (chosenVal === '__fallback__') {
+              _showShelterFallback();
+            } else {
+              _doInsertShelter(chosenVal, chosenName);
+            }
+          }
+        );
+        return;
+      }
+
+      // === Case 1: 有 1km 内的店 ===
+      var shopOpts = nearbyShops.map(function(s) {
         return {
           value: s.shop_id,
           emoji: '☕',
@@ -1861,29 +2107,23 @@ function executePlanB() {
           subtitle: '★' + s.rating + '  ' + (s.distance || '')
         };
       });
+      // 如有更远的店，追加一个分隔
+      if (farShops.length > 0) {
+        farShops.forEach(function(s) {
+          shopOpts.push({
+            value: s.shop_id,
+            emoji: '📍',
+            title: s.name + ' (较远)',
+            subtitle: '★' + s.rating + '  ' + (s.distance || '')
+          });
+        });
+      }
       showSecondModal(
         '☕ 选择避雨饮品店',
         '请选择要前往的店铺避雨，系统将安排在行程第一个目的地。',
         shopOpts,
         function(shelterShopId, shelterShopName) {
-          // 选中店铺后调后端插入
-          fetch(API_BASE + '/api/insert_shelter', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ shop_id: shelterShopId })
-          })
-          .then(function(r) { return r.json(); })
-          .then(function(insRes) {
-            var name = insRes.shelter_name || shelterShopName || '附近饮品店';
-            appendExecChatMessage('已为您更换行程，前往 <b>' + name + '</b> ☕ 进行避雨。待暴雨解除后会自动提醒您雨停了，继续行程。');
-            if (insRes.timeline) {
-              renderSchedule(insRes);
-              _planbFlushExecCover();
-            }
-          })
-          .catch(function() {
-            appendExecChatMessage('已为您更换行程前往避雨点 ☕。待暴雨解除后会自动提醒您雨停了，继续行程。');
-          });
+          _doInsertShelter(shelterShopId, shelterShopName);
         }
       );
     })
@@ -1926,6 +2166,8 @@ function executePlanB() {
       if (execCover) { execCover.classList.add('hidden'); }
       appendExecChatMessage('已为您 <b>取消本次行程计划</b>，如需重新规划请随时告诉我。');
       closeDemoExceptionModal();
+      // 通知服务端清理
+      fetch(API_BASE + '/api/cancel_trip', { method: 'POST' }).catch(function(){});
     }
     return;
   }
@@ -1972,7 +2214,8 @@ function executePlanB() {
         [
           { value: '15', emoji: '⏱️', title: '延后 15 分钟' },
           { value: '30', emoji: '⏱️', title: '延后 30 分钟' },
-          { value: '60', emoji: '⏱️', title: '延后 1 小时' }
+          { value: '60', emoji: '⏱️', title: '延后 1 小时' },
+          { value: 'custom', emoji: '✏️', title: '自定义', subtitle: '输入具体分钟数' }
         ],
         function(delayVal) {
           activeExceptions.push({ ...pendingDemoException });
@@ -2108,7 +2351,7 @@ function executePlanB() {
     fetch(API_BASE + '/api/replan', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ delay_minutes: 15 })
+      body: JSON.stringify({ reroute: true, delay_minutes: 5 })
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
@@ -2124,7 +2367,43 @@ function executePlanB() {
     return;
   }
 
-  // ---- 默认兜底 ----
+  // ---- 8. 默认兜底：LLM AI 自动决策 ----
+  if (optId === 'default_b') {
+    activeExceptions.push({ ...pendingDemoException });
+    renderActiveExceptions();
+    closeDemoExceptionModal();
+    appendExecChatMessage('🤖 AI 正在评估最优变轨方案...');
+    fetch(API_BASE + '/api/planb_default', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        anomaly_type: exType,
+        corrupted_node_id: pendingDemoException.corrupted_node_id || ''
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        appendExecChatMessage('❌ AI 决策失败: ' + data.error);
+      } else {
+        if (data.action_taken === 'TRANSPORT') {
+          _simulateTaxiCall();
+        } else {
+          appendExecChatMessage('🤖 AI 已自动决策: <b>' + (data.action_desc || '已执行最优方案') + '</b> ✅');
+        }
+        if (data.timeline) { renderSchedule(data); }
+        _planbFlushExecCover();
+      }
+    })
+    .catch(function() {
+      appendExecChatMessage('❌ AI 决策服务异常，请手动选择其他 Plan B 方案');
+      if (lastScheduleData) { renderSchedule(lastScheduleData); }
+      _planbFlushExecCover();
+    });
+    return;
+  }
+
+  // ---- 未知 option 兜底 ----
   activeExceptions.push({ ...pendingDemoException });
   renderActiveExceptions();
   appendExecChatMessage('已执行操作: ' + label);

@@ -70,3 +70,32 @@ SystemExit: 1
 [DEBUG search_poi] cat=hotpot got 17 shops
 [DEBUG search_poi] LLM args: {"categories": ["hotpot"], "min_rating": 4.3}, keywords='火锅'
 [DEBUG search_poi] cat=hotpot got 17 shops
+[2026-06-24 14:37:01 +0800] [67653] [INFO] Starting gunicorn 26.0.0
+[2026-06-24 14:37:01 +0800] [67653] [INFO] Listening at: http://0.0.0.0:5000 (67653)
+[2026-06-24 14:37:01 +0800] [67653] [INFO] Using worker: gthread
+[2026-06-24 14:37:01 +0800] [67657] [INFO] Booting worker with pid: 67657
+[2026-06-24 14:37:01 +0800] [67653] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-24 14:37:36 +0800] [67713] [INFO] Starting gunicorn 26.0.0
+[2026-06-24 14:37:36 +0800] [67713] [INFO] Listening at: http://0.0.0.0:5000 (67713)
+[2026-06-24 14:37:36 +0800] [67713] [INFO] Using worker: gthread
+[2026-06-24 14:37:36 +0800] [67715] [INFO] Booting worker with pid: 67715
+[2026-06-24 14:37:36 +0800] [67713] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-24 16:52:16 +0800] [69540] [INFO] Starting gunicorn 26.0.0
+[2026-06-24 16:52:16 +0800] [69540] [INFO] Listening at: http://0.0.0.0:5000 (69540)
+[2026-06-24 16:52:16 +0800] [69540] [INFO] Using worker: gthread
+[2026-06-24 16:52:16 +0800] [69544] [INFO] Booting worker with pid: 69544
+[2026-06-24 16:52:16 +0800] [69540] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-24 16:58:11 +0800] [69751] [INFO] Starting gunicorn 26.0.0
+[2026-06-24 16:58:11 +0800] [69751] [INFO] Listening at: http://0.0.0.0:5000 (69751)
+[2026-06-24 16:58:11 +0800] [69751] [INFO] Using worker: gthread
+[2026-06-24 16:58:11 +0800] [69757] [INFO] Booting worker with pid: 69757
+[2026-06-24 16:58:11 +0800] [69751] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 8 个 Skill
+[DEBUG search_poi] LLM args: {"categories": [], "keywords": "茶馆|茶楼|茶空间", "min_rating": 4.5}, keywords='茶馆|茶楼|茶空间'
+[DEBUG search_poi] cat=restaurant got 24 shops
+[DEBUG search_poi] LLM args: {"categories": ["hotpot"], "min_rating": 4.5}, keywords='火锅'
+[DEBUG search_poi] cat=hotpot got 17 shops
+[DEBUG search_poi] LLM args: {"categories": ["hotpot"], "min_rating": 4.5}, keywords='火锅'
+[DEBUG search_poi] cat=hotpot got 17 shops
+[DEBUG search_poi] LLM args: {"categories": ["hotpot"], "min_rating": 4.5}, keywords='火锅'
+[DEBUG search_poi] cat=hotpot got 17 shops

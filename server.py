@@ -1462,6 +1462,7 @@ def api_get_nearby_cafes():
             pass  # 搜索失败则继续用 cache 中已有的（可能为空）
 
     shops_data = []
+    all_out_of_1km = True
     for sid, shop in agent.poi_cache.items():
         if shop.get("category") != "cafe":
             continue
@@ -1479,19 +1480,26 @@ def api_get_nearby_cafes():
                 dist_m = int(R * c)
             except:
                 pass
+        if dist_m <= 1000:
+            all_out_of_1km = False
         dist_str = f"{dist_m}m" if dist_m < 1000 else f"{dist_m / 1000:.1f}km"
+        dist_km = round(dist_m / 1000, 1)
         shops_data.append({
             "shop_id": shop["shop_id"],
             "name": shop["name"],
             "rating": shop.get("rating", 0),
             "distance": dist_str,
+            "distance_meters": dist_m,
+            "distance_km": dist_km,
         })
 
     # 按评分降序
     shops_data.sort(key=lambda s: s["rating"], reverse=True)
 
     return jsonify({
-        "shops": shops_data[:5]
+        "shops": shops_data[:5],
+        "all_out_of_1km": all_out_of_1km and len(shops_data) > 0,
+        "total_found": len(shops_data),
     })
 
 
@@ -1636,11 +1644,38 @@ def api_swap_shop():
 def api_replan():
     """
     重新排程：修改 now_str（延后出发）并重新调排程引擎。
-    输入: { delay_minutes: int }  — 延后分钟数
+    输入: { delay_minutes: int, transport_mode: str, reroute: bool }
+    - transport_mode: 'taxi'|'walk'|'metro'|'walk_bus'|'drive' 切换交通方式
+    - reroute: true 时对 spatial_matrix 中的所有距离应用 1.5x 绕行乘数
     当虚拟时钟开启时，优先使用虚拟时间作为基础。
     """
     data = request.get_json(silent=True) or {}
     delay = int(data.get("delay_minutes", 0))
+    transport_mode = (data.get("transport_mode") or "").strip()
+    is_reroute = data.get("reroute", False)
+
+    # —— 处理 transport_mode 变更 ——
+    if transport_mode:
+        _mode_map = {
+            'taxi': 'TAXI', 'walk': 'WALK', 'metro': 'METRO',
+            'walk_bus': 'BUS', 'drive': 'DRIVE', 'bus': 'BUS',
+        }
+        _mode = _mode_map.get(transport_mode, 'TAXI')
+        sm = session_state.get("spatial_matrix", {})
+        for route_key in sm.get("routes", {}):
+            sm["routes"][route_key]["transport_mode"] = _mode
+        # 同步更新 session_state.transport 供后续使用
+        _transport_label = {'TAXI': '打车', 'WALK': '步行', 'METRO': '地铁', 'BUS': '步行+公交', 'DRIVE': '驾车'}.get(_mode, '打车')
+        session_state["transport"] = _transport_label
+
+    # —— 处理 reroute（绕行）——
+    if is_reroute:
+        sm = session_state.get("spatial_matrix", {})
+        for route_key in sm.get("routes", {}):
+            orig = sm["routes"][route_key].get("distance_meters", 0)
+            if orig > 0:
+                sm["routes"][route_key]["distance_meters"] = int(orig * 1.5)
+                sm["routes"][route_key]["_rerouted"] = True
 
     # 虚拟时钟开启时优先用虚拟时间
     if session_state.get("clock_enabled"):
@@ -1721,6 +1756,180 @@ def api_replan():
         })
     else:
         return jsonify({"status": "ERROR", "message": schedule_res.get("message", "重新排程失败")})
+
+
+@app.route("/api/cancel_trip", methods=["POST"])
+def api_cancel_trip():
+    """
+    取消整个行程：清理 session_state 中所有行程相关数据，取消虚拟时钟注册。
+    """
+    global session_state
+    session_state["selected_pairs"] = []
+    session_state["task_list"] = []
+    session_state["spatial_matrix"] = {}
+    session_state["phase"] = None
+    session_state["main_plan"] = None
+    session_state["now_str"] = None
+    session_state["confirmed_ids"] = []
+    session_state["rejected_ids"] = []
+    session_state["pending_anomalies"] = []
+    # 清理虚拟时钟调度节点
+    _tm = time_master.get_master()
+    _cs = _tm.get_session(_CLOCK_SESSION_ID)
+    if _cs:
+        _tm.set_schedule(_CLOCK_SESSION_ID, [])
+    return jsonify({"status": "cancelled"})
+
+
+@app.route("/api/planb_default", methods=["POST"])
+def api_planb_default():
+    """
+    Plan B 默认兜底：用 LLM 分析当前异常 + 行程状态，自动选择最优 action 并执行。
+    输入: { anomaly_type: str, corrupted_node_id: str }
+    """
+    global session_state
+    data = request.get_json(silent=True) or {}
+    anomaly_type = data.get("anomaly_type", "")
+    corrupted_node_id = data.get("corrupted_node_id", "")
+
+    task_list = session_state.get("task_list", [])
+    if not task_list:
+        return jsonify({"error": "无活跃行程"}), 400
+
+    # 找受灾节点
+    corrupted_task = None
+    corrupted_idx = -1
+    for i, t in enumerate(task_list):
+        if t["task_id"] == corrupted_node_id:
+            corrupted_task = t
+            corrupted_idx = i
+            break
+    if not corrupted_task:
+        corrupted_task = task_list[0] if task_list else None
+        corrupted_idx = 0
+
+    # 检查是否有同品类替选店铺
+    corrupted_cat = corrupted_task.get("category", "") if corrupted_task else ""
+    swap_available = False
+    if corrupted_cat and agent and agent.poi_cache:
+        for sid, shop in agent.poi_cache.items():
+            if shop.get("category") == corrupted_cat and sid != corrupted_node_id:
+                swap_available = True
+                break
+
+    # 构建 LLM 决策 prompt
+    task_summary = "\n".join([
+        f"- {t['name']} ({t.get('category', '')}) {'⚠️受灾节点' if t.get('task_id') == corrupted_node_id else ''}"
+        for t in task_list
+    ])
+
+    decision_prompt = f"""异常类型: {anomaly_type}
+受灾节点: {corrupted_task['name'] if corrupted_task else '未知'}
+同品类替选可用: {'是' if swap_available else '否'}
+当前行程:
+{task_summary}
+
+请选择最优 Plan B action，只返回一个词:
+- SWAP (如有替选店铺，优先换店)
+- BYPASS (如该节点非核心，可跳过)
+- POSTPONE (如延后不影响整体)
+- TRANSPORT (如天气/交通问题，改出行方式)"""
+
+    # 默认 fallback
+    chosen_action = "POSTPONE"
+    action_desc = "已延后受灾节点"
+
+    try:
+        decision_msgs = [
+            {"role": "system", "content": "你是行程应急决策助手。只返回一个词: SWAP/BYPASS/POSTPONE/TRANSPORT"},
+            {"role": "user", "content": decision_prompt}
+        ]
+        decision_resp = agent._call_llm(decision_msgs, max_tokens=50)
+        raw = (decision_resp.content or "").strip().upper()
+        for act in ["SWAP", "BYPASS", "POSTPONE", "TRANSPORT"]:
+            if act in raw:
+                chosen_action = act
+                break
+    except Exception as e:
+        print(f"[planb_default] LLM 决策失败: {e}，fallback=POSTPONE")
+
+    # —— 执行决策 ——
+    spatial_matrix = session_state.get("spatial_matrix", {})
+    now_str = session_state.get("now_str", "10:00")
+
+    if chosen_action == "SWAP" and swap_available and corrupted_cat:
+        # 找替选店铺并替换
+        candidates = []
+        for sid, shop in agent.poi_cache.items():
+            if shop.get("category") == corrupted_cat and sid != corrupted_node_id:
+                candidates.append((sid, shop))
+        if candidates:
+            candidates.sort(key=lambda x: x[1].get("rating", 0), reverse=True)
+            new_sid, new_shop = candidates[0]
+            task_list[corrupted_idx] = {
+                "task_id": new_sid, "name": new_shop["name"],
+                "location_id": new_sid,
+                "duration_minutes": corrupted_task["duration_minutes"] if corrupted_task else 60,
+                "human_needed": True, "fixed_start_time": None, "category": corrupted_cat,
+            }
+            spatial_matrix["locations"][new_sid] = {
+                "name": new_shop["name"],
+                "coord": f"{new_shop.get('lat', 39.93)},{new_shop.get('lng', 116.45)}",
+            }
+            action_desc = f"已自动替换为 {new_shop['name']}"
+
+    elif chosen_action == "BYPASS" and corrupted_idx >= 0:
+        task_list.pop(corrupted_idx)
+        action_desc = "已移除受灾节点"
+
+    elif chosen_action == "TRANSPORT":
+        # 改交通方式为 TAXI
+        for route_key in spatial_matrix.get("routes", {}):
+            spatial_matrix["routes"][route_key]["transport_mode"] = "TAXI"
+        session_state["transport"] = "打车"
+        action_desc = "已切换为打车出行"
+
+    else:  # POSTPONE
+        if corrupted_idx >= 0:
+            t = task_list.pop(corrupted_idx)
+            task_list.append(t)
+            t["delay_because_anomaly"] = 30
+        action_desc = "已延后受灾节点"
+
+    session_state["task_list"] = task_list
+    session_state["spatial_matrix"] = spatial_matrix
+    session_state["confirmed_ids"] = []
+    session_state["rejected_ids"] = []
+
+    # 重跑排程
+    schedule_res = backend.skill_scheduler.solve_concurrent_timeline(
+        task_list, spatial_matrix, now_str,
+        session_state["confirmed_ids"], session_state["rejected_ids"],
+    )
+
+    if schedule_res.get("status") == "SUCCESS":
+        cleaned = []
+        for item in schedule_res["timeline"]:
+            sub = None
+            if item["task_id"]:
+                for t in task_list:
+                    if t["task_id"] == item["task_id"]:
+                        sub = {"action": t["name"], "duration_minutes": t["duration_minutes"]}
+                        break
+            cleaned.append({
+                "time": item["time"], "memo": item.get("memo", ""),
+                "action": item["action"], "sub_task": sub,
+                "task_id": item.get("task_id", ""),
+            })
+        return jsonify({
+            "status": "SUCCESS", "action_taken": chosen_action,
+            "action_desc": action_desc,
+            "departure_time": schedule_res["suggested_departure_time"],
+            "total_minutes": schedule_res["total_duration_minutes"],
+            "timeline": cleaned,
+        })
+    else:
+        return jsonify({"status": "ERROR", "message": schedule_res.get("message", "AI 决策执行失败")})
 
 
 # ======================================================================
