@@ -199,9 +199,12 @@
     <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
      <div class="flex items-center justify-between mb-4">
       <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
-      <button onclick="openButlerPanel()" class="bg-gray-900 text-yellow-400 font-bold text-[11px] px-4 py-2.5 rounded-full meituan-shadow hover:scale-95 transition-transform whitespace-nowrap flex items-center gap-1.5">
-       <span>⏰</span> 全天候私人管家
-      </button>
+      <div class="flex items-center gap-2">
+       <div onclick="openPrefEdit()" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="偏好设置" style="font-size:14px;">⚙️</div>
+       <button onclick="openButlerPanel()" class="bg-gray-900 text-yellow-400 font-bold text-[11px] px-4 py-2.5 rounded-full meituan-shadow hover:scale-95 transition-transform whitespace-nowrap flex items-center gap-1.5">
+        <span>⏰</span> 全天候私人管家
+       </button>
+      </div>
      </div>
      <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
       <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
@@ -2531,6 +2534,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
  // —— SSE 实时提醒连接 ——
  connectReminderSSE();
+ initOnboarding();
 });
 
 /** 动态创建 reminder-dialog 到 document.body（脱离卡片翻转 transform 上下文） */
@@ -2936,6 +2940,389 @@ function closeReminderDialog() {
   if (dlg) dlg.style.display = 'none';
   _reminderActiveMedId = null;
   _reminderActiveState = null;
+}
+
+/** 首次访问：检查是否需要显示偏好引导弹窗 */
+function initOnboarding() {
+  if (localStorage.getItem('meituan_onboarding_complete') === 'true') return;
+  // 双重门控：查服务器是否已有定制偏好（老用户保护）
+  fetch(API_BASE + '/api/profile/get')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status === 'SUCCESS') {
+        var p = data.profile;
+        var t = p.taste || {};
+        var b = p.budget || {};
+        var hasPref = (t.cuisine_preference && t.cuisine_preference.length > 0) ||
+                      (t.dietary_restrictions && t.dietary_restrictions.length > 0) ||
+                      (t.taste_tolerance && t.taste_tolerance !== '无辣') ||
+                      (b.custom_budget_per_person && b.custom_budget_per_person !== '');
+        if (hasPref) {
+          localStorage.setItem('meituan_onboarding_complete', 'true');
+          return;
+        }
+      }
+      openOnboardingModal('init');
+    })
+    .catch(function() {
+      openOnboardingModal('init');
+    });
+}
+
+/** 打开偏好编辑弹窗（⚙️ 按钮入口） */
+function openPrefEdit() {
+  fetch(API_BASE + '/api/profile/get')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status === 'SUCCESS') {
+        openOnboardingModal('edit', data.profile);
+      }
+    })
+    .catch(function() {
+      toast('❌ 无法获取偏好，请稍后重试');
+    });
+}
+
+/** 构建并显示偏好引导/编辑弹窗
+ *  mode: 'init' 首次引导 | 'edit' 手动修改
+ *  existingProfile: edit 模式下预填的现有偏好
+ */
+function openOnboardingModal(mode, existingProfile) {
+  var existing = document.getElementById('onboarding-overlay');
+  if (existing) existing.remove();
+
+  var pf = existingProfile || {};
+  var taste = pf.taste || {};
+  var commute = pf.commute || {};
+  var budget = pf.budget || {};
+
+  var dtol = taste.taste_tolerance || '无辣';
+  var ddiet = taste.dietary_restrictions || [];
+  var _dietPresets = ['香菜', '海鲜过敏', '花生过敏', '乳糖不耐', '素食', '清真'];
+  var dcusdiet = ddiet.filter(function(v) { return _dietPresets.indexOf(v) === -1; }).join('，');
+  var dcui = taste.cuisine_preference || [];
+  var dwalk = commute.walking_tolerance_meters || 800;
+  var dtrans = commute.transport_priority || '步行优先';
+  var dprice = budget.price_level || '中端';
+  var drating = budget.rating_cutoff || 4.0;
+  var dcusbud = budget.custom_budget_per_person || '';
+
+  var isInit = (mode === 'init');
+
+  // --- 辅助：radio pill ---
+  function rp(name, val, label, isChecked) {
+    var c = isChecked ? ' checked' : '';
+    return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#374151;cursor:pointer;background:white;border:1.5px solid #e5e7eb;border-radius:10px;padding:6px 12px;margin:2px;white-space:nowrap;"><input type="radio" name="' + name + '" value="' + val + '"' + c + ' style="accent-color:#facc15;"> ' + label + '</label>';
+  }
+
+  // --- 辅助：checkbox pill ---
+  function cp(name, val, label, isChecked) {
+    var c = isChecked ? ' checked' : '';
+    return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#374151;cursor:pointer;background:white;border:1.5px solid #e5e7eb;border-radius:10px;padding:6px 12px;margin:2px;white-space:nowrap;"><input type="checkbox" name="' + name + '" value="' + val + '"' + c + ' style="accent-color:#facc15;"> ' + label + '</label>';
+  }
+
+  // --- 🌶️ 口味 ---
+  var tasteSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">🌶️ 口味偏好</h4>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">辣度接受</p>' +
+    '<div style="margin-bottom:8px;">' +
+      rp('onb_tol', '无辣', '无辣', dtol === '无辣') +
+      rp('onb_tol', '微辣', '微辣', dtol === '微辣') +
+      rp('onb_tol', '中辣', '中辣', dtol === '中辣') +
+      rp('onb_tol', '重辣', '重辣', dtol === '重辣') +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">忌口 / 过敏</p>' +
+    '<div style="margin-bottom:8px;">' +
+      cp('onb_diet', '香菜', '香菜', ddiet.indexOf('香菜') !== -1) +
+      cp('onb_diet', '海鲜过敏', '海鲜过敏', ddiet.indexOf('海鲜过敏') !== -1) +
+      cp('onb_diet', '花生过敏', '花生过敏', ddiet.indexOf('花生过敏') !== -1) +
+      cp('onb_diet', '乳糖不耐', '乳糖不耐', ddiet.indexOf('乳糖不耐') !== -1) +
+      cp('onb_diet', '素食', '素食', ddiet.indexOf('素食') !== -1) +
+      cp('onb_diet', '清真', '清真', ddiet.indexOf('清真') !== -1) +
+    '</div>' +
+    '<div style="margin-bottom:8px;">' +
+      '<p style="font-size:10px;color:#9ca3af;margin-bottom:4px;">或自定义忌口（逗号分隔）</p>' +
+      '<input id="onb_cusdiet" type="text" placeholder="例如 芒果过敏, 不吃内脏" value="' + dcusdiet + '" style="width:100%;box-sizing:border-box;border:1.5px solid #e5e7eb;border-radius:10px;padding:8px 12px;font-size:12px;color:#374151;outline:none;background:white;" onfocus="this.style.borderColor=\'#facc15\'" onblur="this.style.borderColor=\'#e5e7eb\'">' +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">偏好菜系</p>' +
+    '<div>' +
+      cp('onb_cui', '日料', '日料', dcui.indexOf('日料') !== -1) +
+      cp('onb_cui', '轻食', '轻食', dcui.indexOf('轻食') !== -1) +
+      cp('onb_cui', '火锅', '火锅', dcui.indexOf('火锅') !== -1) +
+      cp('onb_cui', '粤菜', '粤菜', dcui.indexOf('粤菜') !== -1) +
+      cp('onb_cui', '川菜', '川菜', dcui.indexOf('川菜') !== -1) +
+      cp('onb_cui', '韩料', '韩料', dcui.indexOf('韩料') !== -1) +
+      cp('onb_cui', '西餐', '西餐', dcui.indexOf('西餐') !== -1) +
+      cp('onb_cui', '东南亚菜', '东南亚菜', dcui.indexOf('东南亚菜') !== -1) +
+      cp('onb_cui', '烧烤', '烧烤', dcui.indexOf('烧烤') !== -1) +
+    '</div>' +
+  '</div>';
+
+  // --- 🚶 通勤 ---
+  var commuteSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">🚶 通勤偏好</h4>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">步行容忍距离</p>' +
+    '<div style="margin-bottom:8px;">' +
+      rp('onb_walk', '500', '500m', dwalk === 500) +
+      rp('onb_walk', '800', '800m', dwalk === 800) +
+      rp('onb_walk', '1500', '1.5km', dwalk === 1500) +
+      rp('onb_walk', '3000', '3km', dwalk === 3000) +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">出行方式优先</p>' +
+    '<div>' +
+      rp('onb_trans', '步行优先', '步行优先', dtrans === '步行优先') +
+      rp('onb_trans', '打车优先', '打车优先', dtrans === '打车优先') +
+      rp('onb_trans', '地铁优先', '地铁优先', dtrans === '地铁优先') +
+    '</div>' +
+  '</div>';
+
+  // --- 💰 预算 ---
+  var budgetSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">💰 预算偏好</h4>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">消费水平</p>' +
+    '<div style="margin-bottom:5px;">' +
+      rp('onb_price', '经济', '经济实惠 (¥0-50/人)', dprice === '经济') +
+      rp('onb_price', '中端', '中端消费 (¥50-150/人)', dprice === '中端') +
+      rp('onb_price', '高端', '高端精致 (¥150+/人)', dprice === '高端') +
+    '</div>' +
+    '<div style="margin-bottom:8px;">' +
+      '<p style="font-size:10px;color:#9ca3af;margin-bottom:4px;margin-top:2px;">或自定义人均预算（¥）</p>' +
+      '<input id="onb_cusbud" type="number" placeholder="例如 120" value="' + dcusbud + '" style="width:100%;box-sizing:border-box;border:1.5px solid #e5e7eb;border-radius:10px;padding:8px 12px;font-size:12px;color:#374151;outline:none;background:white;" onfocus="this.style.borderColor=\'#facc15\'" onblur="this.style.borderColor=\'#e5e7eb\'">' +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">最低评分要求</p>' +
+    '<div>' +
+      rp('onb_rate', '3.5', '⭐ 3.5 以上', drating === 3.5) +
+      rp('onb_rate', '4.0', '⭐ 4.0 以上', drating === 4.0) +
+      rp('onb_rate', '4.5', '⭐ 4.5 以上', drating === 4.5) +
+    '</div>' +
+  '</div>';
+
+  // --- 顶部提示（仅 init） ---
+  var topHint = '';
+  if (isInit) {
+    topHint = '<div style="text-align:center;font-size:12px;color:#6b7280;line-height:1.7;margin-bottom:16px;padding:10px 14px;background:#fffbeb;border-radius:12px;border:1px solid #fde68a;">🎯 花 30 秒告诉管家你的偏好，推荐才能精准。别担心选错——之后点右上角 ⚙️ 随时能改，或者直接在聊天框跟我说就行 ✨</div>';
+  }
+
+  // 组装 UI —— init 全屏覆盖手机，edit 略小于屏幕的居中面板
+  var phoneFace = document.getElementById('main-face-front');
+  var html;
+  if (isInit) {
+    html = '<div style="display:flex;flex-direction:column;height:100%;">' +
+      '<!-- 顶部 header -->' +
+      '<div style="flex-shrink:0;padding:24px 20px 12px 20px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+          '<h3 style="font-size:18px;font-weight:900;color:#111827;">⚙️ 个性化偏好设置</h3>' +
+          '<span onclick="skipOnboarding()" style="font-size:13px;color:#9ca3af;cursor:pointer;font-weight:600;">跳过</span>' +
+        '</div>' +
+        topHint +
+      '</div>' +
+      '<!-- 可滚动内容 -->' +
+      '<div style="flex:1;overflow-y:auto;padding:0 20px 20px 20px;">' +
+        tasteSec + commuteSec + budgetSec +
+      '</div>' +
+      '<!-- 底部固定按钮 -->' +
+      '<div style="flex-shrink:0;padding:16px 20px;border-top:1px solid #f3f4f6;">' +
+        '<button id="onb-submit-btn" style="width:100%;background:#facc15;color:#000;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:15px;cursor:pointer;box-shadow:0 10px 30px -10px rgba(255,208,0,0.3);">✨ 保存偏好，开始使用</button>' +
+        '<button onclick="skipOnboarding()" style="width:100%;background:#f3f4f6;color:#6b7280;font-weight:700;padding:10px 0;border-radius:16px;border:none;font-size:13px;cursor:pointer;margin-top:8px;">以后再说</button>' +
+      '</div>' +
+    '</div>';
+  } else {
+    html = '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:12px;">' +
+      '<div style="background:white;border-radius:32px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);width:100%;max-height:92%;display:flex;flex-direction:column;overflow:hidden;" onclick="event.stopPropagation();">' +
+        '<!-- header -->' +
+        '<div style="flex-shrink:0;padding:20px 20px 12px 20px;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+            '<h3 style="font-size:17px;font-weight:900;color:#111827;">⚙️ 修改偏好设置</h3>' +
+            '<span onclick="closeOnboarding()" style="font-size:20px;color:#9ca3af;cursor:pointer;line-height:1;">✕</span>' +
+          '</div>' +
+        '</div>' +
+        '<!-- 可滚动内容 -->' +
+        '<div style="flex:1;overflow-y:auto;padding:0 20px 20px 20px;">' +
+          tasteSec + commuteSec + budgetSec +
+        '</div>' +
+        '<!-- 底部按钮 -->' +
+        '<div style="flex-shrink:0;padding:16px 20px;border-top:1px solid #f3f4f6;">' +
+          '<button id="onb-submit-btn" style="width:100%;background:#facc15;color:#000;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:15px;cursor:pointer;box-shadow:0 10px 30px -10px rgba(255,208,0,0.3);">💾 更新偏好</button>' +
+          '<button onclick="closeOnboarding()" style="width:100%;background:#f3f4f6;color:#6b7280;font-weight:700;padding:10px 0;border-radius:16px;border:none;font-size:13px;cursor:pointer;margin-top:8px;">取消</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // 创建 overlay（挂在手机正面面板内）
+  var overlay = document.createElement('div');
+  overlay.id = 'onboarding-overlay';
+  if (isInit) {
+    overlay.style.cssText = 'position:absolute;inset:0;z-index:40;background:white;border-radius:40px;overflow:hidden;animation:reminder-fade-in 0.3s ease-out;';
+  } else {
+    overlay.style.cssText = 'position:absolute;inset:0;z-index:40;background:rgba(0,0,0,0.4);border-radius:40px;animation:reminder-fade-in 0.2s ease-out;';
+  }
+  overlay.innerHTML = html;
+  phoneFace.appendChild(overlay);
+
+  // 点击遮罩关闭（edit 模式点击暗色背景关闭）
+  if (!isInit) {
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeOnboarding();
+    });
+  }
+
+  // Escape 键关闭
+  overlay._onbEscHandler = function(e) {
+    if (e.key === 'Escape') {
+      if (isInit) skipOnboarding(); else closeOnboarding();
+    }
+  };
+  document.addEventListener('keydown', overlay._onbEscHandler);
+
+  // 提交按钮绑定
+  var submitBtn = document.getElementById('onb-submit-btn');
+  if (submitBtn) {
+    submitBtn.addEventListener('click', function() { submitOnboarding(isInit); });
+  }
+
+  // --- Pill 高亮：change 事件委托 ---
+  overlay.addEventListener('change', function(e) {
+    var inp = e.target;
+    if (!inp || !inp.name) return;
+    if (inp.type === 'radio') {
+      // 更新同 name 所有 radio 的 pill 样式
+      var radios = overlay.querySelectorAll('input[name="' + inp.name + '"]');
+      for (var i = 0; i < radios.length; i++) {
+        var r = radios[i];
+        var lbl = r.closest('label');
+        if (lbl) {
+          if (r.checked) {
+            lbl.style.borderColor = '#facc15';
+            lbl.style.background = '#fef9c3';
+          } else {
+            lbl.style.borderColor = '#e5e7eb';
+            lbl.style.background = 'white';
+          }
+        }
+      }
+    } else if (inp.type === 'checkbox') {
+      var lbl = inp.closest('label');
+      if (lbl) {
+        if (inp.checked) {
+          lbl.style.borderColor = '#facc15';
+          lbl.style.background = '#fef9c3';
+        } else {
+          lbl.style.borderColor = '#e5e7eb';
+          lbl.style.background = 'white';
+        }
+      }
+    }
+  });
+
+  // 初始高亮：触发已 checked 的 radio/checkbox
+  var initChecked = overlay.querySelectorAll('input[type=radio]:checked, input[type=checkbox]:checked');
+  for (var i = 0; i < initChecked.length; i++) {
+    var inp = initChecked[i];
+    var lbl = inp.closest('label');
+    if (lbl) {
+      lbl.style.borderColor = '#facc15';
+      lbl.style.background = '#fef9c3';
+    }
+  }
+}
+
+/** 收集表单数据并提交到后端 */
+function submitOnboarding(isInit) {
+  var btn = document.getElementById('onb-submit-btn');
+  if (btn) btn.disabled = true;
+
+  // --- 收集口味 ---
+  var tolEl = document.querySelector('input[name="onb_tol"]:checked');
+  var tolVal = tolEl ? tolEl.value : '无辣';
+
+  var dietEls = document.querySelectorAll('input[name="onb_diet"]:checked');
+  var dietVal = [];
+  for (var i = 0; i < dietEls.length; i++) { dietVal.push(dietEls[i].value); }
+  // 合并自定义忌口
+  var cusdietEl = document.getElementById('onb_cusdiet');
+  if (cusdietEl && cusdietEl.value.trim()) {
+    var cusdietItems = cusdietEl.value.trim().split(/[,，]/);
+    for (var j = 0; j < cusdietItems.length; j++) {
+      var item = cusdietItems[j].trim();
+      if (item) dietVal.push(item);
+    }
+  }
+
+  var cuiEls = document.querySelectorAll('input[name="onb_cui"]:checked');
+  var cuiVal = [];
+  for (var i = 0; i < cuiEls.length; i++) { cuiVal.push(cuiEls[i].value); }
+
+  // --- 收集通勤 ---
+  var walkEl = document.querySelector('input[name="onb_walk"]:checked');
+  var walkVal = walkEl ? parseInt(walkEl.value) : 800;
+
+  var transEl = document.querySelector('input[name="onb_trans"]:checked');
+  var transVal = transEl ? transEl.value : '步行优先';
+
+  // --- 收集预算 ---
+  var priceEl = document.querySelector('input[name="onb_price"]:checked');
+  var priceVal = priceEl ? priceEl.value : '中端';
+
+  var cusbudEl = document.getElementById('onb_cusbud');
+  var cusbudVal = cusbudEl ? cusbudEl.value.trim() : '';
+
+  var rateEl = document.querySelector('input[name="onb_rate"]:checked');
+  var rateVal = rateEl ? parseFloat(rateEl.value) : 4.0;
+
+  var updates = {
+    taste: {
+      taste_tolerance: tolVal,
+      dietary_restrictions: dietVal,
+      cuisine_preference: cuiVal
+    },
+    commute: {
+      walking_tolerance_meters: walkVal,
+      transport_priority: transVal
+    },
+    budget: {
+      price_level: priceVal,
+      custom_budget_per_person: cusbudVal,
+      rating_cutoff: rateVal
+    }
+  };
+
+  fetch(API_BASE + '/api/profile/set', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({updates: updates})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.status === 'SUCCESS') {
+      toast('✅ 偏好已保存');
+      localStorage.setItem('meituan_onboarding_complete', 'true');
+      closeOnboarding();
+    } else {
+      toast('❌ 保存失败: ' + (data.message || '未知错误'));
+      if (btn) btn.disabled = false;
+    }
+  })
+  .catch(function() {
+    toast('❌ 网络错误，请重试');
+    if (btn) btn.disabled = false;
+  });
+}
+
+/** 关闭弹窗并清理 */
+function closeOnboarding() {
+  var overlay = document.getElementById('onboarding-overlay');
+  if (!overlay) return;
+  if (overlay._onbEscHandler) {
+    document.removeEventListener('keydown', overlay._onbEscHandler);
+  }
+  overlay.remove();
+}
+
+/** 跳过引导（仅设 flag，不调 API） */
+function skipOnboarding() {
+  localStorage.setItem('meituan_onboarding_complete', 'true');
+  closeOnboarding();
 }
 
 function reminderUserAction(action) {

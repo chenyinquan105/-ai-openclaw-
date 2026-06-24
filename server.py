@@ -56,6 +56,7 @@ def _read_profile() -> dict:
         },
         "budget": {
             "price_level": "中端",
+            "custom_budget_per_person": "",
             "rating_cutoff": 4.0,
         },
         "lifestyle": {
@@ -87,6 +88,7 @@ def _read_profile() -> dict:
         }),
         ("预算", "budget", {
             "price_level": "price_level",
+            "custom_budget_per_person": "custom_budget_per_person",
             "rating_cutoff": "rating_cutoff",
         }),
         ("健康作息", "lifestyle", {
@@ -183,6 +185,7 @@ def _write_profile(updates: dict) -> dict:
 | 字段 | 值 |
 |---|---|
 | price_level | {current['budget']['price_level']} |
+| custom_budget_per_person | {current['budget']['custom_budget_per_person']} |
 | rating_cutoff | {current['budget']['rating_cutoff']} |
 
 ## 健康作息
