@@ -2346,6 +2346,8 @@ def reminder_get_tasks():
         return jsonify({"tasks": []})
     tasks = []
     for n in cs.schedule_nodes:
+        if n.get("_postponed"):
+            continue
         if n.get("type") in ("WATER", "MED", "CUSTOM"):
             tasks.append(n)
     return jsonify({"tasks": tasks})

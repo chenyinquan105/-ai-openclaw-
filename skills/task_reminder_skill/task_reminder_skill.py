@@ -277,11 +277,14 @@ def handle_user_action(
 
             # 回调 time_master 注入一个新的动态排程节点
             current_schedule = list(cs.schedule_nodes) if cs else []
+            # 去重：移除同一 med_id 的旧延后节点，仅保留最新一次
+            current_schedule = [n for n in current_schedule if not (n.get("_postponed") and n.get("id") == med_id)]
             current_schedule.append({
                 "time": new_trigger_time,
                 "type": "MED",
                 "id": med_id,
                 "name": med_name,
+                "_postponed": True,
             })
             time_master.set_schedule(session_id, current_schedule)
 

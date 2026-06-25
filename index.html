@@ -2870,9 +2870,7 @@ var _medCountdownActive = false;    // 倒计时是否激活
 var _medCountdownStartVirtMin = 0;  // 倒计时起始虚拟分钟数
 var _medContinuousRing = null;
 var _medPendingInfo = null;
-var _medEscalationWaitStart = 0;    // 催促间隔起始虚拟分钟
-var _medEscalationWaitActive = false;
-var _medEscalationWaitTimer = null; // 催促间隔定时器
+var _medCountdownGen = 0;            // 代际计数器：每次新倒计时+1，回调检查匹配
 
 /** 获取当前虚拟分钟数（时钟关闭时退回真实时间） */
 function _getCurrentVirtMinutes() {
@@ -2905,12 +2903,12 @@ function testReminderPopup() {
   }, 500);
 }
 
-/** 动态创建 reminder-dialog 到 document.body（脱离卡片翻转 transform 上下文） */
+/** 动态创建 reminder-dialog 到手机容器内（仅覆盖手机屏幕区域） */
 function initReminderDialog() {
   if (document.getElementById('reminder-dialog')) return;
   var dlg = document.createElement('div');
   dlg.id = 'reminder-dialog';
-  dlg.style.cssText = 'display:none;position:fixed;inset:0;z-index:99999;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
+  dlg.style.cssText = 'display:none;position:absolute;inset:0;z-index:100;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:40px;overflow:hidden;';
   dlg.innerHTML =
     '<div id="reminder-dialog-card" style="position:relative;background:white;margin:0 12px;border-radius:32px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);max-width:400px;width:100%;padding:28px;animation:reminder-fade-in 0.35s ease-out;">' +
     '<div id="reminder-countdown-badge" style="position:absolute;top:14px;right:16px;font-size:12px;font-weight:700;color:#6b7280;background:#f3f4f6;border-radius:12px;padding:3px 10px;display:none;">⏱️ 5:00</div>' +
@@ -2925,33 +2923,36 @@ function initReminderDialog() {
     '<div id="reminder-dialog-close-wrap" style="margin-top:12px;display:none;">' +
     '<button onclick="closeReminderDialog()" style="width:100%;background:#f3f4f6;color:#4b5563;font-weight:700;padding:10px 0;border-radius:16px;border:none;font-size:14px;cursor:pointer;">我知道了</button>' +
     '</div></div>';
-  document.body.appendChild(dlg);
+  var phoneContainer = document.getElementById('main-phone-container');
+  if (phoneContainer) { phoneContainer.appendChild(dlg); } else { document.body.appendChild(dlg); }
 }
 
 /** 停止所有响铃和振动 */
 function _stopRinging() {
+  _medCountdownGen++;
   _medCountdownActive = false;
-  _medEscalationWaitActive = false;
   if (_medContinuousRing) { clearInterval(_medContinuousRing); _medContinuousRing = null; }
   if (_medCountdownTimer) { clearInterval(_medCountdownTimer); _medCountdownTimer = null; }
-  if (_medEscalationWaitTimer) { clearInterval(_medEscalationWaitTimer); _medEscalationWaitTimer = null; }
   try { if (navigator.vibrate) navigator.vibrate(0); } catch(e) {}
 }
 
 /** 启动倒计时（跟随虚拟时钟：快进/拖动/倍速均实时影响剩余时间） */
 var _badgeWasRed = false;
 function _startCountdown() {
+  _medCountdownGen++;
+  var gen = _medCountdownGen;
   _medCountdownActive = true;
   _medCountdownStartVirtMin = _getCurrentVirtMinutes();
   _badgeWasRed = false;
   var badge = document.getElementById('reminder-countdown-badge');
   if (badge) { badge.style.display = 'block'; badge.style.color = '#6b7280'; badge.style.background = '#f3f4f6'; badge.style.animation = 'none'; badge.textContent = '⏱️ 5:00'; }
   if (_medCountdownTimer) clearInterval(_medCountdownTimer);
-  _medCountdownTimer = setInterval(_updateMedCountdown, 500);
+  _medCountdownTimer = setInterval(function() { _updateMedCountdown(gen); }, 500);
 }
 
 /** 每 0.5s 根据虚拟时间差刷新倒计时 */
-function _updateMedCountdown() {
+function _updateMedCountdown(gen) {
+  if (gen !== _medCountdownGen) return;
   if (!_medCountdownActive) return;
   var nowVirt = _getCurrentVirtMinutes();
   var elapsed = nowVirt - _medCountdownStartVirtMin;
@@ -2992,23 +2993,11 @@ function _onCountdownExpired() {
     _triggerEmergencyContact();
     return;
   }
-  // 10 虚拟秒后重开弹窗（跟随虚拟时钟，拖动/快进均生效）
-  _medEscalationWaitStart = _getCurrentVirtMinutes();
-  _medEscalationWaitActive = true;
-  _medEscalationWaitTimer = setInterval(function() {
-    if (!_medEscalationWaitActive) { clearInterval(_medEscalationWaitTimer); return; }
-    var nowVirt = _getCurrentVirtMinutes();
-    var elapsed = nowVirt - _medEscalationWaitStart;
-    if (elapsed < 0) elapsed += 1440;
-    if (elapsed * 60 >= 10) { // 10 虚拟秒 ≈ ⅙ 虚拟分钟
-      _medEscalationWaitActive = false;
-      clearInterval(_medEscalationWaitTimer);
-      if (_medPendingInfo) {
-        _medEscalationLevel++;
-        _openMedDialog(_medPendingInfo);
-      }
-    }
-  }, 500);
+  // 立即重开弹窗（5分钟倒计时已提供等待，无需额外间隔）
+  if (_medPendingInfo) {
+    _medEscalationLevel++;
+    _openMedDialog(_medPendingInfo);
+  }
 }
 
 /** 触发紧急联络 */
@@ -3596,6 +3585,7 @@ function closeReminderDialog() {
   if (card) { card.style.background = '#ffffff'; card.style.border = 'none'; card.style.animation = ''; }
   var badge = document.getElementById('reminder-countdown-badge');
   if (badge) { badge.style.display = 'none'; badge.style.animation = 'none'; }
+  _medPendingInfo = null;
   _reminderActiveMedId = null;
   _reminderActiveState = null;
 }
