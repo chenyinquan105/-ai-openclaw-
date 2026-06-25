@@ -2675,6 +2675,8 @@ function clockUpdateUI(data) {
   const playBtn = document.getElementById('clock-play-btn');
   const slider = document.getElementById('clock-slider');
   if (data.virtual_time) {
+    // ★ 关键：同步全局虚拟时间，确保 _getCurrentVirtMinutes() 读到最新值
+    window._clockVirtualTime = data.virtual_time;
     // 防频闪：只在值变化时才写入 DOM
     if (display.textContent !== data.virtual_time) {
       display.textContent = data.virtual_time;
@@ -2830,7 +2832,6 @@ setInterval(async function() {
   const st = await clockFetch('GET', '/api/clock/status');
   // 防频闪：clockUpdateUI 内已有值比较，不会无谓重绘
   clockUpdateUI(st);
-  window._clockVirtualTime = st.virtual_time;
   if (st.is_running) {
     const evData = await clockFetch('GET', '/api/clock/events');
     if (evData.events && evData.events.length) {
