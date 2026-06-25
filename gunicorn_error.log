@@ -336,3 +336,1055 @@ SystemExit: 1
 [2026-06-25 14:35:28 +0800] [81450] [INFO] Using worker: gthread
 [2026-06-25 14:35:28 +0800] [81452] [INFO] Booting worker with pid: 81452
 [2026-06-25 14:35:28 +0800] [81450] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 14:43:04 +0800] [81452] [INFO] Autorestarting worker after current request.
+[2026-06-25 14:43:34 +0800] [81452] [INFO] Worker exiting (pid: 81452)
+[OpenClaw Bridge] 已注册 8 个 Skill
+[2026-06-25 14:45:05 +0800] [81450] [CRITICAL] WORKER TIMEOUT (pid:81452)
+Exception ignored on threading shutdown:
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1577, in _shutdown
+    atexit_call()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1548, in <lambda>
+    _threading_atexits.append(lambda: func(*arg, **kwargs))
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 31, in _python_exit
+    t.join()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1133, in join
+    self._os_thread_handle.join(timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-06-25 14:45:05 +0800] [81450] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 14:45:05 +0800] [81641] [INFO] Booting worker with pid: 81641
+[2026-06-25 15:02:40 +0800] [81450] [INFO] Handling signal: term
+[2026-06-25 15:02:41 +0800] [81450] [ERROR] Worker (pid:81641) was sent SIGKILL! Perhaps out of memory?
+[2026-06-25 15:02:41 +0800] [81450] [INFO] Shutting down: Master
+[2026-06-25 15:02:42 +0800] [81935] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 15:02:42 +0800] [81935] [INFO] Listening at: http://0.0.0.0:5000 (81935)
+[2026-06-25 15:02:42 +0800] [81935] [INFO] Using worker: gthread
+[2026-06-25 15:02:42 +0800] [81937] [INFO] Booting worker with pid: 81937
+[2026-06-25 15:02:42 +0800] [81935] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 15:10:41 +0800] [81935] [INFO] Handling signal: term
+[2026-06-25 15:10:42 +0800] [81935] [ERROR] Worker (pid:81937) was sent SIGKILL! Perhaps out of memory?
+[2026-06-25 15:10:42 +0800] [81935] [INFO] Shutting down: Master
+[2026-06-25 15:10:43 +0800] [82120] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 15:10:43 +0800] [82120] [INFO] Listening at: http://0.0.0.0:5000 (82120)
+[2026-06-25 15:10:43 +0800] [82120] [INFO] Using worker: gthread
+[2026-06-25 15:10:43 +0800] [82122] [INFO] Booting worker with pid: 82122
+[2026-06-25 15:10:43 +0800] [82120] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 15:15:27 +0800] [82120] [INFO] Handling signal: term
+[2026-06-25 15:15:28 +0800] [82120] [ERROR] Worker (pid:82122) was sent SIGKILL! Perhaps out of memory?
+[2026-06-25 15:15:28 +0800] [82120] [INFO] Shutting down: Master
+[2026-06-25 15:15:29 +0800] [82210] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 15:15:29 +0800] [82210] [INFO] Listening at: http://0.0.0.0:5000 (82210)
+[2026-06-25 15:15:29 +0800] [82210] [INFO] Using worker: gthread
+[2026-06-25 15:15:29 +0800] [82212] [INFO] Booting worker with pid: 82212
+[2026-06-25 15:15:29 +0800] [82210] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 15:21:21 +0800] [82210] [INFO] Handling signal: term
+[2026-06-25 15:21:22 +0800] [82210] [ERROR] Worker (pid:82212) was sent SIGKILL! Perhaps out of memory?
+[2026-06-25 15:21:22 +0800] [82210] [INFO] Shutting down: Master
+[2026-06-25 15:21:23 +0800] [82400] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 15:21:23 +0800] [82400] [INFO] Listening at: http://0.0.0.0:5000 (82400)
+[2026-06-25 15:21:23 +0800] [82400] [INFO] Using worker: gthread
+[2026-06-25 15:21:23 +0800] [82402] [INFO] Booting worker with pid: 82402
+[2026-06-25 15:21:23 +0800] [82400] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 15:26:32 +0800] [82400] [INFO] Handling signal: term
+[2026-06-25 15:26:33 +0800] [82400] [ERROR] Worker (pid:82402) was sent SIGKILL! Perhaps out of memory?
+[2026-06-25 15:26:33 +0800] [82400] [INFO] Shutting down: Master
+[2026-06-25 15:26:34 +0800] [82670] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 15:26:34 +0800] [82670] [INFO] Listening at: http://0.0.0.0:5000 (82670)
+[2026-06-25 15:26:34 +0800] [82670] [INFO] Using worker: gthread
+[2026-06-25 15:26:34 +0800] [82672] [INFO] Booting worker with pid: 82672
+[2026-06-25 15:26:34 +0800] [82670] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 15:37:09 +0800] [82670] [INFO] Handling signal: term
+[2026-06-25 15:37:10 +0800] [82670] [ERROR] Worker (pid:82672) was sent SIGKILL! Perhaps out of memory?
+[2026-06-25 15:37:10 +0800] [82670] [INFO] Shutting down: Master
+[2026-06-25 15:37:11 +0800] [83039] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 15:37:11 +0800] [83039] [INFO] Listening at: http://0.0.0.0:5000 (83039)
+[2026-06-25 15:37:11 +0800] [83039] [INFO] Using worker: gthread
+[2026-06-25 15:37:11 +0800] [83041] [INFO] Booting worker with pid: 83041
+[2026-06-25 15:37:11 +0800] [83039] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 15:39:06 +0800] [83039] [INFO] Handling signal: term
+[2026-06-25 15:39:08 +0800] [83039] [ERROR] Worker (pid:83041) was sent SIGKILL! Perhaps out of memory?
+[2026-06-25 15:39:08 +0800] [83039] [INFO] Shutting down: Master
+[2026-06-25 15:39:09 +0800] [83176] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 15:39:09 +0800] [83176] [INFO] Listening at: http://0.0.0.0:5000 (83176)
+[2026-06-25 15:39:09 +0800] [83176] [INFO] Using worker: gthread
+[2026-06-25 15:39:09 +0800] [83178] [INFO] Booting worker with pid: 83178
+[2026-06-25 15:39:09 +0800] [83176] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 15:50:33 +0800] [83178] [INFO] Autorestarting worker after current request.
+[2026-06-25 15:51:03 +0800] [83178] [INFO] Worker exiting (pid: 83178)
+[OpenClaw Bridge] 已注册 8 个 Skill
+[2026-06-25 15:52:34 +0800] [83176] [CRITICAL] WORKER TIMEOUT (pid:83178)
+Exception ignored on threading shutdown:
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1577, in _shutdown
+    atexit_call()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1548, in <lambda>
+    _threading_atexits.append(lambda: func(*arg, **kwargs))
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 31, in _python_exit
+    t.join()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1133, in join
+    self._os_thread_handle.join(timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-06-25 15:52:34 +0800] [83176] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 15:52:34 +0800] [83344] [INFO] Booting worker with pid: 83344
+[2026-06-25 15:56:04 +0800] [83176] [INFO] Handling signal: term
+[2026-06-25 15:56:34 +0800] [83344] [INFO] Worker exiting (pid: 83344)
+[OpenClaw Bridge] 已注册 8 个 Skill
+[2026-06-25 15:56:34 +0800] [83176] [INFO] Shutting down: Master
+[2026-06-25 16:59:59 +0800] [85059] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 16:59:59 +0800] [85059] [INFO] Listening at: http://0.0.0.0:8090 (85059)
+[2026-06-25 16:59:59 +0800] [85059] [INFO] Using worker: sync
+[2026-06-25 16:59:59 +0800] [85060] [INFO] Booting worker with pid: 85060
+[2026-06-25 17:00:00 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:01:38 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85060)
+[2026-06-25 17:01:38 +0800] [85060] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:01:38 +0800] [85060] [INFO] Worker exiting (pid: 85060)
+[2026-06-25 17:01:38 +0800] [85124] [INFO] Booting worker with pid: 85124
+[2026-06-25 17:01:38 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:02:11 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85124)
+[2026-06-25 17:02:11 +0800] [85124] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:02:11 +0800] [85124] [INFO] Worker exiting (pid: 85124)
+[2026-06-25 17:02:11 +0800] [85138] [INFO] Booting worker with pid: 85138
+[2026-06-25 17:02:11 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:02:42 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85138)
+[2026-06-25 17:02:42 +0800] [85138] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:02:42 +0800] [85138] [INFO] Worker exiting (pid: 85138)
+[2026-06-25 17:02:42 +0800] [85150] [INFO] Booting worker with pid: 85150
+[2026-06-25 17:02:42 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:03:14 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85150)
+[2026-06-25 17:03:14 +0800] [85150] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:03:14 +0800] [85150] [INFO] Worker exiting (pid: 85150)
+[2026-06-25 17:03:14 +0800] [85170] [INFO] Booting worker with pid: 85170
+[2026-06-25 17:03:14 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:03:45 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85170)
+[2026-06-25 17:03:45 +0800] [85170] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:03:45 +0800] [85170] [INFO] Worker exiting (pid: 85170)
+[2026-06-25 17:03:45 +0800] [85209] [INFO] Booting worker with pid: 85209
+[2026-06-25 17:03:45 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:04:16 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85209)
+[2026-06-25 17:04:16 +0800] [85209] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:04:16 +0800] [85209] [INFO] Worker exiting (pid: 85209)
+[2026-06-25 17:04:16 +0800] [85251] [INFO] Booting worker with pid: 85251
+[2026-06-25 17:04:16 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:04:47 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85251)
+[2026-06-25 17:04:47 +0800] [85251] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:04:47 +0800] [85251] [INFO] Worker exiting (pid: 85251)
+[2026-06-25 17:04:47 +0800] [85262] [INFO] Booting worker with pid: 85262
+[2026-06-25 17:04:47 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:05:18 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85262)
+[2026-06-25 17:05:18 +0800] [85262] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:05:18 +0800] [85262] [INFO] Worker exiting (pid: 85262)
+[2026-06-25 17:05:19 +0800] [85270] [INFO] Booting worker with pid: 85270
+[2026-06-25 17:05:19 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:05:50 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85270)
+[2026-06-25 17:05:50 +0800] [85270] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:05:50 +0800] [85270] [INFO] Worker exiting (pid: 85270)
+[2026-06-25 17:05:50 +0800] [85279] [INFO] Booting worker with pid: 85279
+[2026-06-25 17:05:50 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:06:21 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85279)
+[2026-06-25 17:06:21 +0800] [85279] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:06:21 +0800] [85279] [INFO] Worker exiting (pid: 85279)
+[2026-06-25 17:06:21 +0800] [85289] [INFO] Booting worker with pid: 85289
+[2026-06-25 17:06:21 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:06:52 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85289)
+[2026-06-25 17:06:52 +0800] [85289] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:06:52 +0800] [85289] [INFO] Worker exiting (pid: 85289)
+[2026-06-25 17:06:52 +0800] [85293] [INFO] Booting worker with pid: 85293
+[2026-06-25 17:06:52 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:07:23 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85293)
+[2026-06-25 17:07:23 +0800] [85293] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:07:23 +0800] [85293] [INFO] Worker exiting (pid: 85293)
+[2026-06-25 17:07:24 +0800] [85298] [INFO] Booting worker with pid: 85298
+[2026-06-25 17:07:24 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:07:55 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85298)
+[2026-06-25 17:07:55 +0800] [85298] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:07:55 +0800] [85298] [INFO] Worker exiting (pid: 85298)
+[2026-06-25 17:07:55 +0800] [85304] [INFO] Booting worker with pid: 85304
+[2026-06-25 17:07:55 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:08:26 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85304)
+[2026-06-25 17:08:26 +0800] [85304] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:08:26 +0800] [85304] [INFO] Worker exiting (pid: 85304)
+[2026-06-25 17:08:26 +0800] [85317] [INFO] Booting worker with pid: 85317
+[2026-06-25 17:08:26 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:08:57 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85317)
+[2026-06-25 17:08:57 +0800] [85317] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:08:57 +0800] [85317] [INFO] Worker exiting (pid: 85317)
+[2026-06-25 17:08:57 +0800] [85326] [INFO] Booting worker with pid: 85326
+[2026-06-25 17:08:57 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:09:28 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85326)
+[2026-06-25 17:09:29 +0800] [85326] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:09:29 +0800] [85326] [INFO] Worker exiting (pid: 85326)
+[2026-06-25 17:09:29 +0800] [85330] [INFO] Booting worker with pid: 85330
+[2026-06-25 17:09:29 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:10:00 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85330)
+[2026-06-25 17:10:00 +0800] [85330] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:10:00 +0800] [85330] [INFO] Worker exiting (pid: 85330)
+[2026-06-25 17:10:00 +0800] [85334] [INFO] Booting worker with pid: 85334
+[2026-06-25 17:10:00 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:10:31 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85334)
+[2026-06-25 17:10:31 +0800] [85334] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:10:31 +0800] [85334] [INFO] Worker exiting (pid: 85334)
+[2026-06-25 17:10:31 +0800] [85371] [INFO] Booting worker with pid: 85371
+[2026-06-25 17:10:31 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:11:02 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85371)
+[2026-06-25 17:11:02 +0800] [85371] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:11:02 +0800] [85371] [INFO] Worker exiting (pid: 85371)
+[2026-06-25 17:11:02 +0800] [85387] [INFO] Booting worker with pid: 85387
+[2026-06-25 17:11:02 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:11:34 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85387)
+[2026-06-25 17:11:34 +0800] [85387] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:11:34 +0800] [85387] [INFO] Worker exiting (pid: 85387)
+[2026-06-25 17:11:34 +0800] [85393] [INFO] Booting worker with pid: 85393
+[2026-06-25 17:11:34 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:12:05 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85393)
+[2026-06-25 17:12:05 +0800] [85393] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:12:05 +0800] [85393] [INFO] Worker exiting (pid: 85393)
+[2026-06-25 17:12:05 +0800] [85401] [INFO] Booting worker with pid: 85401
+[2026-06-25 17:12:05 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:12:36 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85401)
+[2026-06-25 17:12:36 +0800] [85401] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:12:36 +0800] [85401] [INFO] Worker exiting (pid: 85401)
+[2026-06-25 17:12:36 +0800] [85405] [INFO] Booting worker with pid: 85405
+[2026-06-25 17:12:36 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:13:07 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85405)
+[2026-06-25 17:13:07 +0800] [85405] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:13:07 +0800] [85405] [INFO] Worker exiting (pid: 85405)
+[2026-06-25 17:13:07 +0800] [85409] [INFO] Booting worker with pid: 85409
+[2026-06-25 17:13:07 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:13:39 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85409)
+[2026-06-25 17:13:39 +0800] [85409] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:13:39 +0800] [85409] [INFO] Worker exiting (pid: 85409)
+[2026-06-25 17:13:39 +0800] [85414] [INFO] Booting worker with pid: 85414
+[2026-06-25 17:13:39 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:14:10 +0800] [85059] [CRITICAL] WORKER TIMEOUT (pid:85414)
+[2026-06-25 17:14:10 +0800] [85414] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:14:10 +0800] [85414] [INFO] Worker exiting (pid: 85414)
+[2026-06-25 17:14:10 +0800] [85427] [INFO] Booting worker with pid: 85427
+[2026-06-25 17:14:10 +0800] [85059] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:14:14 +0800] [85059] [INFO] Handling signal: term
+[2026-06-25 17:14:15 +0800] [85436] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 17:14:15 +0800] [85436] [ERROR] Connection in use: ('0.0.0.0', 8090)
+[2026-06-25 17:14:15 +0800] [85436] [ERROR] connection to ('0.0.0.0', 8090) failed: [Errno 48] Address already in use
+[2026-06-25 17:14:16 +0800] [85436] [ERROR] Connection in use: ('0.0.0.0', 8090)
+[2026-06-25 17:14:16 +0800] [85436] [ERROR] connection to ('0.0.0.0', 8090) failed: [Errno 48] Address already in use
+[2026-06-25 17:14:17 +0800] [85436] [ERROR] Connection in use: ('0.0.0.0', 8090)
+[2026-06-25 17:14:17 +0800] [85436] [ERROR] connection to ('0.0.0.0', 8090) failed: [Errno 48] Address already in use
+[2026-06-25 17:14:18 +0800] [85436] [ERROR] Connection in use: ('0.0.0.0', 8090)
+[2026-06-25 17:14:18 +0800] [85436] [ERROR] connection to ('0.0.0.0', 8090) failed: [Errno 48] Address already in use
+[2026-06-25 17:14:19 +0800] [85436] [ERROR] Connection in use: ('0.0.0.0', 8090)
+[2026-06-25 17:14:19 +0800] [85436] [ERROR] connection to ('0.0.0.0', 8090) failed: [Errno 48] Address already in use
+[2026-06-25 17:14:20 +0800] [85436] [ERROR] Can't connect to ('0.0.0.0', 8090)
+[2026-06-25 17:14:44 +0800] [85059] [INFO] Shutting down: Master
+[2026-06-25 17:18:43 +0800] [85517] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 17:18:43 +0800] [85517] [INFO] Listening at: http://0.0.0.0:8090 (85517)
+[2026-06-25 17:18:43 +0800] [85517] [INFO] Using worker: sync
+[2026-06-25 17:18:43 +0800] [85518] [INFO] Booting worker with pid: 85518
+[2026-06-25 17:18:43 +0800] [85519] [INFO] Booting worker with pid: 85519
+[2026-06-25 17:18:43 +0800] [85517] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:20:44 +0800] [85517] [CRITICAL] WORKER TIMEOUT (pid:85518)
+[2026-06-25 17:20:44 +0800] [85517] [CRITICAL] WORKER TIMEOUT (pid:85519)
+[2026-06-25 17:20:44 +0800] [85519] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:20:44 +0800] [85518] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:20:44 +0800] [85518] [INFO] Worker exiting (pid: 85518)
+[2026-06-25 17:20:44 +0800] [85519] [INFO] Worker exiting (pid: 85519)
+[2026-06-25 17:20:44 +0800] [85541] [INFO] Booting worker with pid: 85541
+[2026-06-25 17:20:44 +0800] [85517] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:20:44 +0800] [85542] [INFO] Booting worker with pid: 85542
+[2026-06-25 17:20:44 +0800] [85517] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:22:46 +0800] [85517] [CRITICAL] WORKER TIMEOUT (pid:85541)
+[2026-06-25 17:22:46 +0800] [85517] [CRITICAL] WORKER TIMEOUT (pid:85542)
+[2026-06-25 17:22:46 +0800] [85542] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:22:46 +0800] [85541] [ERROR] Error handling request GET /api/sse/events
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/sync.py", line 189, in handle_request
+    for item in respiter:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wsgi.py", line 270, in __next__
+    return self._next()
+           ~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/werkzeug/wrappers/response.py", line 32, in _iter_encoded
+    for item in iterable:
+                ^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/helpers.py", line 132, in generator
+    yield from gen
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2182, in generate
+    data = q.get(timeout=30)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/queue.py", line 210, in get
+    self.not_empty.wait(remaining)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 373, in wait
+    gotit = waiter.acquire(True, timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+    ~~~~~~~~^^^
+SystemExit: 1
+[2026-06-25 17:22:46 +0800] [85542] [INFO] Worker exiting (pid: 85542)
+[2026-06-25 17:22:46 +0800] [85541] [INFO] Worker exiting (pid: 85541)
+[2026-06-25 17:22:46 +0800] [85588] [INFO] Booting worker with pid: 85588
+[2026-06-25 17:22:46 +0800] [85517] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:22:46 +0800] [85589] [INFO] Booting worker with pid: 85589
+[2026-06-25 17:22:46 +0800] [85517] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 17:28:21 +0800] [85685] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 17:28:21 +0800] [85685] [INFO] Listening at: http://0.0.0.0:5000 (85685)
+[2026-06-25 17:28:21 +0800] [85685] [INFO] Using worker: gthread
+[2026-06-25 17:28:21 +0800] [85687] [INFO] Booting worker with pid: 85687
+[2026-06-25 17:28:21 +0800] [85685] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 18:09:26 +0800] [86486] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 18:09:26 +0800] [86486] [INFO] Listening at: http://0.0.0.0:5000 (86486)
+[2026-06-25 18:09:26 +0800] [86486] [INFO] Using worker: gthread
+[2026-06-25 18:09:26 +0800] [86487] [INFO] Booting worker with pid: 86487
+[2026-06-25 18:09:26 +0800] [86486] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 19:49:50 +0800] [87963] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 19:49:50 +0800] [87963] [INFO] Listening at: http://0.0.0.0:5000 (87963)
+[2026-06-25 19:49:50 +0800] [87963] [INFO] Using worker: gthread
+[2026-06-25 19:49:50 +0800] [87966] [INFO] Booting worker with pid: 87966
+[2026-06-25 19:49:50 +0800] [87963] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 19:52:50 +0800] [88054] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 19:52:50 +0800] [88054] [INFO] Listening at: http://0.0.0.0:5000 (88054)
+[2026-06-25 19:52:50 +0800] [88054] [INFO] Using worker: gthread
+[2026-06-25 19:52:50 +0800] [88057] [INFO] Booting worker with pid: 88057
+[2026-06-25 19:52:50 +0800] [88054] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 19:57:21 +0800] [88185] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 19:57:21 +0800] [88185] [INFO] Listening at: http://0.0.0.0:5000 (88185)
+[2026-06-25 19:57:21 +0800] [88185] [INFO] Using worker: gthread
+[2026-06-25 19:57:21 +0800] [88188] [INFO] Booting worker with pid: 88188
+[2026-06-25 19:57:21 +0800] [88185] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-25 20:01:41 +0800] [88301] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 20:01:41 +0800] [88301] [INFO] Listening at: http://0.0.0.0:5000 (88301)
+[2026-06-25 20:01:41 +0800] [88301] [INFO] Using worker: gthread
+[2026-06-25 20:01:41 +0800] [88302] [INFO] Booting worker with pid: 88302
+[2026-06-25 20:01:41 +0800] [88301] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl

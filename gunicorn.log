@@ -1,0 +1,5 @@
+[2026-06-25 16:19:45 +0800] [84223] [INFO] Starting gunicorn 26.0.0
+[2026-06-25 16:19:45 +0800] [84223] [INFO] Listening at: http://0.0.0.0:8090 (84223)
+[2026-06-25 16:19:45 +0800] [84223] [INFO] Using worker: gthread
+[2026-06-25 16:19:45 +0800] [84225] [INFO] Booting worker with pid: 84225
+[2026-06-25 16:19:45 +0800] [84223] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
