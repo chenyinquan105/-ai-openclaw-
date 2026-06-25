@@ -2625,10 +2625,9 @@ function clockSliderChange(val) {
   if (slider) slider.value = mins;
   _clockJumpLocked = true;
   setTimeout(function() { _clockJumpLocked = false; }, 2500);
-  var wasRunning = clockPowerOn && document.getElementById('clock-play-btn') && document.getElementById('clock-play-btn').textContent !== '▶';
   clockFetch('POST', '/api/clock/jump', {target}).then(data => {
     if (data.status === 'SUCCESS') {
-      clockUpdateUI({...data, is_running: wasRunning || data.is_running});
+      clockUpdateUI({...data, is_running: data.is_running});
       clockLogEvent('🎚️ 拖动到 ' + target, 'info');
       if (data.triggered_nodes && data.triggered_nodes.length) {
         data.triggered_nodes.forEach(ev => {
@@ -2754,11 +2753,10 @@ function clockLogEvent(msg, type) {
 
 async function clockFastForward(delta) {
   if (!clockPowerOn) { clockLogEvent('⚠️ 请先开启虚拟时间控制台', 'alert'); return; }
-  var wasRunning = document.getElementById('clock-play-btn') && document.getElementById('clock-play-btn').textContent !== '▶';
   // 直接调后端，由 clockUpdateUI 统一更新 DOM，避免乐观+确认两次写入造成频闪
   const data = await clockFetch('POST', '/api/clock/offset', {delta});
   if (data.status === 'SUCCESS') {
-    clockUpdateUI({...data, is_running: wasRunning || data.is_running});
+    clockUpdateUI({...data, is_running: data.is_running});
     clockLogEvent('⏩ 快进 ' + delta + ' 分钟 → ' + data.new_virtual_time, 'info');
     if (data.triggered_nodes && data.triggered_nodes.length) {
       data.triggered_nodes.forEach(ev => {
@@ -2779,7 +2777,7 @@ async function clockSetSpeed(speed) {
   clockCurrentSpeed = speed;
   const data = await clockFetch('POST', '/api/clock/speed', {speed});
   if (data.status === 'SUCCESS') {
-    clockUpdateUI({...data, is_running: data.is_running || false});
+    clockUpdateUI({...data, is_running: data.is_running});
     clockLogEvent('🚀 倍速已设为 ' + speed + 'x', 'info');
   } else {
     clockLogEvent('⚠️ 倍速设置失败', 'alert');
@@ -3340,18 +3338,37 @@ var _reminderActiveState = null;
  *          | MED_ESCALATION_CRITICAL | WATER_UI_ALERT | MED_DUPLICATE_BLOCK
  *          | REMINDER_ACTION_RESULT
  */
+var _handledEventKeys = {}; // 事件去重：key → timestamp
+function _isDuplicateEvent(type, medId, time) {
+  var key = type + '|' + (medId || '') + '|' + (time || '');
+  var now = Date.now();
+  // 清理超过 5 秒的旧记录
+  var stale = [];
+  for (var k in _handledEventKeys) {
+    if (now - _handledEventKeys[k] > 5000) stale.push(k);
+  }
+  stale.forEach(function(k) { delete _handledEventKeys[k]; });
+  if (_handledEventKeys[key]) return true;
+  _handledEventKeys[key] = now;
+  return false;
+}
+
 function handleReminderEvent(ev) {
   var type = ev.type || '';
   var msg = ev.message || '';
   var medId = ev.med_id || '';
-
-  console.log('[handleReminderEvent] type=' + type + ' medId=' + medId + ' msg=' + (msg||'').substring(0,50));
-  if (type && type.indexOf('MED') >= 0) {
-    console.log('[handleReminderEvent] 🔔 MED event received! type=' + type + ' medId=' + medId + ' _reminderActiveMedId=' + _reminderActiveMedId);
-  }
+  var time = ev.time || '';
 
   // 防御：无类型跳过
   if (!type) return false;
+
+  // 去重：同一事件 5 秒内不重复处理（SSE + polling 双重投递）
+  if (_isDuplicateEvent(type, medId, time)) {
+    console.log('[handleReminderEvent] ⏭️ 跳过重复事件: ' + type + ' medId=' + medId);
+    return true;
+  }
+
+  console.log('[handleReminderEvent] type=' + type + ' medId=' + medId + ' msg=' + (msg||'').substring(0,50));
 
   // —— 喝水提醒：中央弹窗 ——
   if (type === 'WATER_RINGING_ALERT' || type === 'WATER_UI_ALERT') {
