@@ -12,7 +12,7 @@ time_master.py —— 时间管家（沙盒虚拟时钟芯片）
   - 倍速走时服务端定时器驱动，客户端只需发 start/stop
   - 走时范围：只模拟 24h 虚拟时间，不跨天
   - 1 倍速 = 1 秒走 1 虚拟分钟，speed 为每秒推进的虚拟分钟数
-    speed 枚举: 1(1x) / 2(2x) / 3(3x)
+    speed 枚举: 1(1x正常) / 60(60x) / 300(300x)，内部存储为虚拟分钟/真实秒
   - 排程联动：推进后返回 triggered_nodes，由上层调用方处理节点完成
 
 输出统一格式:
@@ -42,7 +42,7 @@ class ClockState:
         # 底层统一用绝对浮点数分钟维护时钟
         h, m = initial_time.split(":")
         self.virtual_minutes: float = float(int(h) * 60 + int(m))
-        self.speed = 1.0                       # 每秒推进的虚拟分钟数，默认 1x = 1 分钟/秒
+        self.speed = 1.0 / 60                  # 每秒推进的虚拟分钟数，默认 1x 正常速度 = 1/60 分钟/秒
         self.is_running = False               # 自动走时是否开启
         self.schedule_nodes: list = []        # 排程节点列表 [{"time":"HH:MM","node_id":"...","name":"..."}]
         self.triggered_queue: list = []       # 事件消费队列，自动走时触发的事件推入
@@ -232,7 +232,7 @@ class TimeMaster:
     def start_auto_tick(self, session_id: str, speed: float = 1.0) -> dict:
         """
         模式 3：AUTO_TICK — 启动自动走时。
-        speed: 每秒推进的虚拟分钟数 (1/2/3)
+        speed: 每秒推进的虚拟分钟数，默认 1/60 (1x 正常速度)
         """
         with self._lock:
             cs = self._get_or_create_session_nolock(session_id)
@@ -247,14 +247,14 @@ class TimeMaster:
                 )
 
             speed = float(speed)
-            if speed < 1 or speed > 1440:
+            if speed <= 0 or speed > 1440:
                 return _build_output(
                     previous_virtual_time=cs.virtual_time,
                     new_virtual_time=cs.virtual_time,
                     elapsed_minutes=0,
                     previous_minutes=cs.virtual_minutes,
                     new_minutes=cs.virtual_minutes,
-                    error_message=f"无效倍速: {speed}，允许范围 [1, 1440]",
+                    error_message=f"无效倍速: {speed}，允许范围 (0, 1440]",
                 )
 
             cs.speed = speed
@@ -295,14 +295,14 @@ class TimeMaster:
         with self._lock:
             cs = self._get_or_create_session_nolock(session_id)
             speed = float(speed)
-            if speed < 1 or speed > 1440:
+            if speed <= 0 or speed > 1440:
                 return _build_output(
                     previous_virtual_time=cs.virtual_time,
                     new_virtual_time=cs.virtual_time,
                     elapsed_minutes=0,
                     previous_minutes=cs.virtual_minutes,
                     new_minutes=cs.virtual_minutes,
-                    error_message=f"无效倍速: {speed}，允许范围 [1, 1440]",
+                    error_message=f"无效倍速: {speed}，允许范围 (0, 1440]",
                 )
             cs.speed = speed
             return {
@@ -353,7 +353,11 @@ class TimeMaster:
             if s_today < nm <= e_today:
                 triggered.append(nt)
                 # daily 节点保留，次日继续提醒
-                if nt.get("repeat") == "daily":
+                # WATER/MED 类型默认 daily（除非显式设为 once）；CUSTOM 按显式字段
+                is_daily = nt.get("repeat") == "daily"
+                if not is_daily and nt.get("type") in ("WATER", "MED") and nt.get("repeat") != "once":
+                    is_daily = True  # 兜底：WATER/MED 无 repeat 字段时默认每天
+                if is_daily:
                     remaining.append(nt)
             else:
                 remaining.append(nt)

@@ -99,11 +99,15 @@ def process_reminder_pipeline(
         ev_id = event.get("id")
         ev_time = event.get("time")
         med_name = event.get("name") or event.get("label") or "未名药"
+        ev_label = event.get("label", "")
+        ev_images = event.get("images", [])
+        ev_ring_mode = event.get("ring_mode", "once")
 
         if ev_type == "WATER":
             output_notifications.append({
                 "type": "WATER_UI_ALERT",
                 "time": ev_time,
+                "label": ev_label or "喝水",
                 "message": f"🥤【温馨喝水提示】({ev_time})：忙碌之余，记得喝杯温水润润嗓子哦，保持身体水分充足！"
             })
 
@@ -135,13 +139,10 @@ def process_reminder_pipeline(
                 "type": "MED_RINGING_ALERT",
                 "time": ev_time,
                 "med_id": ev_id,
-                "message": (
-                    f"🔔【📱 手机正在密集振动与响铃...】\n"
-                    f"👵 提示：王奶奶，该服用 [{med_name}] 了！\n"
-                    f"请选择操作：\n"
-                    f"  [输入 1] ：确认，我现在就去拿药\n"
-                    f"  [输入 2] ：还没吃饭，帮我延后30分钟提醒"
-                ),
+                "label": ev_label or med_name,
+                "images": ev_images,
+                "ring_mode": ev_ring_mode,
+                "message": f"👵 王奶奶，该服用【{med_name}】了，请及时服药。",
             })
 
     # ----------- 2. 基于时间差判定"超时未响应" -----------

@@ -63,6 +63,7 @@ def _read_profile() -> dict:
             "hydration_interval_minutes": 90,
             "medication_schedule": [],
         },
+        "custom_reminders": [],
     }
     if not os.path.exists(_MEMORY_PATH):
         return defaults
@@ -144,7 +145,38 @@ def _read_profile() -> dict:
                         pass
                 else:
                     defaults[section_key][target] = val
+
+    # 解析自定义提醒段
+    import re as _re2
+    custom_pat = r"## 自定义提醒\s*\n.*?\n(.*?)(?=\n## |\Z)"
+    cm = _re2.search(custom_pat, text, _re2.DOTALL)
+    if cm:
+        custom_reminders = []
+        lines = cm.group(1).strip().split("\n")
+        for line in lines:
+            line = line.strip()
+            if not line.startswith("|") or "---|---" in line or line.startswith("| id"):
+                continue
+            parts = [p.strip() for p in line.split("|")[1:-1]]
+            if len(parts) >= 5:
+                cr = {
+                    "id": parts[0], "label": parts[1], "time": parts[2],
+                    "repeat": parts[3] if parts[3] else "daily",
+                    "date": parts[4] if len(parts) > 4 else "",
+                    "note": parts[5] if len(parts) > 5 else "",
+                    "images": parts[6].split("|") if len(parts) > 6 and parts[6] else [],
+                }
+                if cr["id"] and cr["time"]:
+                    custom_reminders.append(cr)
+        defaults["custom_reminders"] = custom_reminders
+
     return defaults
+
+
+def _persist_custom_reminders(schedule_nodes):
+    """将 CUSTOM 类型提醒写入管家记忆"""
+    custom_nodes = [n for n in schedule_nodes if n.get("type") == "CUSTOM"]
+    _write_profile({"custom_reminders": custom_nodes})
 
 
 def _write_profile(updates: dict) -> dict:
@@ -163,6 +195,12 @@ def _write_profile(updates: dict) -> dict:
                 return ", ".join([f"{i['time']}:{i['name']}" for i in v])
             return ", ".join(v)
         return str(v)
+
+    # 自定义提醒序列化
+    custom_lines = ""
+    for cr in current.get("custom_reminders", []):
+        imgs = "|".join(cr.get("images", [])[:3]) if cr.get("images") else ""
+        custom_lines += f"| {cr.get('id','')} | {cr.get('label','')} | {cr.get('time','')} | {cr.get('repeat','daily')} | {cr.get('date','')} | {cr.get('note','')} | {imgs} |\n"
 
     md = f"""# 管家记忆 — 用户长期偏好谱
 
@@ -194,6 +232,12 @@ def _write_profile(updates: dict) -> dict:
 | hydration_interval_minutes | {current['lifestyle']['hydration_interval_minutes']} |
 | medication_schedule | {_list_or_val(current['lifestyle']['medication_schedule'], 'lifestyle')} |
 """
+    if custom_lines:
+        md += f"""
+## 自定义提醒
+| id | label | time | repeat | date | note | images |
+|---|---|---|---|---|---|---|
+{custom_lines}"""
     with open(_MEMORY_PATH, "w", encoding="utf-8") as f:
         f.write(md)
     return current
@@ -564,7 +608,11 @@ def _add_no_cache(response):
 
 @app.route("/")
 def index():
-    return send_from_directory(base_dir, "index.html")
+    resp = send_from_directory(base_dir, "index.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.route("/api/start", methods=["POST"])
@@ -1964,6 +2012,7 @@ def clock_status():
     if not cs:
         return jsonify({"virtual_time": None, "speed": 0, "is_running": False, "schedule_count": 0})
     d = cs.to_dict()
+    d["speed"] = round(d["speed"] * 60)  # 内部速度 → multiplier (1/60/300)
     d["schedule_count"] = len(cs.schedule_nodes)
     return jsonify(d)
 
@@ -1992,15 +2041,16 @@ def clock_jump():
 
 @app.route("/api/clock/speed", methods=["POST"])
 def clock_set_speed():
-    """设置倍速（只记倍速，不启动走时）: speed=30|60|120"""
+    """设置倍速（只记倍速，不启动走时）: 前端传 multiplier(1/60/300)，内部转为虚拟分钟/秒"""
     data = request.get_json() or {}
-    speed_val = float(data.get("speed", 30))
+    multiplier = float(data.get("speed", 1))
+    internal_speed = multiplier / 60.0  # 1x=1/60, 60x=1, 300x=5 虚拟分钟/秒
     tm = time_master.get_master()
-    res = tm.set_speed(_CLOCK_SESSION_ID, speed_val)
+    res = tm.set_speed(_CLOCK_SESSION_ID, internal_speed)
     cs = tm.get_session(_CLOCK_SESSION_ID)
     return jsonify({
         "status": res.get("status", "SUCCESS"),
-        "speed": speed_val,
+        "speed": multiplier,  # 返回 multiplier 给前端显示
         "virtual_time": res.get("new_virtual_time", cs.virtual_time if cs else "12:00"),
         "is_running": cs.is_running if cs else False,
     })
@@ -2011,12 +2061,12 @@ def clock_start():
     """启动/继续自动走时（以当前记录的速度启动）"""
     tm = time_master.get_master()
     cs = tm.get_session(_CLOCK_SESSION_ID)
-    speed = cs.speed if cs else 1.0
+    speed = cs.speed if cs else (1.0/60)
     tm.stop_auto_tick(_CLOCK_SESSION_ID)
     res = tm.start_auto_tick(_CLOCK_SESSION_ID, speed)
     return jsonify({
         "status": res.get("status", "SUCCESS"),
-        "speed": speed,
+        "speed": round(speed * 60),  # 返回 multiplier
         "virtual_time": res.get("new_virtual_time", cs.virtual_time if cs else "12:00"),
         "is_running": True,
     })
@@ -2034,12 +2084,23 @@ def clock_stop():
 
 @app.route("/api/clock/events", methods=["GET"])
 def clock_pop_events():
-    """消费未读的触发事件"""
+    """消费未读的触发事件，自动走时期间也走提醒管线"""
     tm = time_master.get_master()
-    events = tm.pop_triggered_events(_CLOCK_SESSION_ID)
     cs = tm.get_session(_CLOCK_SESSION_ID)
+    raw_events = tm.pop_triggered_events(_CLOCK_SESSION_ID)
+    # 筛选提醒类节点走管线处理（格式化 + SSE广播弹窗）
+    reminder_nodes = [e for e in raw_events if isinstance(e, dict) and e.get("type") in ("WATER", "MED", "CUSTOM")]
+    other_events = [e for e in raw_events if e not in reminder_nodes]
+    if reminder_nodes:
+        fake_res = {"ticked_minutes_list": [], "triggered_nodes": reminder_nodes}
+        _process_clock_triggers(fake_res)
+        # 管线处理后的事件已在 SSE 广播 + 推回队列，取出来
+        processed = tm.pop_triggered_events(_CLOCK_SESSION_ID)
+        all_events = other_events + processed
+    else:
+        all_events = raw_events
     return jsonify({
-        "events": events,
+        "events": all_events,
         "virtual_time": cs.virtual_time if cs else "08:00",
     })
 
@@ -2074,6 +2135,12 @@ def _process_clock_triggers(res: dict):
     _tm = time_master.get_master()
     for alert in alerts:
         _tm.push_triggered_event(_CLOCK_SESSION_ID, alert)
+
+    # ——— 诊断日志 ———
+    if events:
+        app.logger.info(f'[ClockTrigger] raw_nodes={len(events)} types={[e.get("type") for e in events]}')
+    if alerts:
+        app.logger.info(f'[ClockTrigger] alerts={len(alerts)} types={[a.get("type") for a in alerts]} sse_clients={len(_sse_clients)}')
 
     # ——— SSE 广播：通知所有连接的客户端 ———
     _broadcast_sse_events(alerts if alerts else events)
@@ -2241,32 +2308,78 @@ def _ensure_realtime_poller():
 # 提醒任务管理 API
 # ======================================================================
 
+@app.route("/api/reminder/restore", methods=["POST"])
+def reminder_restore_from_profile():
+    """从管家记忆恢复所有提醒到虚拟时钟"""
+    profile = _read_profile()
+    custom_nodes = profile.get("custom_reminders", [])
+    tm = time_master.get_master()
+    cs = tm.get_or_create_session(_CLOCK_SESSION_ID)
+    existing_ids = {n.get("id") for n in cs.schedule_nodes} if cs else set()
+    current = list(cs.schedule_nodes) if cs else []
+    restored = 0
+    for cr in custom_nodes:
+        if not cr.get("id") or not cr.get("time"):
+            continue
+        if cr["id"] in existing_ids:
+            continue
+        node = {
+            "id": cr["id"], "type": "CUSTOM", "time": cr["time"],
+            "state": "pending", "label": cr.get("label", ""),
+            "repeat": cr.get("repeat", "daily"), "date": cr.get("date", ""),
+            "images": cr.get("images", []), "note": cr.get("note", ""),
+            "created_at": cr.get("created_at", ""),
+        }
+        current.append(node)
+        existing_ids.add(cr["id"])
+        restored += 1
+    tm.set_schedule(_CLOCK_SESSION_ID, current)
+    return jsonify({"status": "SUCCESS", "restored": restored})
+
+
 @app.route("/api/reminder/tasks", methods=["GET"])
 def reminder_get_tasks():
-    """获取当前虚拟时钟中的所有 WATER/MED 排程节点"""
+    """获取当前虚拟时钟中的所有 WATER/MED/CUSTOM 排程节点"""
     tm = time_master.get_master()
     cs = tm.get_session(_CLOCK_SESSION_ID)
     if not cs:
         return jsonify({"tasks": []})
     tasks = []
     for n in cs.schedule_nodes:
-        if n.get("type") in ("WATER", "MED"):
+        if n.get("type") in ("WATER", "MED", "CUSTOM"):
             tasks.append(n)
     return jsonify({"tasks": tasks})
 
 
 @app.route("/api/reminder/add_task", methods=["POST"])
 def reminder_add_task():
-    """添加一个提醒节点到虚拟时钟（自动初始化时钟会话）"""
+    """添加一个提醒节点到虚拟时钟（自动初始化时钟会话）。
+    支持扩展字段: date, images, note, repeat"""
     data = request.get_json(silent=True) or {}
     node = data.get("node", {})
     if not node or not node.get("id") or not node.get("time") or not node.get("type"):
         return jsonify({"status": "ERROR", "message": "缺少必填字段"}), 400
+    # 标准化节点结构
+    normalized = {
+        "id": node["id"],
+        "type": node["type"],
+        "time": node["time"],
+        "state": node.get("state", "pending"),
+        "label": node.get("label", ""),
+        "repeat": node.get("repeat", "daily"),
+        "date": node.get("date", ""),
+        "images": node.get("images", []),
+        "note": node.get("note", ""),
+        "created_at": node.get("created_at", ""),
+    }
     tm = time_master.get_master()
     cs = tm.get_or_create_session(_CLOCK_SESSION_ID)
     current = list(cs.schedule_nodes) if cs else []
-    current.append(node)
+    current.append(normalized)
     tm.set_schedule(_CLOCK_SESSION_ID, current)
+    # CUSTOM 类型自动持久化到管家记忆
+    if normalized["type"] == "CUSTOM":
+        _persist_custom_reminders(current)
     return jsonify({"status": "SUCCESS"})
 
 
@@ -2283,6 +2396,8 @@ def reminder_remove_task():
         return jsonify({"status": "SUCCESS"})
     current = [n for n in cs.schedule_nodes if n.get("id") != task_id]
     tm.set_schedule(_CLOCK_SESSION_ID, current)
+    # 如果删除的是自定义提醒，同步持久化
+    _persist_custom_reminders(current)
     return jsonify({"status": "SUCCESS"})
 
 
@@ -2322,6 +2437,41 @@ def reminder_user_action():
         "status": "SUCCESS",
         "result": result,
     })
+
+
+# ======================================================================
+# 药品图片上传 API
+# ======================================================================
+
+import os as _os
+import uuid as _uuid
+
+_UPLOAD_DIR = _os.path.join(base_dir, "static", "uploads", "medicines")
+_os.makedirs(_UPLOAD_DIR, exist_ok=True)
+
+@app.route("/api/reminder/upload_image", methods=["POST"])
+def reminder_upload_image():
+    """上传药品图片，返回可访问URL"""
+    if 'image' not in request.files:
+        return jsonify({"status": "ERROR", "message": "未选择文件"}), 400
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"status": "ERROR", "message": "文件名为空"}), 400
+    # 限制5MB
+    file.seek(0, 2)
+    size = file.tell()
+    file.seek(0)
+    if size > 5 * 1024 * 1024:
+        return jsonify({"status": "ERROR", "message": "文件超过5MB"}), 400
+    # 生成唯一文件名
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'jpg'
+    if ext not in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+        ext = 'jpg'
+    filename = f"{_uuid.uuid4().hex}.{ext}"
+    filepath = _os.path.join(_UPLOAD_DIR, filename)
+    file.save(filepath)
+    url = f"/static/uploads/medicines/{filename}"
+    return jsonify({"status": "SUCCESS", "url": url, "id": filename})
 
 
 # ======================================================================
