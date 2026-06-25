@@ -2625,9 +2625,10 @@ function clockSliderChange(val) {
   if (slider) slider.value = mins;
   _clockJumpLocked = true;
   setTimeout(function() { _clockJumpLocked = false; }, 2500);
+  var wasRunning = clockPowerOn && document.getElementById('clock-play-btn') && document.getElementById('clock-play-btn').textContent !== '▶';
   clockFetch('POST', '/api/clock/jump', {target}).then(data => {
     if (data.status === 'SUCCESS') {
-      clockUpdateUI(data);
+      clockUpdateUI({...data, is_running: wasRunning || data.is_running});
       clockLogEvent('🎚️ 拖动到 ' + target, 'info');
       if (data.triggered_nodes && data.triggered_nodes.length) {
         data.triggered_nodes.forEach(ev => {
@@ -2753,10 +2754,11 @@ function clockLogEvent(msg, type) {
 
 async function clockFastForward(delta) {
   if (!clockPowerOn) { clockLogEvent('⚠️ 请先开启虚拟时间控制台', 'alert'); return; }
+  var wasRunning = document.getElementById('clock-play-btn') && document.getElementById('clock-play-btn').textContent !== '▶';
   // 直接调后端，由 clockUpdateUI 统一更新 DOM，避免乐观+确认两次写入造成频闪
   const data = await clockFetch('POST', '/api/clock/offset', {delta});
   if (data.status === 'SUCCESS') {
-    clockUpdateUI(data);
+    clockUpdateUI({...data, is_running: wasRunning || data.is_running});
     clockLogEvent('⏩ 快进 ' + delta + ' 分钟 → ' + data.new_virtual_time, 'info');
     if (data.triggered_nodes && data.triggered_nodes.length) {
       data.triggered_nodes.forEach(ev => {
@@ -2871,6 +2873,7 @@ var _medCountdownStartVirtMin = 0;  // 倒计时起始虚拟分钟数
 var _medContinuousRing = null;
 var _medPendingInfo = null;
 var _medCountdownGen = 0;            // 代际计数器：每次新倒计时+1，回调检查匹配
+var _lastMedDialogOpenTs = 0;        // 防重入：上次弹窗打开时间戳
 
 /** 获取当前虚拟分钟数（时钟关闭时退回真实时间） */
 function _getCurrentVirtMinutes() {
@@ -3390,13 +3393,19 @@ function handleReminderEvent(ev) {
 }
 
 function renderReminderDialog(type, msg, medId, medImages, ringMode) {
-  // 防频闪：如果同一 medId 的弹窗已经显示中，跳过重复渲染（SSE + clock poll 双重送达）
+  // 防重入：同一 medId 500ms 内不重复创建弹窗（SSE + clock poll 双重送达）
+  var now = Date.now();
+  if (_reminderActiveMedId === medId && now - _lastMedDialogOpenTs < 500) {
+    return;
+  }
+  // 防频闪：如果同一 medId 的弹窗已经显示中，跳过重复渲染
   if (_reminderActiveMedId === medId && document.getElementById('reminder-dialog') && document.getElementById('reminder-dialog').style.display === 'flex') {
     return;
   }
   // 使用新的弹窗系统
   _medEscalationLevel = 1;
   _medPendingInfo = { type: type, msg: msg, medId: medId, medImages: medImages || [], ringMode: ringMode || 'once' };
+  _lastMedDialogOpenTs = now;
   _openMedDialog(_medPendingInfo);
   return;
   var dlg = document.getElementById('reminder-dialog');

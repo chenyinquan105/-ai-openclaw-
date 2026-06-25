@@ -2019,23 +2019,31 @@ def clock_status():
 
 @app.route("/api/clock/offset", methods=["POST"])
 def clock_offset():
-    """快进 N 分钟"""
+    """快进 N 分钟（保持运行状态）"""
     data = request.get_json() or {}
     delta = data.get("delta", 10)
     tm = time_master.get_master()
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    was_running = cs.is_running if cs else False
     res = tm.offset(_CLOCK_SESSION_ID, int(delta))
     _process_clock_triggers(res)
+    if was_running:
+        tm.start_auto_tick(_CLOCK_SESSION_ID, cs.speed if cs else (1.0/60))
     return jsonify(res)
 
 
 @app.route("/api/clock/jump", methods=["POST"])
 def clock_jump():
-    """跳转到指定时间"""
+    """跳转到指定时间（保持运行状态）"""
     data = request.get_json() or {}
     target = data.get("target", "14:00")
     tm = time_master.get_master()
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    was_running = cs.is_running if cs else False
     res = tm.jump(_CLOCK_SESSION_ID, target)
     _process_clock_triggers(res)
+    if was_running:
+        tm.start_auto_tick(_CLOCK_SESSION_ID, cs.speed if cs else (1.0/60))
     return jsonify(res)
 
 
