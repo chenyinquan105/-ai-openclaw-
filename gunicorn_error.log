@@ -1388,3 +1388,545 @@ SystemExit: 1
 [2026-06-25 20:01:41 +0800] [88301] [INFO] Using worker: gthread
 [2026-06-25 20:01:41 +0800] [88302] [INFO] Booting worker with pid: 88302
 [2026-06-25 20:01:41 +0800] [88301] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-26 13:19:00 +0800] [92455] [INFO] Starting gunicorn 26.0.0
+[2026-06-26 13:19:00 +0800] [92455] [INFO] Listening at: http://0.0.0.0:5000 (92455)
+[2026-06-26 13:19:00 +0800] [92455] [INFO] Using worker: gthread
+[2026-06-26 13:19:00 +0800] [92456] [INFO] Booting worker with pid: 92456
+[2026-06-26 13:19:00 +0800] [92455] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-06-26 13:19:22,517] ERROR in app: Exception on /api/clock/init [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2000, in clock_init
+    h, m = initial_time.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:19:22,571] ERROR in app: Exception on /api/clock/jump [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2040, in clock_jump
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:29,050] ERROR in app: Exception on /api/clock/init [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2000, in clock_init
+    h, m = initial_time.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:37,679] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:38,362] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:39,745] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:40,094] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:40,378] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:41,512] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:42,295] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:21:43,828] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:22:14,918] ERROR in app: Exception on /api/clock/events [GET]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2099, in clock_pop_events
+    _process_clock_triggers(fake_res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:23:17,973] ERROR in app: Exception on /api/clock/init [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2000, in clock_init
+    h, m = initial_time.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:24:13,666] ERROR in app: Exception on /api/clock/init [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2000, in clock_init
+    h, m = initial_time.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:24:19,992] ERROR in app: Exception on /api/clock/jump [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2040, in clock_jump
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:24:20,975] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:24:21,410] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:53:44,562] ERROR in app: Exception on /api/clock/init [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2000, in clock_init
+    h, m = initial_time.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:53:44,576] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:53:44,578] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 13:53:44,580] ERROR in app: Exception on /api/clock/offset [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2027, in clock_offset
+    _process_clock_triggers(res)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 2133, in _process_clock_triggers
+    alerts = reminder_skill.process_reminder_pipeline(
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 153, in process_reminder_pipeline
+    now_minutes = _t_to_m(cs.virtual_time)
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/skills/task_reminder_skill/task_reminder_skill.py", line 19, in _t_to_m
+    h, m = t.split(":")
+    ^^^^
+ValueError: too many values to unpack (expected 2, got 3)
+[2026-06-26 14:24:19 +0800] [92455] [INFO] Handling signal: term
+[2026-06-26 14:24:49 +0800] [92456] [INFO] Worker exiting (pid: 92456)
+[2026-06-26 14:24:50 +0800] [92455] [INFO] Shutting down: Master
+[2026-06-26 14:24:51 +0800] [93671] [INFO] Starting gunicorn 26.0.0
+[2026-06-26 14:24:51 +0800] [93671] [INFO] Listening at: http://0.0.0.0:5000 (93671)
+[2026-06-26 14:24:51 +0800] [93671] [INFO] Using worker: gthread
+[2026-06-26 14:24:51 +0800] [93679] [INFO] Booting worker with pid: 93679
+[2026-06-26 14:24:52 +0800] [93671] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[fast-path] 「理发」→ ['hair']
+[fast-path] 命中品类关键词: ['hair']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hair']，0 网络延迟
+[2026-06-26 14:30:27 +0800] [93671] [INFO] Handling signal: term
+[2026-06-26 14:30:57 +0800] [93679] [INFO] Worker exiting (pid: 93679)
+[2026-06-26 14:30:57 +0800] [93671] [INFO] Shutting down: Master

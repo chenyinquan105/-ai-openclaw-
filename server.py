@@ -312,9 +312,79 @@ def _duration(cat: str) -> int:
             "restaurant": 60, "gym": 60, "cinema": 120, "laundry": 30}.get(cat, 45)
 
 
+def _try_fast_category_match(user_text: str) -> list:
+    """如果用户输入包含明确的品类关键词，直接返回品类列表，跳过 LLM。
+    返回空列表表示没有明确匹配，需要走 LLM 慢路径。
+    """
+    # 品类关键词 → 品类编码（四大demo品类重点加固）
+    KEYWORD_TO_CAT = {
+        # ── 理发 (hair) ──
+        "理发": "hair", "剪头": "hair", "美发": "hair", "造型": "hair",
+        "烫头": "hair", "染发": "hair", "剪头发": "hair", "做头发": "hair",
+        "洗剪吹": "hair", "剪发": "hair", "理头": "hair", "修刘海": "hair",
+        "接发": "hair", "发廊": "hair", "理发店": "hair", "沙龙": "hair",
+        # ── 宠物 (pet) ──
+        "宠物": "pet", "狗": "pet", "猫": "pet", "洗澡": "pet",
+        "洗狗": "pet", "给狗": "pet", "洗猫": "pet", "给猫": "pet",
+        "猫咪": "pet", "狗狗": "pet", "犬": "pet", "喵": "pet",
+        "宠物美容": "pet", "寄养": "pet", "宠物店": "pet",
+        # ── 火锅 (hotpot) ──
+        "火锅": "hotpot", "海底捞": "hotpot", "涮肉": "hotpot", "涮羊肉": "hotpot",
+        "吃火锅": "hotpot", "涮锅": "hotpot", "铜锅": "hotpot",
+        "重庆火锅": "hotpot", "四川火锅": "hotpot", "麻辣烫": "hotpot",
+        "涮": "hotpot",
+        # ── 日料 (japanese) ──
+        "日料": "japanese", "寿司": "japanese", "居酒屋": "japanese",
+        "日本料理": "japanese", "拉面": "japanese", "吃日料": "japanese",
+        "日式": "japanese", "刺身": "japanese", "生鱼片": "japanese",
+        "鳗鱼饭": "japanese", "天妇罗": "japanese", "烧鸟": "japanese",
+        "日料店": "japanese", "和牛": "japanese",
+        # ── 餐饮 (restaurant) ──
+        "川菜": "restaurant", "湘菜": "restaurant", "粤菜": "restaurant",
+        "鲁菜": "restaurant", "东北菜": "restaurant", "西北菜": "restaurant",
+        "烤肉": "restaurant", "烧烤": "restaurant", "烤鸭": "restaurant",
+        "北京菜": "restaurant", "本帮菜": "restaurant", "吃辣": "restaurant",
+        "辣的": "restaurant", "餐厅": "restaurant", "吃饭": "restaurant",
+        "饭店": "restaurant", "中餐": "restaurant", "馆子": "restaurant",
+        "炒菜": "restaurant", "家常菜": "restaurant", "淮扬菜": "restaurant",
+        # ── 饮品 (cafe) ──
+        "咖啡": "cafe", "奶茶": "cafe", "茶饮": "cafe", "水吧": "cafe",
+        "星巴克": "cafe", "瑞幸": "cafe", "喜茶": "cafe", "饮品": "cafe",
+        "喝东西": "cafe", "下午茶": "cafe", "喝咖啡": "cafe",
+        # ── 其他 ──
+        "干洗": "laundry", "洗衣服": "laundry", "洗衣": "laundry",
+        "健身": "gym", "瑜伽": "gym", "游泳": "gym", "锻炼": "gym",
+        "电影": "cinema", "影院": "cinema", "电影院": "cinema", "看电影": "cinema",
+    }
+
+    # 虚词过滤：去掉「不想洗澡」「不要辣的」这类否定+无意义词
+    _negations = ["不想", "不要", "不吃", "不洗", "不去", "别", "除了"]
+    _clean = user_text
+    for neg in _negations:
+        # 否定词后的品类词不匹配：直接删掉否定短语
+        if neg in _clean:
+            idx = _clean.index(neg)
+            # 删掉否定词及后面紧跟的相关词（如"不想洗澡" → 把"洗澡"也从匹配候选里移除）
+            _clean = _clean[:idx] + _clean[idx+len(neg):]
+
+    matched_cats = set()
+    for keyword, cat in KEYWORD_TO_CAT.items():
+        if keyword in _clean:
+            matched_cats.add(cat)
+
+    if not matched_cats:
+        return []
+
+    cats = list(matched_cats)
+    print(f"[fast-path] 「{user_text[:50]}」→ {cats}", flush=True)
+    return cats
+
+
 def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
     """执行 LLM 解析 + POI 搜索，返回 (category_list, poi_data) 或错误。
     profile: 管家记忆偏好谱，用于注入口味/预算参数。
+
+    优化：当用户输入包含明确品类关键词时，跳过 LLM 直接搜索（快路径）。
     """
     # —— 每轮搜索清空 cache，避免跨请求污染 ——
     agent_instance.poi_cache = {}
@@ -346,6 +416,41 @@ def _search_poi(agent_instance, user_text: str, profile: dict = None) -> dict:
     if price_level:
         pref_lines.append(f"- 消费预算: {price_level}")
     pref_text = "\n".join(pref_lines)
+
+    # ═══════════════════════════════════════════════════════════════
+    # 快路径：用户输入含明确品类关键词 → 跳过 LLM，直接搜高德
+    # ═══════════════════════════════════════════════════════════════
+    _fast_categories = _try_fast_category_match(user_text)
+    if _fast_categories:
+        print(f"[fast-path] 命中品类关键词: {_fast_categories}，跳过 LLM", flush=True)
+        all_results = {}
+        for cat in _fast_categories:
+            search_res = backend.skill_poi.search_poi_matrix(
+                center_coord="39.93,116.45",
+                categories=[cat],
+                radius_meters=3000,
+                min_rating=rating_cutoff,
+                price_level=price_level,
+                dietary_restrictions=diet_res if diet_res else None,
+            )
+            if search_res.get("status") == "SUCCESS":
+                for c, shops in search_res["search_results"].items():
+                    if c not in all_results:
+                        all_results[c] = []
+                    all_results[c].extend(shops)
+                    for shop in shops:
+                        agent_instance.poi_cache[shop["shop_id"]] = shop
+
+        agent_instance.poi_cache_per_category = {}
+        for sid, shop in agent_instance.poi_cache.items():
+            cat = shop.get("category")
+            agent_instance.poi_cache_per_category.setdefault(cat, []).append(shop)
+
+        return {"categories": list(all_results.keys()), "results": all_results}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 慢路径：走 LLM 解析（模糊语义/多目的地/抽象描述）
+    # ═══════════════════════════════════════════════════════════════
 
     system_prompt_1 = {
         "role": "system",
@@ -403,7 +508,7 @@ min_rating 参数请设为 {rating_cutoff}。"""
     msg = agent_instance._call_llm(agent_instance.context_memory, tools=tools_poi)
 
     retry_p1 = 0
-    while not msg.tool_calls and retry_p1 < 5:
+    while not msg.tool_calls and retry_p1 < 2:
         retry_p1 += 1
         agent_instance.context_memory.append({"role": "assistant", "content": msg.content or ""})
         agent_instance.context_memory.append({"role": "user", "content": "请调用 search_poi 工具搜索对应品类商户，不要用文字回答。"})
@@ -2045,17 +2150,16 @@ def clock_jump():
 
 @app.route("/api/clock/speed", methods=["POST"])
 def clock_set_speed():
-    """设置倍速（只记倍速，不启动走时）: 前端传 multiplier(1/60/300)，内部转为虚拟分钟/秒"""
+    """设置倍速（只记倍速，不启动走时）: 前端直接传虚拟分钟/秒 (1/60=1x, 1=60x, 5=300x)"""
     data = request.get_json() or {}
-    multiplier = float(data.get("speed", 1))
-    internal_speed = multiplier / 60.0  # 1x=1/60, 60x=1, 300x=5 虚拟分钟/秒
+    speed = float(data.get("speed", 1.0/60))
     tm = time_master.get_master()
-    res = tm.set_speed(_CLOCK_SESSION_ID, internal_speed)
+    res = tm.set_speed(_CLOCK_SESSION_ID, speed)
     cs = tm.get_session(_CLOCK_SESSION_ID)
     return jsonify({
         "status": res.get("status", "SUCCESS"),
-        "speed": multiplier,  # 返回 multiplier 给前端显示
-        "virtual_time": res.get("new_virtual_time", cs.virtual_time if cs else "12:00"),
+        "speed": speed,
+        "virtual_time": res.get("new_virtual_time", cs.virtual_time if cs else "12:00:00"),
         "is_running": cs.is_running if cs else False,
     })
 
@@ -2070,8 +2174,8 @@ def clock_start():
     res = tm.start_auto_tick(_CLOCK_SESSION_ID, speed)
     return jsonify({
         "status": res.get("status", "SUCCESS"),
-        "speed": round(speed * 60),  # 返回 multiplier
-        "virtual_time": res.get("new_virtual_time", cs.virtual_time if cs else "12:00"),
+        "speed": speed,
+        "virtual_time": res.get("new_virtual_time", cs.virtual_time if cs else "12:00:00"),
         "is_running": True,
     })
 
@@ -2805,6 +2909,84 @@ def api_weather():
     date = data.get("date", "2026-06-06")
     result = _skill_weather_extractor(coord=coord, date=date)
     return jsonify(result)
+
+
+# ======================================================================
+# 高德 POI API（真实数据检索 + 地理编码）
+# ======================================================================
+from skills.amap_poi.amap_poi import AmapPOIClient
+_amap_client = AmapPOIClient()
+
+
+@app.route("/api/poi/search", methods=["POST"])
+def poi_search():
+    """关键字搜索 POI"""
+    data = request.get_json(silent=True) or {}
+    result = _amap_client.search_poi(
+        keywords=data.get("keywords", ""),
+        city=data.get("city", "北京"),
+        category=data.get("category"),
+        offset=data.get("offset", 10),
+    )
+    return jsonify(result)
+
+
+@app.route("/api/poi/nearby", methods=["POST"])
+def poi_nearby():
+    """周边搜索 POI"""
+    data = request.get_json(silent=True) or {}
+    result = _amap_client.search_nearby(
+        lng=float(data.get("lng", 116.455)),
+        lat=float(data.get("lat", 39.932)),
+        radius=int(data.get("radius", 3000)),
+        keywords=data.get("keywords", ""),
+        category=data.get("category"),
+        min_rating=float(data.get("min_rating", 0)),
+    )
+    return jsonify(result)
+
+
+@app.route("/api/poi/fuzzy", methods=["POST"])
+def poi_fuzzy():
+    """模糊搜索/输入提示"""
+    data = request.get_json(silent=True) or {}
+    result = _amap_client.fuzzy_search(
+        keywords=data.get("keywords", ""),
+        city=data.get("city", "北京"),
+    )
+    return jsonify(result)
+
+
+@app.route("/api/poi/detail", methods=["POST"])
+def poi_detail():
+    """POI 详情查询"""
+    data = request.get_json(silent=True) or {}
+    result = _amap_client.get_poi_detail(
+        poi_id=data.get("poi_id", ""),
+    )
+    return jsonify(result)
+
+
+@app.route("/api/poi/geocode", methods=["POST"])
+def poi_geocode():
+    """地理编码：地址→坐标 / 坐标→地址"""
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "geocode")
+
+    if action == "reverse":
+        result = _amap_client.reverse_geocode(
+            lng=float(data.get("lng", 116.455)),
+            lat=float(data.get("lat", 39.932)),
+        )
+        return jsonify({"status": "SUCCESS", "data": result})
+
+    result = _amap_client.geocode(
+        address=data.get("address", ""),
+        city=data.get("city", "北京"),
+    )
+    if result is None:
+        return jsonify({"status": "ERROR", "message": f"未找到地址: {data.get('address', '')}"})
+    return jsonify({"status": "SUCCESS", "data": result})
 
 
 # ======================================================================

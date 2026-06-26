@@ -31,13 +31,14 @@ CATEGORY_MAP = {
 
 CATEGORY_NAME_CN = {
     "hair": "理发",
-    "pet": "宠物洗澡",
+    "pet": "宠物",
     "cafe": "咖啡",
     "gym": "健身",
     "restaurant": "餐饮",
     "cinema": "电影",
     "laundry": "干洗",
     "hotpot": "火锅",
+    "japanese": "日料",
 }
 
 def find_best_match(query_name: str, poi_cache: dict) -> str:
@@ -86,7 +87,8 @@ def _m_to_t(mins: int) -> str:
 class MeituanAgent:
     def __init__(self, api_key: str, base_url: str):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
-        self.model = "deepseek-chat"
+        # 通过 FAST_LLM_MODEL 环境变量切换更快模型（如 deepseek-chat 已内置加速）
+        self.model = os.getenv("FAST_LLM_MODEL", "deepseek-chat")
         self.context_memory = []
         self.poi_cache = {}
 
@@ -97,7 +99,7 @@ class MeituanAgent:
             max_tokens=max_tokens,
             tools=tools,
             tool_choice="auto" if tools else None,
-            timeout=30.0
+            timeout=8.0
         )
         return response.choices[0].message
 

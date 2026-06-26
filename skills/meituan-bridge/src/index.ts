@@ -24,7 +24,7 @@ export default defineToolPlugin({
   id: "meituan-bridge",
   name: "美团AI 时空沙盒技能包",
   description:
-    "美团本地生活全天候数字管家 — 14个核心技能通过 HTTP Bridge 注册为 OpenClaw Agent Tool（搜索/排程/防踩坑/异常/提醒/时钟/偏好/路径规划/排队监控/天气）",
+    "美团本地生活全天候数字管家 — 18个核心技能通过 HTTP Bridge 注册为 OpenClaw Agent Tool（搜索/排程/防踩坑/异常/提醒/时钟/偏好/路径规划/排队监控/天气/高德POI）",
   configSchema: Type.Object({
     backendUrl: Type.Optional(
       Type.String({ description: "Python Flask 后端地址，默认 http://localhost:5000" }),
@@ -291,6 +291,79 @@ export default defineToolPlugin({
       async execute(params, config) {
         const base = config.backendUrl ?? DEFAULT_BACKEND;
         return fetchJson(base, "/api/weather", "POST", params);
+      },
+    }),
+
+    // ── 15. 高德POI关键字搜索 ──
+    tool({
+      name: "meituan_poi_search",
+      label: "高德POI搜索",
+      description:
+        "通过关键字+城市+品类搜索真实高德地图POI数据，返回商户名/评分/距离/地址/人均。",
+      parameters: Type.Object({
+        keywords: Type.String({ description: "搜索关键字，如「川菜」「咖啡馆」" }),
+        city: Type.Optional(Type.String({ description: "城市名，默认北京" })),
+        category: Type.Optional(Type.String({ description: "品类编码：hair/pet/cafe/gym/restaurant/japanese/hotpot/cinema/laundry" })),
+        offset: Type.Optional(Type.Number({ description: "返回条数，默认10" })),
+      }),
+      async execute({ keywords, city, category, offset }, config) {
+        const base = config.backendUrl ?? DEFAULT_BACKEND;
+        return fetchJson(base, "/api/poi/search", "POST", { keywords, city, category, offset });
+      },
+    }),
+
+    // ── 16. 高德周边POI搜索 ──
+    tool({
+      name: "meituan_poi_nearby",
+      label: "高德周边搜索",
+      description:
+        "根据经纬度搜索周边指定半径内的POI商户，支持品类过滤和最低评分过滤。",
+      parameters: Type.Object({
+        lng: Type.Number({ description: "中心点经度" }),
+        lat: Type.Number({ description: "中心点纬度" }),
+        radius: Type.Optional(Type.Number({ description: "搜索半径(米)，默认3000" })),
+        keywords: Type.Optional(Type.String({ description: "搜索关键字" })),
+        category: Type.Optional(Type.String({ description: "品类编码" })),
+        min_rating: Type.Optional(Type.Number({ description: "最低评分，默认0（不过滤）" })),
+      }),
+      async execute({ lng, lat, radius, keywords, category, min_rating }, config) {
+        const base = config.backendUrl ?? DEFAULT_BACKEND;
+        return fetchJson(base, "/api/poi/nearby", "POST", { lng, lat, radius, keywords, category, min_rating });
+      },
+    }),
+
+    // ── 17. 高德模糊搜索 ──
+    tool({
+      name: "meituan_poi_fuzzy",
+      label: "高德模糊搜索",
+      description:
+        "根据用户输入的模糊关键词（如「有变形金刚的游乐园」）返回匹配的POI候选项列表，用于输入自动补全和语义消歧。",
+      parameters: Type.Object({
+        keywords: Type.String({ description: "模糊搜索关键词" }),
+        city: Type.Optional(Type.String({ description: "城市名，默认北京" })),
+      }),
+      async execute({ keywords, city }, config) {
+        const base = config.backendUrl ?? DEFAULT_BACKEND;
+        return fetchJson(base, "/api/poi/fuzzy", "POST", { keywords, city });
+      },
+    }),
+
+    // ── 18. 高德地理编码 ──
+    tool({
+      name: "meituan_poi_geocode",
+      label: "高德地理编码",
+      description:
+        "将文本地址（如「三里屯太古里」）转换为经纬度坐标，或反向将经纬度转换为地址。是路径规划的前置能力。",
+      parameters: Type.Object({
+        action: Type.String({ description: "geocode=地址转坐标 | reverse=坐标转地址" }),
+        address: Type.Optional(Type.String({ description: "地址文本（action=geocode时必填）" })),
+        lng: Type.Optional(Type.Number({ description: "经度（action=reverse时必填）" })),
+        lat: Type.Optional(Type.Number({ description: "纬度（action=reverse时必填）" })),
+        city: Type.Optional(Type.String({ description: "城市名，默认北京" })),
+      }),
+      async execute({ action, address, lng, lat, city }, config) {
+        const base = config.backendUrl ?? DEFAULT_BACKEND;
+        return fetchJson(base, "/api/poi/geocode", "POST", { action, address, lng, lat, city });
       },
     }),
   ],

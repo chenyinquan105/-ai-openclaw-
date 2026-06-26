@@ -40,8 +40,7 @@ class ClockState:
     def __init__(self, session_id: str, initial_time: str = "08:00"):
         self.session_id = session_id
         # 底层统一用绝对浮点数分钟维护时钟
-        h, m = initial_time.split(":")
-        self.virtual_minutes: float = float(int(h) * 60 + int(m))
+        self.virtual_minutes: float = _parse_minutes(initial_time)
         self.speed = 1.0 / 60                  # 每秒推进的虚拟分钟数，默认 1x 正常速度 = 1/60 分钟/秒
         self.is_running = False               # 自动走时是否开启
         self.schedule_nodes: list = []        # 排程节点列表 [{"time":"HH:MM","node_id":"...","name":"..."}]
@@ -50,9 +49,12 @@ class ClockState:
 
     @property
     def virtual_time(self) -> str:
-        """绝对分钟 => HH:MM（不跨天，限制在 00:00-23:59）"""
-        mins = int(self.virtual_minutes) % 1440
-        return f"{mins // 60:02d}:{mins % 60:02d}"
+        """绝对分钟 => HH:MM:SS（不跨天，精确到秒）"""
+        total_seconds = int(self.virtual_minutes * 60) % 86400
+        h = total_seconds // 3600
+        m = (total_seconds % 3600) // 60
+        s = total_seconds % 60
+        return f"{h:02d}:{m:02d}:{s:02d}"
 
     @property
     def minutes_today(self) -> int:
@@ -72,16 +74,22 @@ class ClockState:
 # 纯数学工具
 # ======================================================================
 
-def _parse_minutes(t: str) -> int:
-    """HH:MM => 当天分钟数"""
-    h, m = t.split(":")
-    return int(h) * 60 + int(m)
+def _parse_minutes(t: str) -> float:
+    """HH:MM 或 HH:MM:SS => 当天分钟数（浮点，精确到秒）"""
+    parts = t.split(":")
+    h = int(parts[0])
+    m = int(parts[1])
+    s = int(parts[2]) if len(parts) > 2 else 0
+    return h * 60 + m + s / 60.0
 
 
-def _minutes_to_time(mins: int) -> str:
-    """分钟数 => HH:MM（不跨天）"""
-    mins = mins % 1440
-    return f"{mins // 60:02d}:{mins % 60:02d}"
+def _minutes_to_time(mins: float) -> str:
+    """分钟数 => HH:MM:SS（不跨天，精确到秒）"""
+    total_seconds = int(mins * 60) % 86400
+    h = total_seconds // 3600
+    m = (total_seconds % 3600) // 60
+    s = total_seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
 
 
 # ======================================================================
@@ -109,7 +117,7 @@ def _build_output(
             elapsed = 0  # 不跨天，负值表示无推进
         ticked = []
         for m in range(start_m, end_m + 1):
-            ticked.append(_minutes_to_time(m))
+            ticked.append(_minutes_to_time(float(m)))
     else:
         ticked = []
         elapsed = elapsed_minutes

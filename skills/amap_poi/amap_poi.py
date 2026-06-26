@@ -19,7 +19,21 @@ import json
 import hashlib
 from pathlib import Path
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
+
+# 预置商户数据（demo 加速用，懒加载）
+_PRE_CACHED = None
+
+def _get_pre_cached():
+    global _PRE_CACHED
+    if _PRE_CACHED is None:
+        try:
+            from skills.amap_poi.pre_cached_shops import PRE_CACHED_SHOPS
+            _PRE_CACHED = PRE_CACHED_SHOPS
+        except ImportError:
+            _PRE_CACHED = {}
+    return _PRE_CACHED
 
 
 # ======================================================================
@@ -457,6 +471,14 @@ def fuzzy_search(keywords: str, city: str = "北京") -> list[dict]:
     """模糊搜索提示"""
     return _get_client().fuzzy_search(keywords, city)
 
+def geocode(address: str, city: str = "北京") -> Optional[dict]:
+    """地址 → 坐标（模块级便捷函数）"""
+    return _get_client().geocode(address, city)
+
+def reverse_geocode(lng: float, lat: float) -> dict:
+    """坐标 → 地址（模块级便捷函数）"""
+    return _get_client().reverse_geocode(lng, lat)
+
 
 # ======================================================================
 # 桥接函数：兼容 generic_poi_searcher.search_poi_matrix() 接口
@@ -532,26 +554,57 @@ def search_poi_matrix(
     except ValueError:
         return {"status": "ERROR", "message": f"center_coord 中包含非法数值: {center_coord!r}"}
 
+    # ── Demo 加速：预置数据命中 → 0 网络延迟 ──
+    use_pre_cached = os.getenv("USE_PRE_CACHED", "true").lower() == "true"
+    pre = {}
+    pre_hits = []
+    if use_pre_cached:
+        pre = _get_pre_cached()
+        pre_hits = [c for c in categories if c in pre]
+        # 全部品类命中预置 → 直接返回
+        if len(pre_hits) == len(categories):
+            print(f"[pre-cached] ✅ 全部命中 {categories}，0 网络延迟", flush=True)
+            return {"status": "SUCCESS", "search_results": {c: pre[c] for c in categories}}
+        # 部分命中 → 只搜未命中的品类
+        if pre_hits:
+            print(f"[pre-cached] ⚡ 命中 {pre_hits}，剩余 {[c for c in categories if c not in pre]} 走API", flush=True)
+            categories = [c for c in categories if c not in pre]
+
     client = _get_client()
     result_map: dict = {cat: [] for cat in categories}
+    # 合并预置数据到结果
+    for cat in pre_hits:
+        result_map[cat] = pre[cat]
 
-    for cat in categories:
+    # ── 并行搜索：多个品类同时调高德 API，不等上一个返回 ──
+    def _search_one_cat(cat: str):
+        """搜索单个品类，失败返回空列表"""
         try:
-            # 模糊关键词优先于品类映射关键词
             search_kw = keywords if keywords else ""
             resp = client.search_nearby(
                 lng=lng, lat=lat,
                 radius=min(radius_meters, 50000),
                 keywords=search_kw,
-                category=cat if not search_kw else None,  # 有显式关键词时不限品类
+                category=cat if not search_kw else None,
                 min_rating=min_rating,
             )
+            return (cat, resp.get("shops", []))
         except RuntimeError as e:
-            # 单个品类失败不中断全部，记录空结果
             print(f"[amap_poi] 品类 '{cat}' 搜索失败: {e}")
-            continue
+            return (cat, [])
 
-        for shop in resp.get("shops", []):
+    # 单品类直接搜，多品类并行
+    if len(categories) == 1:
+        results = [_search_one_cat(categories[0])]
+    else:
+        with ThreadPoolExecutor(max_workers=min(len(categories), 5)) as executor:
+            futures = {executor.submit(_search_one_cat, cat): cat for cat in categories}
+            results = []
+            for future in as_completed(futures):
+                results.append(future.result())
+
+    for cat, shops in results:
+        for shop in shops:
             # 客户端侧价格过滤（高德 API 不返回价格，仅做兜底）
             if price_level:
                 avg_price = _extract_avg_price(shop)

@@ -329,6 +329,106 @@ def _auto_register_all():
     except ImportError:
         pass
 
+    # --- amap_poi (高德真实 POI 检索) ---
+    try:
+        from skills.amap_poi import search_poi as _amap_search_poi
+        from skills.amap_poi import search_nearby as _amap_search_nearby
+        from skills.amap_poi import fuzzy_search as _amap_fuzzy_search
+        from skills.amap_poi import get_poi_detail as _amap_get_poi_detail
+        from skills.amap_poi import geocode as _amap_geocode
+
+        register_skill(SkillManifest(
+            skill_id="amap_search_poi",
+            name="高德关键字POI搜索",
+            description="通过关键字+城市+品类搜索真实高德地图POI数据，返回商户名/评分/距离/地址/人均。支持 hair/pet/cafe/gym/restaurant/japanese/hotpot/cinema/laundry 品类。",
+            entry_fn=_amap_search_poi,
+            input_schema={
+                "type": "object",
+                "required": ["keywords"],
+                "properties": {
+                    "keywords": {"type": "string", "description": "搜索关键字，如「川菜」「咖啡馆」"},
+                    "city": {"type": "string", "description": "城市名，默认「北京」"},
+                    "category": {"type": "string", "description": "品类编码，如 hair/pet/cafe 等"},
+                    "offset": {"type": "integer", "description": "返回条数，默认20"},
+                }
+            },
+            output_schema={"type": "object"},
+            triggers=["搜一下", "搜索商户", "找一下附近的", "有什么餐厅", "帮我找"],
+        ))
+
+        register_skill(SkillManifest(
+            skill_id="amap_search_nearby",
+            name="高德周边POI搜索",
+            description="根据经纬度坐标搜索周边指定半径内的POI商户，支持品类过滤和最低评分过滤。",
+            entry_fn=_amap_search_nearby,
+            input_schema={
+                "type": "object",
+                "required": ["lng", "lat"],
+                "properties": {
+                    "lng": {"type": "number", "description": "中心点经度"},
+                    "lat": {"type": "number", "description": "中心点纬度"},
+                    "radius": {"type": "integer", "description": "搜索半径(米)，默认3000"},
+                    "keywords": {"type": "string", "description": "搜索关键字，可选"},
+                    "category": {"type": "string", "description": "品类编码，可选"},
+                    "min_rating": {"type": "number", "description": "最低评分，默认0"},
+                }
+            },
+            output_schema={"type": "object"},
+            triggers=["附近有什么", "周边搜索", "周围的店", "距离我最近的"],
+        ))
+
+        register_skill(SkillManifest(
+            skill_id="amap_fuzzy_search",
+            name="高德模糊搜索/输入提示",
+            description="根据用户输入的模糊关键词（如「有变形金刚的游乐园」）返回匹配的POI候选项列表，用于输入自动补全和语义消歧。",
+            entry_fn=_amap_fuzzy_search,
+            input_schema={
+                "type": "object",
+                "required": ["keywords"],
+                "properties": {
+                    "keywords": {"type": "string", "description": "模糊搜索关键词"},
+                    "city": {"type": "string", "description": "城市名，默认「北京」"},
+                }
+            },
+            output_schema={"type": "array"},
+            triggers=["模糊搜索", "输入提示", "你说的那个是什么", "有XX的YY"],
+        ))
+
+        register_skill(SkillManifest(
+            skill_id="amap_get_poi_detail",
+            name="高德POI详情查询",
+            description="根据POI ID获取单个商户的详细信息，包括完整地址/电话/评分/营业时间等。",
+            entry_fn=_amap_get_poi_detail,
+            input_schema={
+                "type": "object",
+                "required": ["poi_id"],
+                "properties": {
+                    "poi_id": {"type": "string", "description": "POI唯一标识"},
+                }
+            },
+            output_schema={"type": "object"},
+            triggers=["查一下这家店", "商户详情", "了解更多"],
+        ))
+
+        register_skill(SkillManifest(
+            skill_id="amap_geocode",
+            name="高德地理编码",
+            description="将文本地址（如「三里屯太古里」「北京市朝阳区工体北路」）转换为经纬度坐标，是路径规划的前置能力。",
+            entry_fn=_amap_geocode,
+            input_schema={
+                "type": "object",
+                "required": ["address"],
+                "properties": {
+                    "address": {"type": "string", "description": "地址文本"},
+                    "city": {"type": "string", "description": "城市名，默认「北京」"},
+                }
+            },
+            output_schema={"type": "object"},
+            triggers=["地址转坐标", "这个地方在哪", "帮我查一下坐标", "经纬度"],
+        ))
+    except ImportError:
+        pass
+
     print(f"[OpenClaw Bridge] 已注册 {len(_bridge._registry)} 个 Skill")
 
 

@@ -171,7 +171,7 @@
  <div class="space-y-2">
  <label class="block text-xs font-bold text-gray-400 tracking-wider">🚀 倍速</label>
  <div class="grid grid-cols-3 gap-2">
- <button onclick="clockSetSpeed(1)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center active:border-green-400" id="speed-1x-btn">1x</button>
+ <button onclick="clockSetSpeed(1/60)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center active:border-green-400" id="speed-1x-btn">1x</button>
  <button onclick="clockSetSpeed(60)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center" id="speed-60x-btn">60x</button>
  <button onclick="clockSetSpeed(300)" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition text-center" id="speed-300x-btn">300x</button>
  </div>
@@ -2493,7 +2493,7 @@ function removeActiveException(id) {
 // ======================================================================
 
 let clockPowerOn = false;  // 默认关闭（采用真实时间）
-let clockCurrentSpeed = 1;  // 当前倍率 (1=正常/60x/300x)
+let clockCurrentSpeed = 1/60;  // 当前倍率 (1/60=1x实时, 1=60x, 5=300x)
 var _clockScheduleReady = false;  // 排程节点是否已同步到 time_master（防竞态）
 
 function clockTogglePower() {
@@ -2509,8 +2509,8 @@ function clockTogglePower() {
   if (clockPowerOn) {
     // 开 — 默认 12:00，暂停状态
     _realTimeUpdatePaused = true;  // 停用真实时间轮询，防止双时钟冲突频闪
-    clockCurrentSpeed = 1;
-    const initTime = '12:00';
+    clockCurrentSpeed = 1/60;
+    const initTime = '12:00:00';
     const initMins = 720;
     knob.style.left = '20px';
     btn.style.backgroundColor = '#22c55e';
@@ -2521,7 +2521,7 @@ function clockTogglePower() {
     slider.classList.remove('hidden');
     sliderLabel.classList.remove('hidden');
     slider.value = initMins;
-    clockFetch('POST', '/api/clock/speed', {speed: 1}).catch(() => {});
+    clockFetch('POST', '/api/clock/speed', {speed: 1/60}).catch(() => {});
     // 开启虚拟时钟时保留已有提醒节点，避免清空
     var existingNodes = window._clockScheduleNodes || [];
     clockFetch('POST', '/api/clock/init', {
@@ -2539,7 +2539,7 @@ function clockTogglePower() {
         return clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes});
       }
     }).catch(function() {});
-    clockUpdateUI({virtual_time: initTime, is_running: false, speed: 1});
+    clockUpdateUI({virtual_time: initTime, is_running: false, speed: 1/60});
     // ★ 虚拟时钟开启后触发重新排程，用虚拟时间重算行程
     _rescheduleWithVirtualTime();
   } else {
@@ -2560,7 +2560,8 @@ function clockTogglePower() {
         var now = new Date();
         var hh = String(now.getHours()).padStart(2, '0');
         var mm = String(now.getMinutes()).padStart(2, '0');
-        display.textContent = hh + ':' + mm;
+        var ss = String(now.getSeconds()).padStart(2, '0');
+        display.textContent = hh + ':' + mm + ':' + ss;
       }
     })();
   }
@@ -2587,7 +2588,7 @@ function clockSliderPreview(val) {
     const mins = parseInt(val);
     const hh = String(Math.floor(mins / 60)).padStart(2,'0');
     const mm = String(mins % 60).padStart(2,'0');
-    var target = hh + ':' + mm;
+    var target = hh + ':' + mm + ':00';
     var display = document.getElementById('clock-display');
     if (display && display.textContent !== target) {
       display.textContent = target;
@@ -2618,7 +2619,7 @@ function clockSliderChange(val) {
   const mins = parseInt(val);
   const hh = String(Math.floor(mins / 60)).padStart(2,'0');
   const mm = String(mins % 60).padStart(2,'0');
-  const target = hh + ':' + mm;
+  const target = hh + ':' + mm + ':00';
   var display = document.getElementById('clock-display');
   var slider = document.getElementById('clock-slider');
   if (display) display.textContent = target;
@@ -2650,7 +2651,8 @@ setInterval(function() {
     var now = new Date();
     var hh = String(now.getHours()).padStart(2, '0');
     var mm = String(now.getMinutes()).padStart(2, '0');
-    display.textContent = hh + ':' + mm;
+    var ss = String(now.getSeconds()).padStart(2, '0');
+    display.textContent = hh + ':' + mm + ':' + ss;
   }
 }, 1000);
 
@@ -2795,8 +2797,8 @@ async function clockStop() {
 
 async function clockResetSpeed() {
   if (!clockPowerOn) return;
-  clockCurrentSpeed = 1;
-  await clockFetch('POST', '/api/clock/speed', {speed: 1});
+  clockCurrentSpeed = 1/60;
+  await clockFetch('POST', '/api/clock/speed', {speed: 1/60});
   // 清除所有倍速按钮高亮
   document.querySelectorAll('[id^="speed-"]').forEach(el => {
     el.classList.remove('border-green-400', 'bg-green-900/30');
@@ -2877,10 +2879,13 @@ var _lastMedDialogOpenTs = 0;     // 防重入：上次弹窗打开时间戳
 function _getCurrentVirtMinutes() {
   if (clockPowerOn && window._clockVirtualTime) {
     var parts = window._clockVirtualTime.split(':');
-    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    var h = parseInt(parts[0]);
+    var m = parseInt(parts[1]);
+    var s = parts.length > 2 ? parseInt(parts[2]) : 0;
+    return h * 60 + m + s / 60;
   }
   var now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
+  return now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 }
 
 /** 测试弹窗：直接调用 _openMedDialog */
