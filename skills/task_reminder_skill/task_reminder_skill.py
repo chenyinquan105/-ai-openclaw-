@@ -16,8 +16,9 @@ from typing import Dict, Any, List, Optional
 # ======================================================================
 
 def _t_to_m(t: str) -> int:
-    h, m = t.split(":")
-    return int(h) * 60 + int(m)
+    parts = t.split(":")
+    h, m = int(parts[0]), int(parts[1])
+    return h * 60 + m
 
 
 def _m_to_t(mins: int) -> str:
@@ -166,43 +167,44 @@ def process_reminder_pipeline(
         current_miss = state["miss_count"]
 
         # 三级催促判定（均基于 elapsed，不再依赖 ticked_minutes）
-        if elapsed >= 45 and current_miss < 3:
+        # 催促间隔：+5min 初次催促 → +10min 二次催促 → +15min 紧急联络
+        if elapsed >= 15 and current_miss < 3:
             state["miss_count"] = 3
             state["status"] = "ESCALATED"
-            miss_3_time = _m_to_t(last_m + 45)
+            miss_3_time = _m_to_t(last_m + 15)
             output_notifications.append({
                 "type": "MED_ESCALATION_CRITICAL",
                 "time": miss_3_time,
                 "message": (
                     f"💥【🔴 触发紧急联络预案】\n"
                     f"❌ 药点 [{state['original_time']}] 的 [{state['med_name']}]"
-                    f"已连续 45 分钟无任何人工交互响应！\n"
+                    f"已连续 15 分钟无任何人工交互响应！\n"
                     f"🚨 系统已自动连线紧急联络人（家属张小明：13800000000），抛出强打断级警报通知！"
                 ),
             })
 
-        elif elapsed >= 30 and current_miss < 2:
+        elif elapsed >= 10 and current_miss < 2:
             state["miss_count"] = 2
-            miss_2_time = _m_to_t(last_m + 30)
+            miss_2_time = _m_to_t(last_m + 10)
             output_notifications.append({
                 "type": "MED_URGE_HEAVY",
                 "time": miss_2_time,
                 "message": (
                     f"⚠️【🛑 系统二次强震动催促】({miss_2_time})\n"
-                    f"👵 药点 [{state['original_time']}] 已超时 30 分钟未处理！"
+                    f"👵 药点 [{state['original_time']}] 已超时 10 分钟未处理！"
                     f"奶奶，请尽快服用 [{state['med_name']}]，健康第一！"
                 ),
             })
 
-        elif elapsed >= 15 and current_miss < 1:
+        elif elapsed >= 5 and current_miss < 1:
             state["miss_count"] = 1
-            miss_1_time = _m_to_t(last_m + 15)
+            miss_1_time = _m_to_t(last_m + 5)
             output_notifications.append({
                 "type": "MED_URGE_LIGHT",
                 "time": miss_1_time,
                 "message": (
                     f"🔔【⚠️ 系统初次响铃补发催促】({miss_1_time})\n"
-                    f"👵 药点 [{state['original_time']}] 已超时 15 分钟未响应，"
+                    f"👵 药点 [{state['original_time']}] 已超时 5 分钟未响应，"
                     f"再次响铃提醒服用 [{state['med_name']}]。"
                 ),
             })

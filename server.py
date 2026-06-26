@@ -2182,8 +2182,11 @@ def clock_start():
 
 @app.route("/api/clock/stop", methods=["POST"])
 def clock_stop():
-    """停止自动走时"""
-    session_state["clock_enabled"] = False
+    """停止自动走时。power_off=true 时同步关闭虚拟时钟（关机），否则仅暂停走时。"""
+    data = request.get_json() or {}
+    power_off = data.get("power_off", False)
+    if power_off:
+        session_state["clock_enabled"] = False
     tm = time_master.get_master()
     tm.stop_auto_tick(_CLOCK_SESSION_ID)
     cs = tm.get_session(_CLOCK_SESSION_ID)
@@ -2330,6 +2333,11 @@ def _realtime_reminder_poller():
     global _realtime_reminder_fired_today, _realtime_reminder_date
     while True:
         try:
+            # 虚拟时钟开启时，提醒由虚拟时间驱动，真实时间轮询暂停
+            if session_state.get("clock_enabled"):
+                _time.sleep(30)
+                continue
+
             now = datetime.now()
             today_str = now.strftime("%Y-%m-%d")
             now_time = now.strftime("%H:%M")
@@ -2437,6 +2445,7 @@ def reminder_restore_from_profile():
             "repeat": cr.get("repeat", "daily"), "date": cr.get("date", ""),
             "images": cr.get("images", []), "note": cr.get("note", ""),
             "created_at": cr.get("created_at", ""),
+            "ring_mode": cr.get("ring_mode", "once"),
         }
         current.append(node)
         existing_ids.add(cr["id"])
@@ -2464,7 +2473,7 @@ def reminder_get_tasks():
 @app.route("/api/reminder/add_task", methods=["POST"])
 def reminder_add_task():
     """添加一个提醒节点到虚拟时钟（自动初始化时钟会话）。
-    支持扩展字段: date, images, note, repeat"""
+    支持扩展字段: date, images, note, repeat, ring_mode"""
     data = request.get_json(silent=True) or {}
     node = data.get("node", {})
     if not node or not node.get("id") or not node.get("time") or not node.get("type"):
@@ -2481,6 +2490,7 @@ def reminder_add_task():
         "images": node.get("images", []),
         "note": node.get("note", ""),
         "created_at": node.get("created_at", ""),
+        "ring_mode": node.get("ring_mode", "once"),
     }
     tm = time_master.get_master()
     cs = tm.get_or_create_session(_CLOCK_SESSION_ID)

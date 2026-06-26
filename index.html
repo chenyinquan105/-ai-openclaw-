@@ -1951,7 +1951,8 @@ async function _rescheduleWithVirtualTime() {
     const res = await clockFetch('POST', '/api/replan', { delay_minutes: 0 });
     if (res.timeline) {
       renderSchedule(res);
-      _planbFlushExecCover();
+      // 管家面板打开时，不强制弹出执行计划覆盖层，避免把用户从任务提醒界面拽回出行界面
+      if (!_butlerPageActive) _planbFlushExecCover();
     }
   } catch (e) {
     // 静默失败，不阻塞用户操作
@@ -2540,8 +2541,6 @@ function clockTogglePower() {
       }
     }).catch(function() {});
     clockUpdateUI({virtual_time: initTime, is_running: false, speed: 1/60});
-    // ★ 虚拟时钟开启后触发重新排程，用虚拟时间重算行程
-    _rescheduleWithVirtualTime();
   } else {
     // 关
     _realTimeUpdatePaused = false;  // 恢复真实时间轮询
@@ -2552,7 +2551,7 @@ function clockTogglePower() {
     playBtn.classList.add('hidden');
     slider.classList.add('hidden');
     sliderLabel.classList.add('hidden');
-    clockFetch('POST', '/api/clock/stop').catch(() => {});
+    clockFetch('POST', '/api/clock/stop', {power_off: true}).catch(() => {});
     // 立即同步一次真实时间（复用下方真实时钟 setInterval 的内联逻辑）
     (function() {
       var display = document.getElementById('clock-display');
@@ -2583,6 +2582,7 @@ function clockTogglePlay() {
 
 var _clockSliderRAF = null;
 function clockSliderPreview(val) {
+  _clockJumpLocked = true;  // 拖的过程中就锁住，防止 1 秒轮询覆盖显示值
   if (_clockSliderRAF) cancelAnimationFrame(_clockSliderRAF);
   _clockSliderRAF = requestAnimationFrame(function() {
     const mins = parseInt(val);
@@ -2635,7 +2635,6 @@ function clockSliderChange(val) {
           clockLogEvent('🔄 [' + ev.time + '] ' + (ev.name || ev.type || '事件'), 'event');
         });
       }
-      _rescheduleWithVirtualTime();
     }
     // 直接拉取事件（绕过 patcher 链，确保 handleReminderEvent 被调用）
     _pollAndHandleEvents();
@@ -2677,7 +2676,7 @@ function clockUpdateUI(data) {
   const playBtn = document.getElementById('clock-play-btn');
   const slider = document.getElementById('clock-slider');
   if (data.virtual_time) {
-    // ★ 关键：同步全局虚拟时间，确保 _getCurrentVirtMinutes() 读到最新值
+    // ★ 关键：同步全局虚拟时间，同步全局虚拟时间
     window._clockVirtualTime = data.virtual_time;
     // 防频闪：只在值变化时才写入 DOM
     if (display.textContent !== data.virtual_time) {
@@ -2768,8 +2767,6 @@ async function clockFastForward(delta) {
         clockLogEvent('🔄 [' + ev.time + '] ' + name, 'event');
       });
     }
-    // ★ 虚拟时间变更后触发重新排程，用新虚拟时间重算行程时间线
-    _rescheduleWithVirtualTime();
   } else {
     clockLogEvent('⚠️ ' + (data.error_message || '快进失败'), 'alert');
   }
@@ -2790,7 +2787,7 @@ async function clockSetSpeed(speed) {
 
 async function clockStop() {
   if (!clockPowerOn) return;
-  const data = await clockFetch('POST', '/api/clock/stop');
+  const data = await clockFetch('POST', '/api/clock/stop', {power_off: false});
   clockUpdateUI({virtual_time: data.virtual_time, is_running: false, speed: 0});
   clockLogEvent('⏹ 自动走时已停止', 'info');
 }
@@ -2820,8 +2817,6 @@ async function clockGoto() {
         clockLogEvent('🔄 [' + ev.time + '] ' + (ev.name || ev.type || '事件'), 'event');
       });
     }
-    // ★ 虚拟时间变更后触发重新排程，用新虚拟时间重算行程时间线
-    _rescheduleWithVirtualTime();
   } else {
     clockLogEvent('⚠️ ' + (data.error_message || '跳转失败'), 'alert');
   }
@@ -2841,7 +2836,6 @@ setInterval(async function() {
     }
   }
   // 弹窗倒计时检查（跟随虚拟时间）
-  _tickMedCountdown();
 }, 1000);
 
 // ======================================================================
@@ -2872,21 +2866,9 @@ document.addEventListener('DOMContentLoaded', function() {
 var _medEscalationLevel = 0;
 var _medContinuousRing = null;
 var _medPendingInfo = null;
-var _medDialogOpenVirtMin = 0;    // 弹窗打开时的虚拟分钟数（用于倒计时）
 var _lastMedDialogOpenTs = 0;     // 防重入：上次弹窗打开时间戳
 
 /** 获取当前虚拟分钟数（时钟关闭时退回真实时间） */
-function _getCurrentVirtMinutes() {
-  if (clockPowerOn && window._clockVirtualTime) {
-    var parts = window._clockVirtualTime.split(':');
-    var h = parseInt(parts[0]);
-    var m = parseInt(parts[1]);
-    var s = parts.length > 2 ? parseInt(parts[2]) : 0;
-    return h * 60 + m + s / 60;
-  }
-  var now = new Date();
-  return now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
-}
 
 /** 测试弹窗：直接调用 _openMedDialog */
 function testReminderPopup() {
@@ -2917,7 +2899,6 @@ function initReminderDialog() {
   dlg.style.cssText = 'display:none;position:absolute;inset:0;z-index:100;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);border-radius:40px;overflow:hidden;';
   dlg.innerHTML =
     '<div id="reminder-dialog-card" style="position:relative;background:white;margin:0 12px;border-radius:32px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);max-width:400px;width:100%;padding:28px;animation:reminder-fade-in 0.35s ease-out;">' +
-    '<div id="reminder-countdown-badge" style="position:absolute;top:14px;right:16px;font-size:12px;font-weight:700;color:#6b7280;background:#f3f4f6;border-radius:12px;padding:3px 10px;display:none;">⏱️ 5:00</div>' +
     '<div id="reminder-images-top" style="display:none;text-align:center;margin-bottom:16px;"></div>' +
     '<div style="text-align:center;margin-bottom:16px;">' +
     '<div id="reminder-dialog-icon" style="width:56px;height:56px;background:#fef3c7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;animation:reminder-pulse 1.2s ease-in-out infinite;">' +
@@ -2935,46 +2916,74 @@ function initReminderDialog() {
 
 /** 停止所有响铃和振动 */
 function _stopRinging() {
-  _medDialogOpenVirtMin = 0;
   if (_medContinuousRing) { clearInterval(_medContinuousRing); _medContinuousRing = null; }
   try { if (navigator.vibrate) navigator.vibrate(0); } catch(e) {}
 }
 
-/** 由每秒轮询调用：检查弹窗倒计时是否到期，更新倒计时显示 */
-function _tickMedCountdown() {
-  var dlg = document.getElementById('reminder-dialog');
-  if (!dlg || dlg.style.display !== 'flex') return;
-  if (!_medDialogOpenVirtMin) return;
+/** 由每秒轮询调用：更新弹窗倒计时显示（纯展示，不参与关闭控制） */
 
-  var nowVirt = _getCurrentVirtMinutes();
-  var elapsed = nowVirt - _medDialogOpenVirtMin;
-  if (elapsed < 0) elapsed += 1440;
-  var remainSec = Math.max(0, 300 - elapsed * 60);
+/** 根据事件类型返回催促等级 */
+function _levelFromEventType(type) {
+  switch (type) {
+    case 'MED_RINGING_ALERT': return 1;
+    case 'MED_URGE_LIGHT': return 2;
+    case 'MED_URGE_HEAVY': return 3;
+    case 'MED_ESCALATION_CRITICAL': return 4;
+    default: return 1;
+  }
+}
 
-  // 更新倒计时 badge
-  var badge = document.getElementById('reminder-countdown-badge');
-  if (badge) {
-    var m = Math.floor(remainSec / 60);
-    var s = Math.floor(remainSec % 60);
-    badge.textContent = '⏱️ ' + m + ':' + String(s).padStart(2, '0');
-    if (remainSec <= 60) {
-      badge.style.color = '#ef4444';
-      badge.style.background = '#fee2e2';
-    }
+/** 催促升级时原地更新弹窗内容（不关闭不重建） */
+function _updateMedDialogInPlace(type, msg, medImages) {
+  var titleEl = document.getElementById('reminder-dialog-title');
+  var bodyEl = document.getElementById('reminder-dialog-body');
+  var iconEl = document.getElementById('reminder-dialog-icon');
+  var card = document.getElementById('reminder-dialog-card');
+  var imgTop = document.getElementById('reminder-images-top');
+
+  _medEscalationLevel = _levelFromEventType(type);
+  _medPendingInfo.type = type;
+  _medPendingInfo.msg = msg;
+
+  switch (type) {
+    case 'MED_URGE_LIGHT':
+      if (titleEl) titleEl.textContent = '⏰ 服药提醒（第1次催促）';
+      if (iconEl) { iconEl.innerHTML = '<span style="font-size:28px;">🔔</span>'; iconEl.style.background = '#fef3c7'; }
+      if (card) { card.style.background = '#ffffff'; card.style.border = '2px solid #f59e0b'; }
+      break;
+    case 'MED_URGE_HEAVY':
+      if (titleEl) titleEl.textContent = '🚨 服药超时（第2次催促）';
+      if (iconEl) { iconEl.innerHTML = '<span style="font-size:28px;">⚠️</span>'; iconEl.style.background = '#ffedd5'; }
+      if (card) { card.style.background = '#ffffff'; card.style.border = '2px solid #ef4444'; }
+      break;
+    case 'MED_ESCALATION_CRITICAL':
+      if (titleEl) titleEl.textContent = '🆘 紧急联络已触发';
+      if (iconEl) { iconEl.innerHTML = '<span style="font-size:28px;">🆘</span>'; iconEl.style.background = '#fee2e2'; }
+      if (card) { card.style.background = '#fef2f2'; card.style.border = '2px solid #ef4444'; }
+      break;
+    default:
+      break;
+  }
+  if (bodyEl) bodyEl.textContent = msg;
+  if (medImages && medImages.length > 0 && imgTop) {
+    imgTop.style.display = 'block';
+    imgTop.innerHTML = '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+      medImages.map(function(im) { return '<img src="' + im + '" style="width:80px;height:80px;border-radius:16px;object-fit:cover;border:2px solid #e5e7eb;">'; }).join('') + '</div>';
   }
 
-  // 倒计时归零 → 升级催促
-  if (remainSec <= 0) {
-    _stopRinging();
-    closeReminderDialog();
-    if (_medEscalationLevel >= 3) {
-      _triggerEmergencyContact();
-      return;
-    }
-    if (_medPendingInfo) {
-      _medEscalationLevel++;
-      _openMedDialog(_medPendingInfo);
-    }
+  // 催促升级时重新触发响铃
+  _stopRinging();
+  var ringMode = (_medPendingInfo && _medPendingInfo.ringMode) || 'once';
+  if (_medEscalationLevel >= 4) {
+    // 紧急联络：持续高强度响铃
+    _medContinuousRing = setInterval(_playNotificationSound, 1000);
+    try { if (navigator.vibrate) navigator.vibrate([1000, 500]); } catch(e) {}
+  } else if (ringMode === 'continuous') {
+    // 用户设为持续响铃
+    _medContinuousRing = setInterval(_playNotificationSound, 1500);
+  } else {
+    var times = ringMode === 'triple' ? (_medEscalationLevel >= 3 ? 5 : 3) : (_medEscalationLevel >= 3 ? 2 : 1);
+    for (var i = 0; i < times; i++) { setTimeout(_playNotificationSound, i * 300); }
   }
 }
 
@@ -2988,10 +2997,8 @@ function _triggerEmergencyContact() {
   var actionsEl = document.getElementById('reminder-dialog-actions');
   var closeWrap = document.getElementById('reminder-dialog-close-wrap');
   var iconEl = document.getElementById('reminder-dialog-icon');
-  var badge = document.getElementById('reminder-countdown-badge');
   var imgTop = document.getElementById('reminder-images-top');
   var card = document.getElementById('reminder-dialog-card');
-  if (badge) badge.style.display = 'none';
   if (imgTop) imgTop.style.display = 'none';
   if (card) { card.style.background = '#fef2f2'; card.style.border = '2px solid #ef4444'; }
   iconEl.innerHTML = '<span style="font-size:28px;">🆘</span>';
@@ -3032,7 +3039,6 @@ function _openMedDialog(info) {
   var iconEl = document.getElementById('reminder-dialog-icon');
   var card = document.getElementById('reminder-dialog-card');
   var imgTop = document.getElementById('reminder-images-top');
-  var badge = document.getElementById('reminder-countdown-badge');
 
   if (level >= 3) {
     if (card) { card.style.background = '#fef2f2'; card.style.border = '2px solid #ef4444'; }
@@ -3063,8 +3069,6 @@ function _openMedDialog(info) {
     '<button onclick="reminderUserAction(&apos;1&apos;)" style="width:100%;background:#22c55e;color:white;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:16px;cursor:pointer;">✅ 确认服药</button>' +
     '<button onclick="reminderUserAction(&apos;2&apos;)" style="width:100%;background:#f3f4f6;color:#374151;font-weight:700;padding:14px 0;border-radius:16px;border:none;font-size:14px;cursor:pointer;margin-top:8px;">⏰ 延后提醒</button>';
 
-  if (badge) { badge.style.display = 'block'; badge.style.color = '#6b7280'; badge.style.background = '#f3f4f6'; badge.style.animation = 'none'; badge.textContent = '⏱️ 5:00'; }
-  _medDialogOpenVirtMin = _getCurrentVirtMinutes();
   if (dlg) {
     // 防频闪：如果弹窗已经可见，跳过动画重置
     var alreadyVisible = dlg.style.display === 'flex';
@@ -3392,12 +3396,14 @@ function renderReminderDialog(type, msg, medId, medImages, ringMode) {
   if (_reminderActiveMedId === medId && now - _lastMedDialogOpenTs < 500) {
     return;
   }
-  // 防频闪：如果同一 medId 的弹窗已经显示中，跳过重复渲染
-  if (_reminderActiveMedId === medId && document.getElementById('reminder-dialog') && document.getElementById('reminder-dialog').style.display === 'flex') {
+  // 如果弹窗已显示且是同一 medId 的催促升级事件 → 原地更新弹窗内容，不关闭不重建
+  var dlg = document.getElementById('reminder-dialog');
+  if (_reminderActiveMedId === medId && dlg && dlg.style.display === 'flex') {
+    _updateMedDialogInPlace(type, msg, medImages);
     return;
   }
   // 使用新的弹窗系统
-  _medEscalationLevel = 1;
+  _medEscalationLevel = _levelFromEventType(type);
   _medPendingInfo = { type: type, msg: msg, medId: medId, medImages: medImages || [], ringMode: ringMode || 'once' };
   _lastMedDialogOpenTs = now;
   _openMedDialog(_medPendingInfo);
@@ -3586,8 +3592,6 @@ function closeReminderDialog() {
   // 重置卡片样式，确保下次打开是干净的
   var card = document.getElementById('reminder-dialog-card');
   if (card) { card.style.background = '#ffffff'; card.style.border = 'none'; card.style.animation = ''; }
-  var badge = document.getElementById('reminder-countdown-badge');
-  if (badge) { badge.style.display = 'none'; badge.style.animation = 'none'; }
   _medPendingInfo = null;
   _reminderActiveMedId = null;
   _reminderActiveState = null;
