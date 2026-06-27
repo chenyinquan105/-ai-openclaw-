@@ -108,7 +108,7 @@
 </head>
 <body class="bg-gray-100 text-gray-900 font-sans p-4 md:p-8">
 
- <div class="max-w-5xl flex flex-col lg:flex-row items-start justify-start gap-6 min-h-screen" style="margin-left: calc(50vw - 540px);">
+ <div class="max-w-5xl flex flex-col lg:flex-row items-start justify-start gap-6 min-h-screen" style="margin: 0 auto;">
 
  <!-- 左侧控制台（异常模拟） -->
  <div class="w-full lg:w-72 bg-gray-900 text-gray-100 p-5 rounded-[32px] shadow-2xl border border-gray-800 space-y-5 lg:sticky lg:top-8 flex-shrink-0 z-20">
@@ -414,7 +414,7 @@
 
  <!-- 统一提醒设置弹窗 -->
  <div id="nl-reminder-modal" class="absolute inset-0 flex items-center justify-center z-[66] hidden" style="background: rgba(0,0,0,0.5); border-radius: 40px;">
-  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 animate-fade-in" style="max-height:92vh; overflow-y:auto;" onclick="event.stopPropagation()">
+  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 animate-fade-in" style="max-height:90%; overflow-y:auto; overscroll-behavior:contain;" onclick="event.stopPropagation()">
     <div class="text-center mb-4">
       <div id="reminder-modal-icon" class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3">
         <span id="reminder-modal-emoji" class="text-3xl">💧</span>
@@ -447,7 +447,6 @@
         <div onclick="selectPillColor('#eab308','left')" id="pill-color-3" class="pill-color-opt w-8 h-8 rounded-full cursor-pointer border-2 transition hover:scale-110" style="background:#eab308;border-color:transparent;"></div>
         <div onclick="selectPillColor('#f97316','left')" id="pill-color-4" class="pill-color-opt w-8 h-8 rounded-full cursor-pointer border-2 transition hover:scale-110" style="background:#f97316;border-color:transparent;"></div>
         <div onclick="selectPillColor('#f9fafc', 'left')" id="pill-color-5" class="pill-color-opt w-8 h-8 rounded-full cursor-pointer border-2 transition hover:scale-110" style="background:#f9fafc;border-color:#d1d5db;"></div>
-        <div onclick="selectPillColor('transparent','left')" id="pill-color-transparent" class="pill-color-opt w-8 h-8 rounded-full cursor-pointer border-2 border-dashed transition hover:scale-110 flex items-center justify-center" style="background:repeating-conic-gradient(#d1d5db 0% 25%, #fff 0% 50%) 50% / 8px 8px;border-color:#9ca3af;" title="透明"><span style="font-size:10px;color:#6b7280;">透</span></div>
       </div>
       <!-- 第二行颜色 (仅胶囊双色模式) -->
       <div id="pill-color2-row" class="hidden mt-2">
@@ -459,12 +458,41 @@
           <div onclick="selectPillColor('#eab308','right')" id="pill-color2-3" class="pill-color2-opt w-8 h-8 rounded-full cursor-pointer border-2 transition hover:scale-110" style="background:#eab308;border-color:transparent;"></div>
           <div onclick="selectPillColor('#f97316','right')" id="pill-color2-4" class="pill-color2-opt w-8 h-8 rounded-full cursor-pointer border-2 transition hover:scale-110" style="background:#f97316;border-color:transparent;"></div>
           <div onclick="selectPillColor('#f9fafc','right')" id="pill-color2-5" class="pill-color2-opt w-8 h-8 rounded-full cursor-pointer border-2 transition hover:scale-110" style="background:#f9fafc;border-color:#d1d5db;"></div>
-          <div onclick="selectPillColor('transparent','right')" id="pill-color2-transparent" class="pill-color2-opt w-8 h-8 rounded-full cursor-pointer border-2 border-dashed transition hover:scale-110 flex items-center justify-center" style="background:repeating-conic-gradient(#d1d5db 0% 25%, #fff 0% 50%) 50% / 8px 8px;border-color:#9ca3af;" title="透明"><span style="font-size:10px;color:#6b7280;">透</span></div>
+
+        </div>
+      </div>
+    </div>
+    <!-- 提醒内容 (仅CUSTOM) -->
+    <div id="reminder-custom-content-wrap" class="mb-3 hidden">
+      <p class="text-xs font-bold text-gray-500 mb-2">📝 提醒内容</p>
+      <input id="reminder-custom-content" type="text" placeholder="如：几点提醒我去接孩子放学，顺便买菜" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:border-blue-400 focus:outline-none transition">
+    </div>
+    <!-- 喝水 NL 输入 (仅WATER) -->
+    <div id="reminder-water-nl-wrap" class="mb-3 hidden">
+      <p class="text-xs font-bold text-gray-500 mb-2">💬 描述你的喝水计划</p>
+      <textarea id="reminder-water-nl" rows="2" placeholder="例如：从早上8点到晚上10点，每90分钟提醒我喝一次水" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:border-blue-400 focus:outline-none transition resize-none" oninput="onWaterNLInput()"></textarea>
+    </div>
+    <!-- 喝水计划预览 (仅WATER) -->
+    <div id="reminder-water-plan" class="mb-3 hidden">
+      <p class="text-xs font-bold text-gray-500 mb-2">📋 喝水计划</p>
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
+        <div class="flex items-center gap-1.5 flex-wrap mb-2">
+          <span class="text-xs text-gray-500">⏰</span>
+          <input id="water-plan-start" type="time" value="08:00" onchange="regenerateWaterSlots()" class="w-28 border border-gray-200 rounded-lg py-1 px-2 text-xs bg-white focus:border-blue-400 focus:outline-none">
+          <span class="text-xs text-gray-400">~</span>
+          <input id="water-plan-end" type="time" value="22:00" onchange="regenerateWaterSlots()" class="w-28 border border-gray-200 rounded-lg py-1 px-2 text-xs bg-white focus:border-blue-400 focus:outline-none">
+          <span class="text-xs text-gray-500 ml-1">每</span>
+          <input id="water-plan-interval" type="number" value="90" min="10" max="480" step="5" onchange="regenerateWaterSlots()" class="w-16 border border-gray-200 rounded-lg py-1 px-1.5 text-xs text-center bg-white focus:border-blue-400 focus:outline-none">
+          <span class="text-xs text-gray-500">分钟</span>
+          <button onclick="regenerateWaterSlots()" class="ml-auto text-xs bg-blue-500 text-white rounded-lg px-2 py-1 hover:bg-blue-600 transition">🔄 重新生成</button>
+        </div>
+        <div id="water-plan-slots" class="flex flex-wrap gap-1.5">
+          <!-- 动态渲染时间标签 -->
         </div>
       </div>
     </div>
     <!-- 时间 -->
-    <div class="mb-3">
+    <div id="reminder-time-wrap" class="mb-3">
       <p class="text-xs font-bold text-gray-500 mb-2">⏰ 提醒时间</p>
       <input id="reminder-time-val" type="text" placeholder="如 08:00、晚上8点、18" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:border-blue-400 focus:outline-none transition" onblur="autoFixTimeInput(this)">
     </div>
@@ -499,9 +527,22 @@
     <div class="mb-3">
       <p class="text-xs font-bold text-gray-500 mb-2">🔁 重复方式</p>
       <div class="flex gap-2" id="reminder-repeat-opts">
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="daily" checked class="sr-only">每天</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="weekly" class="sr-only">每周</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="once" class="sr-only">仅一次</label>
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="daily" checked class="sr-only" onchange="onRepeatChange()">每天</label>
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="weekly" class="sr-only" onchange="onRepeatChange()">每周</label>
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="once" class="sr-only" onchange="onRepeatChange()">仅一次</label>
+      </div>
+    </div>
+    <!-- 星期几选择 (repeat=weekly 时展开) -->
+    <div id="reminder-weekdays-wrap" class="mb-3 hidden">
+      <p class="text-xs font-bold text-gray-500 mb-2">📅 选择星期几</p>
+      <div class="flex gap-1.5" id="reminder-weekdays">
+        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="mon" class="sr-only">一</label>
+        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="tue" class="sr-only">二</label>
+        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="wed" class="sr-only">三</label>
+        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="thu" class="sr-only">四</label>
+        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="fri" class="sr-only">五</label>
+        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sat" class="sr-only">六</label>
+        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sun" class="sr-only">日</label>
       </div>
     </div>
     <!-- 响铃模式 (仅MED) -->
@@ -2650,7 +2691,30 @@ function clockTogglePower() {
       var tasks = td.tasks || [];
       if (tasks.length > 0) {
         window._clockScheduleNodes = tasks.map(function(t) {
-          return {time: t.time, type: t.type, id: t.id, repeat: t.repeat || 'daily', label: t.label || '', memo: (t.label || '') + '提醒', action: (t.label || '') + '提醒', duration_minutes: 0};
+          var n = {time: t.time, type: t.type, id: t.id, repeat: t.repeat || 'daily', label: t.label || '', memo: (t.label || '') + '提醒', action: (t.label || '') + '提醒', duration_minutes: 0};
+          if (t.type === 'WATER' && t.sub_times && t.sub_times.length > 0) {
+            n.sub_times = t.sub_times;
+            n.start_time = t.start_time || '';
+            n.end_time = t.end_time || '';
+            n.interval_minutes = t.interval_minutes || 90;
+            n.ring_mode = t.ring_mode || 'once';
+          }
+          if (t.type === 'MED') {
+            n.ring_mode = t.ring_mode || 'once';
+            n.meal_timing = t.meal_timing || '';
+            n.images = t.images || [];
+            n.pill_shape = t.pill_shape || '';
+            n.pill_color = t.pill_color || '';
+            n.pill_color2 = t.pill_color2 || '';
+            n.dosage = t.dosage || '';
+            n.med_name = t.med_name || '';
+          }
+          if (t.type === 'CUSTOM') {
+            n.content = t.content || '';
+            n.note = t.note || '';
+            n.ring_mode = t.ring_mode || 'once';
+          }
+          return n;
         });
         return clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes});
       }
@@ -3378,17 +3442,25 @@ function reminderInitFromProfile() {
 
           var toAdd = [];
 
-          // 生成 WATER 节点：从 08:00 开始，按 hydration_interval 分钟间隔生成直到 22:00
+          // 生成 WATER 节点：合并为单条，sub_times 承载所有提醒时间点
           var startMins = 8 * 60; // 08:00
           var endMins = 22 * 60; // 22:00
+          var subTimes = [];
           for (var m = startMins; m <= endMins; m += hydraInterval) {
             var hh = String(Math.floor(m / 60)).padStart(2, '0');
             var mm = String(m % 60).padStart(2, '0');
-            var t = hh + ':' + mm;
-            var wid = 'WATER_PROFILE_' + t.replace(':', '');
-            if (!existingIds.has(wid)) {
-              toAdd.push({ id: wid, type: 'WATER', time: t, state: 'pending', label: '喝水', repeat: 'daily' });
-            }
+            subTimes.push(hh + ':' + mm);
+          }
+          var wid = 'WATER_PROFILE_MAIN';
+          if (!existingIds.has(wid)) {
+            toAdd.push({
+              id: wid, type: 'WATER',
+              time: subTimes[0] || '08:00', state: 'pending', label: '喝水', repeat: 'daily',
+              sub_times: subTimes,
+              interval_minutes: hydraInterval,
+              start_time: subTimes[0] || '08:00',
+              end_time: subTimes[subTimes.length - 1] || '22:00'
+            });
           }
 
           // 生成 MED 节点：来自 medication_schedule
@@ -3401,8 +3473,25 @@ function reminderInitFromProfile() {
             }
           });
 
+          // 清理旧版独立 WATER_PROFILE_* 节点（不再需要，已合并为单条）
+          var oldWaterIds = [];
+          (td.tasks || []).forEach(function(t) {
+            if (t.type === 'WATER' && t.id.indexOf('WATER_PROFILE_') === 0 && t.id !== 'WATER_PROFILE_MAIN') {
+              oldWaterIds.push(t.id);
+            }
+          });
+          var cleanChain = Promise.resolve();
+          oldWaterIds.forEach(function(oid) {
+            cleanChain = cleanChain.then(function() {
+              return fetch(API_BASE + '/api/reminder/remove_task', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task_id: oid })
+              });
+            });
+          });
+
           // 批量注册
-          var chain = Promise.resolve();
+          var chain = cleanChain;
           toAdd.forEach(function(node) {
             chain = chain.then(function() {
               return fetch(API_BASE + '/api/reminder/add_task', {
@@ -3536,7 +3625,18 @@ function handleReminderEvent(ev) {
     console.log('[handleReminderEvent] → renderWaterDialog');
     _reminderActiveMedId = ev.med_id || ev.task_id || '';
     _reminderActiveState = type;
-    renderWaterDialog(type, msg, ev.label || '喝水', ev.time || '');
+    var waterRingMode = ev.ring_mode || 'once';
+    renderWaterDialog(type, msg, ev.label || '喝水', ev.time || '', waterRingMode);
+    return true;
+  }
+
+  // —— 自定义提醒弹窗 ——
+  if (type === 'CUSTOM_RINGING_ALERT') {
+    console.log('[handleReminderEvent] → renderCustomDialog');
+    _reminderActiveMedId = ev.med_id || ev.task_id || '';
+    _reminderActiveState = type;
+    var customRingMode = ev.ring_mode || 'once';
+    renderCustomDialog(msg, ev.label || '自定义提醒', ev.time || '', ev.content || '', customRingMode);
     return true;
   }
 
@@ -3655,7 +3755,17 @@ function renderReminderDialog(type, msg, medId, medImages, ringMode, pillShape, 
 }
 
 /** 渲染喝水提醒弹窗（轻量——只确认按钮） */
-function renderWaterDialog(type, msg, label, time) {
+function renderWaterDialog(type, msg, label, time, ringMode) {
+  ringMode = ringMode || 'once';
+  // 响铃
+  _stopRinging();
+  if (ringMode === 'continuous') {
+    _medContinuousRing = setInterval(_playNotificationSound, 1500);
+  } else if (ringMode === 'triple') {
+    for (var i = 0; i < 3; i++) { setTimeout(_playNotificationSound, i * 300); }
+  } else {
+    _playNotificationSound();
+  }
   var dlg = document.getElementById('reminder-dialog');
   var titleEl = document.getElementById('reminder-dialog-title');
   var bodyEl = document.getElementById('reminder-dialog-body');
@@ -3675,6 +3785,44 @@ function renderWaterDialog(type, msg, label, time) {
 
   dlg.style.display = 'flex';
   // 入场动画
+  var card = dlg.querySelector('div > div');
+  if (card) {
+    card.style.animation = 'none';
+    card.offsetHeight;
+    card.style.animation = 'reminder-fade-in 0.35s ease-out';
+  }
+}
+
+/** 渲染自定义提醒弹窗 */
+function renderCustomDialog(msg, label, time, content, ringMode) {
+  ringMode = ringMode || 'once';
+  _stopRinging();
+  if (ringMode === 'continuous') {
+    _medContinuousRing = setInterval(_playNotificationSound, 1500);
+  } else if (ringMode === 'triple') {
+    for (var i = 0; i < 3; i++) { setTimeout(_playNotificationSound, i * 300); }
+  } else {
+    _playNotificationSound();
+  }
+  var dlg = document.getElementById('reminder-dialog');
+  var titleEl = document.getElementById('reminder-dialog-title');
+  var bodyEl = document.getElementById('reminder-dialog-body');
+  var actionsEl = document.getElementById('reminder-dialog-actions');
+  var closeWrap = document.getElementById('reminder-dialog-close-wrap');
+  var iconEl = document.getElementById('reminder-dialog-icon');
+
+  titleEl.textContent = '📝 ' + (label || '自定义提醒');
+  bodyEl.innerHTML = '<p class="text-sm text-gray-700">' + (msg || '') + '</p>' +
+    (content ? '<p class="text-xs text-gray-500 mt-2">📋 ' + content.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>' : '');
+  iconEl.innerHTML = '<span style="font-size:28px;">📝</span>';
+  iconEl.style.background = '#ede9fe';
+  closeWrap.style.display = 'none';
+  actionsEl.innerHTML =
+    '<button onclick="closeReminderDialog()" style="width:100%;background:#8b5cf6;color:white;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:16px;cursor:pointer;">' +
+      '✅ 知道了' +
+    '</button>';
+
+  dlg.style.display = 'flex';
   var card = dlg.querySelector('div > div');
   if (card) {
     card.style.animation = 'none';
@@ -4450,8 +4598,19 @@ function butlerRenderContent() {
  var period = h < 6 ? '凌晨' : h < 9 ? '早上' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : h < 22 ? '晚上' : '睡前';
  var repeatMap = { once: '仅一次', daily: '每天', weekly: '每周' };
  var repeatText = repeatMap[t.repeat] || (t.repeat || '每天');
+ // 每周: 显示具体星期几
+ if (t.repeat === 'weekly' && t.weekdays && t.weekdays.length > 0) {
+   var wdMap = { mon: '一', tue: '二', wed: '三', thu: '四', fri: '五', sat: '六', sun: '日' };
+   var wdNames = t.weekdays.map(function(d) { return wdMap[d] || d; });
+   repeatText = '每周' + wdNames.join('、');
+ }
  var dateInfo = t.date ? ' 📅' + t.date : '';
  var noteInfo = t.note ? ' 📝' + t.note : '';
+ var subTimesInfo = '';
+ if (isWater && t.sub_times && t.sub_times.length > 0) {
+   subTimesInfo = ' · ' + t.sub_times[0] + '~' + t.sub_times[t.sub_times.length - 1] + ' · 每' + (t.interval_minutes || 90) + '分钟';
+ }
+ var contentInfo = t.content ? ' ' + t.content : '';
  var imgBadge = (t.images && t.images.length > 0) ? ' 🖼️×' + t.images.length : '';
  html += '<div class="bg-white border border-gray-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm cursor-pointer hover:border-blue-300 hover:shadow-md transition" onclick="butlerEditTask(\'' + t.id + '\')">' +
  '<div class="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ' + bgClass + '">' + emoji + '</div>' +
@@ -4462,7 +4621,7 @@ function butlerRenderContent() {
  '<span class="text-xs font-bold text-gray-600">' + label + '</span>' +
  '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ' + stateColor + '">' + stateLabel + '</span>' +
  '</div>' +
- '<p class="text-xs text-gray-400 mt-0.5">' + repeatText + dateInfo + noteInfo + imgBadge + '</p>' +
+ '<p class="text-xs text-gray-400 mt-0.5">' + (contentInfo || (repeatText + dateInfo + subTimesInfo + noteInfo + imgBadge)) + '</p>' +
  '</div>' +
  '<button onclick="event.stopPropagation();butlerDeleteTask(\'' + t.id + '\')" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-red-100 hover:text-red-500 transition text-gray-400 flex-shrink-0">✕</button>' +
  '</div>';
@@ -4528,9 +4687,6 @@ function selectPillShape(shape) {
   // 动态更新第一行颜色标签
   var label = document.getElementById('pill-color-label');
   if (label) label.textContent = shape === 'capsule' ? '左半颜色' : '颜色';
-  // 左半透明选项：仅胶囊时显示
-  var transOpt = document.getElementById('pill-color-transparent');
-  if (transOpt) transOpt.style.display = shape === 'capsule' ? '' : 'none';
   renderPillPreview();
 }
 /** 选择药片颜色。side: 'left'(默认) 或 'right' */
@@ -4539,31 +4695,19 @@ function selectPillColor(color, side) {
   if (side === 'right') {
     _pillColor2 = color;
     document.querySelectorAll('.pill-color2-opt').forEach(function(el) { el.classList.remove('selected'); });
-    // 透明选项特殊处理
-    if (color === 'transparent') {
-      var tOpt = document.getElementById('pill-color2-transparent');
-      if (tOpt) tOpt.classList.add('selected');
-    } else {
-      var opts2 = document.querySelectorAll('.pill-color2-opt');
-      for (var i = 0; i < opts2.length; i++) {
-        if (opts2[i].style.background === color || opts2[i].style.backgroundColor === color) {
-          opts2[i].classList.add('selected'); break;
-        }
+    var opts2 = document.querySelectorAll('.pill-color2-opt');
+    for (var i = 0; i < opts2.length; i++) {
+      if (opts2[i].style.background === color || opts2[i].style.backgroundColor === color) {
+        opts2[i].classList.add('selected'); break;
       }
     }
   } else {
     _pillColor = color;
     document.querySelectorAll('.pill-color-opt').forEach(function(el) { el.classList.remove('selected'); });
-    // 透明选项特殊处理（左侧也需要）
-    if (color === 'transparent') {
-      var tOptL = document.getElementById('pill-color-transparent');
-      if (tOptL) tOptL.classList.add('selected');
-    } else {
-      var opts = document.querySelectorAll('.pill-color-opt');
-      for (var i = 0; i < opts.length; i++) {
-        if (opts[i].style.background === color || opts[i].style.backgroundColor === color) {
-          opts[i].classList.add('selected'); break;
-        }
+    var opts = document.querySelectorAll('.pill-color-opt');
+    for (var i = 0; i < opts.length; i++) {
+      if (opts[i].style.background === color || opts[i].style.backgroundColor === color) {
+        opts[i].classList.add('selected'); break;
       }
     }
   }
@@ -4703,15 +4847,42 @@ function openReminderModal(type, existingNode) {
   var medNameWrap = document.getElementById('reminder-med-name-wrap');
   var delWrap = document.getElementById('reminder-edit-delete-wrap');
   var createBtn = document.getElementById('reminder-create-btn');
+  var contentWrap = document.getElementById('reminder-custom-content-wrap');
+  var noteWrap = document.getElementById('reminder-note').parentElement;
+  var repeatWrap = document.getElementById('reminder-repeat-opts').parentElement;
+  var waterNLWrap = document.getElementById('reminder-water-nl-wrap');
+  var waterPlan = document.getElementById('reminder-water-plan');
+  var weekdaysWrap = document.getElementById('reminder-weekdays-wrap');
+  var timeWrap = document.getElementById('reminder-time-wrap');
 
   if (type === 'WATER') {
+    if (timeWrap) timeWrap.classList.add('hidden');
     iconEl.className = 'w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3';
     emojiEl.textContent = '💧'; titleEl.textContent = isEdit ? '✏️ 编辑喝水提醒' : '设置喝水提醒';
-    medWrap.classList.add('hidden'); medDetail.classList.add('hidden'); ringOpts.classList.add('hidden'); pillWrap.classList.add('hidden'); medNameWrap.classList.add('hidden');
+    medWrap.classList.add('hidden'); medDetail.classList.add('hidden'); pillWrap.classList.add('hidden'); medNameWrap.classList.add('hidden'); contentWrap.classList.add('hidden');
+    noteWrap.classList.add('hidden'); repeatWrap.classList.add('hidden'); weekdaysWrap.classList.add('hidden');
+    ringOpts.classList.remove('hidden');
+    if (isEdit) {
+      // 编辑模式：直接显示计划预览
+      waterNLWrap.classList.add('hidden'); waterPlan.classList.remove('hidden');
+      var st = existingNode.start_time || existingNode.sub_times?.[0] || '08:00';
+      var et = existingNode.end_time || existingNode.sub_times?.[existingNode.sub_times.length - 1] || '22:00';
+      var iv = existingNode.interval_minutes || 90;
+      document.getElementById('water-plan-start').value = st;
+      document.getElementById('water-plan-end').value = et;
+      document.getElementById('water-plan-interval').value = iv;
+      renderWaterPlanSlots(existingNode.sub_times || generateTimeSlots(_tToH(st), _tToH(et), iv));
+    } else {
+      // 新建模式：显示 NL 输入
+      waterNLWrap.classList.remove('hidden'); waterPlan.classList.add('hidden');
+      document.getElementById('reminder-water-nl').value = '';
+    }
   } else if (type === 'MED') {
     iconEl.className = 'w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3';
     emojiEl.textContent = '💊'; titleEl.textContent = isEdit ? '✏️ 编辑吃药提醒' : '设置吃药提醒';
-    medWrap.classList.remove('hidden'); medDetail.classList.remove('hidden'); ringOpts.classList.remove('hidden'); pillWrap.classList.remove('hidden'); medNameWrap.classList.remove('hidden');
+    medWrap.classList.remove('hidden'); medDetail.classList.remove('hidden'); ringOpts.classList.remove('hidden'); pillWrap.classList.remove('hidden'); medNameWrap.classList.remove('hidden'); contentWrap.classList.add('hidden');
+    noteWrap.classList.remove('hidden'); repeatWrap.classList.remove('hidden'); waterNLWrap.classList.add('hidden'); waterPlan.classList.add('hidden');
+    if (timeWrap) timeWrap.classList.remove('hidden');
     resetMedImageGrid();
     // 初始化药片选择器
     if (existingNode && existingNode.pill_shape) {
@@ -4736,10 +4907,7 @@ function openReminderModal(type, existingNode) {
     var row2 = document.getElementById('pill-color2-row');
     if (row2) row2.classList.toggle('hidden', _pillShape !== 'capsule');
     document.querySelectorAll('.pill-color2-opt').forEach(function(el) { el.classList.remove('selected'); });
-    if (_pillColor2 === 'transparent') {
-      var tOpt = document.getElementById('pill-color2-transparent');
-      if (tOpt) tOpt.classList.add('selected');
-    } else if (_pillColor2) {
+    if (_pillColor2) {
       var opts2 = document.querySelectorAll('.pill-color2-opt');
       for (var ci2 = 0; ci2 < opts2.length; ci2++) {
         if (opts2[ci2].style.background === _pillColor2 || opts2[ci2].style.backgroundColor === _pillColor2) {
@@ -4748,15 +4916,15 @@ function openReminderModal(type, existingNode) {
       }
     }
     renderPillPreview();
-    // 同步第一行颜色标签 + 左半透明选项显隐
+    // 同步第一行颜色标签
     var lblEl = document.getElementById('pill-color-label');
     if (lblEl) lblEl.textContent = _pillShape === 'capsule' ? '左半颜色' : '颜色';
-    var tOptL = document.getElementById('pill-color-transparent');
-    if (tOptL) tOptL.style.display = _pillShape === 'capsule' ? '' : 'none';
   } else {
     iconEl.className = 'w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3';
     emojiEl.textContent = '📝'; titleEl.textContent = isEdit ? '✏️ 编辑自定义提醒' : '设置自定义提醒';
-    medWrap.classList.add('hidden'); medDetail.classList.add('hidden'); ringOpts.classList.remove('hidden'); pillWrap.classList.add('hidden'); medNameWrap.classList.add('hidden');
+    medWrap.classList.add('hidden'); medDetail.classList.add('hidden'); ringOpts.classList.remove('hidden'); pillWrap.classList.add('hidden'); medNameWrap.classList.add('hidden'); contentWrap.classList.remove('hidden');
+    noteWrap.classList.add('hidden'); repeatWrap.classList.remove('hidden'); waterNLWrap.classList.add('hidden'); waterPlan.classList.add('hidden');
+    if (timeWrap) timeWrap.classList.remove('hidden');
   }
 
   // 编辑模式：显示删除按钮，修改确认按钮文字
@@ -4770,9 +4938,19 @@ function openReminderModal(type, existingNode) {
     document.getElementById('reminder-meal-timing').value = existingNode.meal_timing || '';
     document.getElementById('reminder-note').value = existingNode.note || '';
     document.getElementById('reminder-med-name').value = existingNode.med_name || '';
+    document.getElementById('reminder-custom-content').value = existingNode.content || '';
     var repeatVal = existingNode.repeat || 'daily';
     var repeatRadio = document.querySelector('input[name="rem-repeat"][value="' + repeatVal + '"]');
     if (repeatRadio) repeatRadio.checked = true;
+    // 星期几回填
+    document.querySelectorAll('#reminder-weekdays input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+    if (existingNode.weekdays && existingNode.weekdays.length > 0) {
+      existingNode.weekdays.forEach(function(d) {
+        var cb = document.querySelector('#reminder-weekdays input[value="' + d + '"]');
+        if (cb) cb.checked = true;
+      });
+    }
+    onRepeatChange();
     var ringVal = existingNode.ring_mode || 'once';
     var ringRadio = document.querySelector('input[name="rem-ring"][value="' + ringVal + '"]');
     if (ringRadio) ringRadio.checked = true;
@@ -4789,8 +4967,11 @@ function openReminderModal(type, existingNode) {
     document.getElementById('reminder-meal-timing').value = '';
     document.getElementById('reminder-note').value = '';
     document.getElementById('reminder-med-name').value = '';
+    document.getElementById('reminder-custom-content').value = '';
     document.querySelector('input[name="rem-repeat"][value="daily"]').checked = true;
     document.querySelector('input[name="rem-ring"][value="once"]').checked = true;
+    document.querySelectorAll('#reminder-weekdays input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+    onRepeatChange();
   }
 
   // 确保弹窗挂载在手机容器内（而非 body）
@@ -4810,6 +4991,12 @@ function closeReminderModal() {
   _medImages = [];
   _editingTaskId = null;
   _pillShape = 'capsule'; _pillColor = '#ef4444'; _pillColor2 = '';
+  window._waterPlanSlots = null;
+  var contentEl = document.getElementById('reminder-custom-content');
+  if (contentEl) contentEl.value = '';
+  var waterNLEl = document.getElementById('reminder-water-nl');
+  if (waterNLEl) waterNLEl.value = '';
+  if (_waterNLDebounceTimer) { clearTimeout(_waterNLDebounceTimer); _waterNLDebounceTimer = null; }
   clearFieldErrors();
   // 恢复创建模式 UI
   var delWrap = document.getElementById('reminder-edit-delete-wrap');
@@ -5124,6 +5311,72 @@ function generateTimeSlots(startHour, endHour, intervalMin) {
   return slots;
 }
 
+// ===== 喝水 NL 解析 & 计划预览 =====
+
+var _waterNLDebounceTimer = null;
+function onWaterNLInput() {
+  if (_waterNLDebounceTimer) clearTimeout(_waterNLDebounceTimer);
+  _waterNLDebounceTimer = setTimeout(function() {
+    var text = document.getElementById('reminder-water-nl').value.trim();
+    if (!text) {
+      document.getElementById('reminder-water-plan').classList.add('hidden');
+      return;
+    }
+    parseWaterNL(text);
+  }, 500);
+}
+
+function parseWaterNL(text) {
+  var range = parseChineseTimeRange(text);
+  var startHour = range ? range.startHour : 8;
+  var endHour = range ? range.endHour : 22;
+  var interval = parseInterval(text) || 90;
+  document.getElementById('water-plan-start').value = String(startHour).padStart(2, '0') + ':00';
+  document.getElementById('water-plan-end').value = String(endHour).padStart(2, '0') + ':00';
+  document.getElementById('water-plan-interval').value = interval;
+  renderWaterPlanSlots(generateTimeSlots(startHour, endHour, interval));
+  document.getElementById('reminder-water-plan').classList.remove('hidden');
+}
+
+function renderWaterPlanSlots(slots) {
+  var container = document.getElementById('water-plan-slots');
+  if (!container) return;
+  window._waterPlanSlots = slots.slice();
+  var html = '';
+  for (var i = 0; i < slots.length; i++) {
+    html += '<span class="inline-flex items-center gap-0.5 bg-white border border-blue-200 rounded-full px-2 py-0.5 text-xs text-blue-700 font-medium">' +
+      slots[i] +
+      '<button onclick="removeWaterSlot(' + i + ')" class="text-gray-400 hover:text-red-500 leading-none ml-0.5" title="删除">&times;</button>' +
+      '</span>';
+  }
+  container.innerHTML = html;
+}
+
+function removeWaterSlot(idx) {
+  if (!window._waterPlanSlots || window._waterPlanSlots.length <= 1) return;
+  window._waterPlanSlots.splice(idx, 1);
+  renderWaterPlanSlots(window._waterPlanSlots);
+}
+
+function regenerateWaterSlots() {
+  var startVal = document.getElementById('water-plan-start').value;
+  var endVal = document.getElementById('water-plan-end').value;
+  var interval = parseInt(document.getElementById('water-plan-interval').value) || 90;
+  var startH = startVal ? parseInt(startVal.split(':')[0]) : 8;
+  var endH = endVal ? parseInt(endVal.split(':')[0]) : 22;
+  if (startH >= endH) { toast('⚠️ 起始时间必须早于结束时间'); return; }
+  if (interval < 10) { document.getElementById('water-plan-interval').value = 10; interval = 10; }
+  renderWaterPlanSlots(generateTimeSlots(startH, endH, interval));
+}
+
+function onRepeatChange() {
+  var repeatVal = (document.querySelector('input[name="rem-repeat"]:checked') || {}).value || 'daily';
+  var weekdaysWrap = document.getElementById('reminder-weekdays-wrap');
+  if (weekdaysWrap) {
+    weekdaysWrap.classList.toggle('hidden', repeatVal !== 'weekly');
+  }
+}
+
 /** 清除所有提醒任务 */
 function clearAllReminders() {
   if (!confirm('确定要清除所有喝水/吃药提醒任务吗？此操作不可恢复。')) return;
@@ -5232,29 +5485,54 @@ function confirmReminderCreate(presetTime) {
 
   var timeEl = document.getElementById('reminder-time-val');
   if (timeEl) { autoFixTimeInput(timeEl); }
-  var timeVal = presetTime || (timeEl?.value || '').trim();
-  if (!timeVal) { toast('⚠️ 请输入提醒时间'); return; }
-  if (!/^\d{1,2}:\d{2}$/.test(timeVal)) {
-    var parts = timeVal.split(/[：:]/);
-    if (parts.length === 2) timeVal = parts[0].padStart(2,'0') + ':' + parts[1].padStart(2,'0');
-    else { toast('⚠️ 时间格式错误，请用 HH:MM'); return; }
+  var timeVal = '';
+
+  // WATER 类型: 从计划预览读取数据
+  if (type === 'WATER') {
+    if (!window._waterPlanSlots || window._waterPlanSlots.length === 0) {
+      toast('⚠️ 请先描述喝水计划或生成时间点'); return;
+    }
+    timeVal = window._waterPlanSlots[0];
+  } else {
+    timeVal = presetTime || (timeEl?.value || '').trim();
+    if (!timeVal) { toast('⚠️ 请输入提醒时间'); return; }
+    if (!/^\d{1,2}:\d{2}$/.test(timeVal)) {
+      var parts = timeVal.split(/[：:]/);
+      if (parts.length === 2) timeVal = parts[0].padStart(2,'0') + ':' + parts[1].padStart(2,'0');
+      else { toast('⚠️ 时间格式错误，请用 HH:MM'); return; }
+    }
   }
   var labelMap = {WATER:'喝水', MED:'吃药', CUSTOM:'自定义提醒'};
   var label = window._parsedMedLabel || labelMap[type] || '提醒';
   window._parsedMedLabel = null;
-  var repeatVal = (document.querySelector('input[name="rem-repeat"]:checked') || {}).value || 'daily';
+  var repeatVal = type === 'WATER' ? 'daily' : ((document.querySelector('input[name="rem-repeat"]:checked') || {}).value || 'daily');
   var ringMode = (document.querySelector('input[name="rem-ring"]:checked') || {}).value || 'once';
-  var note = (document.getElementById('reminder-note')?.value || '').trim();
+  var note = (type === 'WATER' || type === 'CUSTOM') ? '' : ((document.getElementById('reminder-note')?.value || '').trim());
+  var content = (document.getElementById('reminder-custom-content')?.value || '').trim();
   var dosage = (document.getElementById('reminder-dosage')?.value || '').trim();
   var mealTiming = (document.getElementById('reminder-meal-timing')?.value || '').trim();
   var images = _medImages.map(function(im) { return im.base64; });
+  // 星期几
+  var weekdays = [];
+  if (repeatVal === 'weekly') {
+    document.querySelectorAll('#reminder-weekdays input[type="checkbox"]:checked').forEach(function(cb) { weekdays.push(cb.value); });
+  }
   var node = {
     type: type, time: timeVal, state: 'pending', label: label,
     repeat: repeatVal, ring_mode: ringMode, note: note, dosage: dosage, meal_timing: mealTiming,
     images: images, created_at: new Date().toISOString(),
+    content: content,
     pill_shape: _pillShape, pill_color: _pillColor, pill_color2: _pillColor2,
-    med_name: (document.getElementById('reminder-med-name')?.value || '').trim()
+    med_name: (document.getElementById('reminder-med-name')?.value || '').trim(),
+    weekdays: weekdays
   };
+  // WATER 类型附加字段
+  if (type === 'WATER') {
+    node.sub_times = window._waterPlanSlots || [timeVal];
+    node.interval_minutes = parseInt(document.getElementById('water-plan-interval')?.value || '90') || 90;
+    node.start_time = document.getElementById('water-plan-start')?.value || timeVal;
+    node.end_time = document.getElementById('water-plan-end')?.value || timeVal;
+  }
 
   var isEdit = !!_editingTaskId;
   var url = isEdit ? (API_BASE + '/api/reminder/update_task') : (API_BASE + '/api/reminder/add_task');
@@ -5266,7 +5544,30 @@ function confirmReminderCreate(presetTime) {
     if (data.status === 'SUCCESS') {
       fetch(API_BASE + '/api/reminder/tasks').then(function(r2) { return r2.json(); }).then(function(td) {
         var fullNodes = (td.tasks || []).map(function(t) {
-          return {time: t.time, type: t.type, id: t.id, repeat: t.repeat || 'daily', label: t.label || label, memo: (t.label || label) + '提醒', action: (t.label || label) + '提醒', duration_minutes: 0};
+          var n = {time: t.time, type: t.type, id: t.id, repeat: t.repeat || 'daily', label: t.label || label, memo: (t.label || label) + '提醒', action: (t.label || label) + '提醒', duration_minutes: 0};
+          if (t.type === 'WATER' && t.sub_times && t.sub_times.length > 0) {
+            n.sub_times = t.sub_times;
+            n.start_time = t.start_time || '';
+            n.end_time = t.end_time || '';
+            n.interval_minutes = t.interval_minutes || 90;
+            n.ring_mode = t.ring_mode || 'once';
+          }
+          if (t.type === 'MED') {
+            n.ring_mode = t.ring_mode || 'once';
+            n.meal_timing = t.meal_timing || '';
+            n.images = t.images || [];
+            n.pill_shape = t.pill_shape || '';
+            n.pill_color = t.pill_color || '';
+            n.pill_color2 = t.pill_color2 || '';
+            n.dosage = t.dosage || '';
+            n.med_name = t.med_name || '';
+          }
+          if (t.type === 'CUSTOM') {
+            n.content = t.content || '';
+            n.note = t.note || '';
+            n.ring_mode = t.ring_mode || 'once';
+          }
+          return n;
         });
         window._clockScheduleNodes = fullNodes;
         if (fullNodes.length > 0) clockFetch('POST', '/api/clock/set_schedule', {nodes: fullNodes});

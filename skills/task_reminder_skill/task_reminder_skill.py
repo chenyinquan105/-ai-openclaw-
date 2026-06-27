@@ -122,7 +122,19 @@ def process_reminder_pipeline(
                 "type": "WATER_UI_ALERT",
                 "time": ev_time,
                 "label": ev_label or "喝水",
-                "message": f"🥤【温馨喝水提示】({ev_time})：忙碌之余，记得喝杯温水润润嗓子哦，保持身体水分充足！"
+                "message": f"🥤【温馨喝水提示】({ev_time})：忙碌之余，记得喝杯温水润润嗓子哦，保持身体水分充足！",
+                "ring_mode": ev_ring_mode,
+            })
+
+        elif ev_type == "CUSTOM":
+            output_notifications.append({
+                "type": "CUSTOM_RINGING_ALERT",
+                "time": ev_time,
+                "label": ev_label or "自定义提醒",
+                "message": "⏰ " + (event.get("content") or ev_label or "自定义提醒"),
+                "content": event.get("content", ""),
+                "note": event.get("note", ""),
+                "ring_mode": ev_ring_mode,
             })
 
         elif ev_type == "MED":

@@ -2384,22 +2384,38 @@ def _realtime_reminder_poller():
                 alerts = []
                 for n in cs.schedule_nodes:
                     ntype = n.get("type", "")
-                    if ntype not in ("WATER", "MED"):
+                    if ntype not in ("WATER", "MED", "CUSTOM"):
                         continue
+                    # 每周重复: 检查今天是否在选中的星期几内
+                    if n.get("repeat") == "weekly":
+                        weekdays = n.get("weekdays", [])
+                        if weekdays:
+                            today_wd = now.strftime("%a").lower()  # mon, tue, ...
+                            if today_wd not in weekdays:
+                                continue
                     tid = n.get("id", "")
                     node_time = n.get("time", "")  # "HH:MM"
                     if not tid or not node_time:
                         continue
 
-                    # 只有到达提醒时间才触发（误差 1 分钟内）
-                    if node_time != now_time:
-                        continue
+                    # WATER: 检查 sub_times 数组（如不存在则 fallback 到 time 字段）
+                    if ntype == "WATER":
+                        sub_times = n.get("sub_times", [node_time])
+                        if now_time not in sub_times:
+                            continue
+                        # 用子时间唯一标识防重复
+                        sub_key = tid + "_" + now_time.replace(":", "")
+                    else:
+                        # MED: 只有到达提醒时间才触发（误差 1 分钟内）
+                        if node_time != now_time:
+                            continue
+                        sub_key = tid
 
                     # 今天已触发过则跳过（防重复）
                     with _realtime_reminder_lock:
-                        if _realtime_reminder_fired_today.get(tid):
+                        if _realtime_reminder_fired_today.get(sub_key):
                             continue
-                        _realtime_reminder_fired_today[tid] = True
+                        _realtime_reminder_fired_today[sub_key] = True
 
                     label = n.get("label", "喝水" if ntype == "WATER" else "吃药")
                     if ntype == "WATER":
@@ -2409,7 +2425,20 @@ def _realtime_reminder_poller():
                             "task_id": tid,
                             "message": f"⏰ {label}时间到了！该喝水了 💧",
                             "label": label,
-                            "time": node_time,
+                            "time": now_time,
+                            "ring_mode": n.get("ring_mode", "once"),
+                        })
+                    elif ntype == "CUSTOM":
+                        alerts.append({
+                            "type": "CUSTOM_RINGING_ALERT",
+                            "med_id": tid,
+                            "task_id": tid,
+                            "message": "⏰ " + n.get("content", n.get("label", "自定义提醒")),
+                            "label": label,
+                            "time": now_time,
+                            "content": n.get("content", ""),
+                            "note": n.get("note", ""),
+                            "ring_mode": n.get("ring_mode", "once"),
                         })
                     else:
                         alerts.append({
@@ -2419,6 +2448,14 @@ def _realtime_reminder_poller():
                             "message": f"⏰ {label}时间到了！请按时服药 💊",
                             "label": label,
                             "time": node_time,
+                            "ring_mode": n.get("ring_mode", "once"),
+                            "meal_timing": n.get("meal_timing", ""),
+                            "images": n.get("images", []),
+                            "pill_shape": n.get("pill_shape", ""),
+                            "pill_color": n.get("pill_color", ""),
+                            "pill_color2": n.get("pill_color2", ""),
+                            "dosage": n.get("dosage", ""),
+                            "med_name": n.get("med_name", ""),
                         })
 
                 if alerts:
@@ -2526,6 +2563,12 @@ def reminder_add_task():
         "pill_color": node.get("pill_color", ""),
         "pill_color2": node.get("pill_color2", ""),
         "med_name": node.get("med_name", ""),
+        "content": node.get("content", ""),
+        "sub_times": node.get("sub_times", []),
+        "interval_minutes": node.get("interval_minutes", 90),
+        "start_time": node.get("start_time", ""),
+        "end_time": node.get("end_time", ""),
+        "weekdays": node.get("weekdays", []),
     }
     tm = time_master.get_master()
     cs = tm.get_or_create_session(_CLOCK_SESSION_ID)
@@ -2597,6 +2640,12 @@ def reminder_update_task():
                 "pill_color": node.get("pill_color", n.get("pill_color", "")),
                 "pill_color2": node.get("pill_color2", n.get("pill_color2", "")),
                 "med_name": node.get("med_name", n.get("med_name", "")),
+                "content": node.get("content", n.get("content", "")),
+                "sub_times": node.get("sub_times", n.get("sub_times", [])),
+                "interval_minutes": node.get("interval_minutes", n.get("interval_minutes", 90)),
+                "start_time": node.get("start_time", n.get("start_time", "")),
+                "end_time": node.get("end_time", n.get("end_time", "")),
+                "weekdays": node.get("weekdays", n.get("weekdays", [])),
             }
             new_nodes.append(normalized)
             updated = True

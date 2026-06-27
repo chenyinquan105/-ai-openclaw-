@@ -346,6 +346,7 @@ class TimeMaster:
         从 start_m 推进到 end_m，找出在此区间内触发的节点。
         - repeat=daily 的节点触发生成事件后保留原节点（次日继续提醒）
         - 非 daily 节点触发后移除
+        - WATER 多时间点：逐个检查 sub_times，每个命中子时间生成独立触发事件
 
         ticked_minutes_list 由 _build_output 自动从 start_m/end_m 生成，
         此方法只负责区间命中判定。
@@ -357,18 +358,36 @@ class TimeMaster:
         e_today = int(end_m) % 1440
 
         for nt in cs.schedule_nodes:
-            nm = _parse_minutes(nt["time"])
-            if s_today < nm <= e_today:
-                triggered.append(nt)
-                # daily 节点保留，次日继续提醒
-                # WATER/MED 类型默认 daily（除非显式设为 once）；CUSTOM 按显式字段
-                is_daily = nt.get("repeat") == "daily"
-                if not is_daily and nt.get("type") in ("WATER", "MED") and nt.get("repeat") != "once":
-                    is_daily = True  # 兜底：WATER/MED 无 repeat 字段时默认每天
+            sub_times = nt.get("sub_times", []) if nt.get("type") == "WATER" else []
+            if sub_times:
+                # WATER 多时间点：逐个检查 sub_times
+                any_triggered = False
+                for st in sub_times:
+                    sm = _parse_minutes(st)
+                    if s_today < sm <= e_today:
+                        triggered_node = dict(nt)
+                        triggered_node["time"] = st
+                        triggered.append(triggered_node)
+                        any_triggered = True
+                # WATER 默认 daily，保留原节点（含完整 sub_times）
+                is_daily = nt.get("repeat", "daily") != "once"
                 if is_daily:
                     remaining.append(nt)
+                elif not any_triggered:
+                    remaining.append(nt)
             else:
-                remaining.append(nt)
+                nm = _parse_minutes(nt["time"])
+                if s_today < nm <= e_today:
+                    triggered.append(nt)
+                    # daily 节点保留，次日继续提醒
+                    # WATER/MED 类型默认 daily（除非显式设为 once）；CUSTOM 按显式字段
+                    is_daily = nt.get("repeat") == "daily"
+                    if not is_daily and nt.get("type") in ("WATER", "MED") and nt.get("repeat") != "once":
+                        is_daily = True  # 兜底：WATER/MED 无 repeat 字段时默认每天
+                    if is_daily:
+                        remaining.append(nt)
+                else:
+                    remaining.append(nt)
 
         cs.schedule_nodes = remaining
         return triggered
