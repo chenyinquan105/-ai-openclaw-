@@ -45,6 +45,11 @@ _MEMORY_PATH = os.path.join(base_dir, "管家记忆.md")
 def _read_profile() -> dict:
     """从 管家记忆.md 解析四维度偏好，返回结构化字典"""
     defaults = {
+        "personal": {
+            "elder_name": "",
+            "emergency_contact_name": "",
+            "emergency_contact_phone": "",
+        },
         "taste": {
             "taste_tolerance": "无辣",
             "dietary_restrictions": [],
@@ -78,6 +83,11 @@ def _read_profile() -> dict:
 
     # 逐节解析 Markdown 表格
     for section_name, section_key, field_map in [
+        ("个人身份", "personal", {
+            "elder_name": "elder_name",
+            "emergency_contact_name": "emergency_contact_name",
+            "emergency_contact_phone": "emergency_contact_phone",
+        }),
         ("口味", "taste", {
             "taste_tolerance": "taste_tolerance",
             "dietary_restrictions": "dietary_restrictions",
@@ -205,6 +215,13 @@ def _write_profile(updates: dict) -> dict:
     md = f"""# 管家记忆 — 用户长期偏好谱
 
 > 本文件由系统自动维护，人类可读 + LLM 可解析。每次交互结束后由管家语义提取并写入。
+
+## 个人身份
+| 字段 | 值 |
+|---|---|
+| elder_name | {current['personal']['elder_name']} |
+| emergency_contact_name | {current['personal']['emergency_contact_name']} |
+| emergency_contact_phone | {current['personal']['emergency_contact_phone']} |
 
 ## 口味
 | 字段 | 值 |
@@ -2235,11 +2252,23 @@ def _process_clock_triggers(res: dict):
     """时钟事件产生后，调用 reminder_skill 处理并注入事件队列"""
     ticked = res.get("ticked_minutes_list", [])
     events = res.get("triggered_nodes", [])
+    # 读取个人信息，注入到提醒管线
+    profile = _read_profile()
+    personal = profile.get("personal", {})
+    elder_name = personal.get("elder_name", "")
+    emergency_contact_name = personal.get("emergency_contact_name", "")
+    emergency_contact_phone = personal.get("emergency_contact_phone", "")
+    if emergency_contact_name or emergency_contact_phone:
+        emergency_contact = f"{emergency_contact_name}：{emergency_contact_phone}"
+    else:
+        emergency_contact = ""
     # 始终调用 process_reminder_pipeline：
     # - 有新事件时：处理它们（响铃 + 状态初始化）
     # - 无新事件时：检查挂起事件是否超时（催促链）
     alerts = reminder_skill.process_reminder_pipeline(
-        _CLOCK_SESSION_ID, ticked, events, time_master.get_master()
+        _CLOCK_SESSION_ID, ticked, events, time_master.get_master(),
+        elder_name=elder_name,
+        emergency_contact=emergency_contact,
     )
     # 将 reminder alerts 注入到 time_master 的事件队列
     # 前端通过 /api/clock/events 拉取后会渲染为交互式 Dialog
@@ -2491,6 +2520,8 @@ def reminder_add_task():
         "note": node.get("note", ""),
         "created_at": node.get("created_at", ""),
         "ring_mode": node.get("ring_mode", "once"),
+        "dosage": node.get("dosage", ""),
+        "meal_timing": node.get("meal_timing", ""),
     }
     tm = time_master.get_master()
     cs = tm.get_or_create_session(_CLOCK_SESSION_ID)
@@ -2505,7 +2536,7 @@ def reminder_add_task():
 
 @app.route("/api/reminder/remove_task", methods=["POST"])
 def reminder_remove_task():
-    """删除指定 id 的提醒节点"""
+    """删除指定 id 的提醒节点，同步清除已触发但未消费的事件"""
     data = request.get_json(silent=True) or {}
     task_id = data.get("task_id", "")
     if not task_id:
@@ -2514,8 +2545,14 @@ def reminder_remove_task():
     cs = tm.get_session(_CLOCK_SESSION_ID)
     if not cs:
         return jsonify({"status": "SUCCESS"})
+    # 1. 从排程节点中移除
     current = [n for n in cs.schedule_nodes if n.get("id") != task_id]
     tm.set_schedule(_CLOCK_SESSION_ID, current)
+    # 2. 清除已触发但未消费的事件队列中属于该提醒的事件
+    cs.triggered_queue = [
+        e for e in cs.triggered_queue
+        if not (e.get("med_id") == task_id or e.get("task_id") == task_id or e.get("id") == task_id)
+    ]
     # 如果删除的是自定义提醒，同步持久化
     _persist_custom_reminders(current)
     return jsonify({"status": "SUCCESS"})
@@ -2613,6 +2650,31 @@ def profile_set():
         return jsonify({"status": "ERROR", "message": "缺少 updates 字段"}), 400
     profile = _write_profile(updates)
     return jsonify({"status": "SUCCESS", "profile": profile})
+
+
+@app.route("/api/parse-note", methods=["POST"])
+def parse_note():
+    """LLM 将用户自然语言中的杂项信息整理为提醒备注"""
+    data = request.get_json(silent=True) or {}
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"note": ""})
+    try:
+        import requests as _requests
+        resp = _requests.post(
+            "https://api.deepseek.com/chat/completions",
+            headers={"Authorization": f"Bearer {os.getenv('DEEPSEEK_API_KEY')}"},
+            json={
+                "model": "deepseek-chat",
+                "messages": [{"role": "user", "content": f"把以下文字整理成一句简洁的服药备注（不超过20字），直接输出结果不要解释：{text}"}],
+                "max_tokens": 40, "temperature": 0.3
+            },
+            timeout=3
+        )
+        note = resp.json()["choices"][0]["message"]["content"].strip()
+        return jsonify({"note": note})
+    except Exception:
+        return jsonify({"note": text})
 
 
 # ======================================================================

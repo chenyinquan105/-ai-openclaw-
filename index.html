@@ -197,7 +197,7 @@
  </div>
 
  <!-- 中央竖屏（整个手机作为3D卡片容器） -->
- <div class="w-full max-w-md shadow-2xl relative rounded-[40px] flex-shrink-0 border border-gray-200" id="main-phone-container" style="height: calc(100vh - 32px); max-height: 900px;">
+ <div class="w-full max-w-md shadow-2xl relative rounded-[40px] flex-shrink-0 border border-gray-200 overflow-hidden" id="main-phone-container" style="height: calc(100vh - 32px); max-height: 900px;">
   <!-- 3D 翻转卡片 -->
   <div class="w-full h-full relative" id="main-flip-card" style="transform-style: preserve-3d; transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: center center;">
 
@@ -277,7 +277,7 @@
         <div class="w-11 h-11 rounded-full bg-orange-500 text-white flex items-center justify-center text-xl shadow-md group-hover:scale-110 transition-transform">💊</div>
         <span class="text-xs font-black text-gray-800 mt-3 tracking-wide">吃药提醒</span>
        </div>
-       <div onclick="openNlReminderModal('CUSTOM')" class="bg-gradient-to-b from-purple-50/60 to-white border border-purple-200 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-purple-500 hover:shadow-md active:scale-95 transition-all group">
+       <div onclick="butlerAddReminder('CUSTOM')" class="bg-gradient-to-b from-purple-50/60 to-white border border-purple-200 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer hover:border-purple-500 hover:shadow-md active:scale-95 transition-all group">
         <div class="w-11 h-11 rounded-full bg-gray-700 text-white flex items-center justify-center text-xl shadow-md group-hover:scale-110 transition-transform">📊</div>
         <span class="text-xs font-black text-gray-800 mt-3 tracking-wide">自定义提醒</span>
        </div>
@@ -373,23 +373,22 @@
   </div>
  </div>
 
- <!-- 自然语言提醒弹窗 -->
- <div id="nl-reminder-modal" class="absolute inset-0 flex items-center justify-center z-[66] hidden" style="background: rgba(0,0,0,0.5);">
-  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 animate-fade-in" style="max-height:92vh; overflow-y:auto;">
+ <!-- 统一提醒设置弹窗 -->
+ <div id="nl-reminder-modal" class="absolute inset-0 flex items-center justify-center z-[66] hidden" style="background: rgba(0,0,0,0.5); border-radius: 40px;">
+  <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full p-6 animate-fade-in" style="max-height:92vh; overflow-y:auto;" onclick="event.stopPropagation()">
     <div class="text-center mb-4">
-      <div id="nl-reminder-icon" class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-        <span class="text-3xl">💧</span>
+      <div id="reminder-modal-icon" class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3">
+        <span id="reminder-modal-emoji" class="text-3xl">💧</span>
       </div>
-      <h3 id="nl-reminder-title" class="text-lg font-black text-gray-900">设置喝水提醒</h3>
-      <p class="text-xs text-gray-500 mt-1">用自然语言告诉我你的提醒规则</p>
+      <h3 id="reminder-modal-title" class="text-lg font-black text-gray-900">设置提醒</h3>
     </div>
+    <!-- 时间 -->
     <div class="mb-3">
-      <textarea id="nl-reminder-input" rows="3" placeholder="例如：每天早上八点到晚上十点，每隔一个小时提醒我喝一次水"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();parseNlReminder();}else if(event.key==='Escape'){closeNlReminderModal();}"
-        class="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-none transition"></textarea>
+      <p class="text-xs font-bold text-gray-500 mb-2">⏰ 提醒时间</p>
+      <input id="reminder-time-val" type="text" placeholder="如 08:00、晚上8点、18" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:border-blue-400 focus:outline-none transition" onblur="autoFixTimeInput(this)">
     </div>
-    <!-- 药品图片上传区 (仅 MED 类型显示) -->
-    <div id="nl-med-images-wrap" class="mb-3 hidden">
+    <!-- 药品图片 (仅MED) -->
+    <div id="reminder-med-images-wrap" class="mb-3 hidden">
       <p class="text-xs font-bold text-gray-500 mb-2">📷 药品照片（可选，最多3张）</p>
       <div id="nl-med-images-grid" class="flex gap-2 flex-wrap">
        <div id="nl-med-add-btn" class="w-16 h-16 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center cursor-pointer hover:border-yellow-400 hover:bg-yellow-50 transition flex-shrink-0" onclick="document.getElementById('nl-med-file-input').click()" title="上传照片">
@@ -398,23 +397,49 @@
       </div>
       <input type="file" id="nl-med-file-input" accept="image/*" multiple class="hidden" onchange="handleMedImageSelect(event)">
     </div>
-    <div id="nl-reminder-preview" class="mb-3 hidden bg-gray-50 rounded-2xl p-3 text-xs text-gray-600"></div>
-    <!-- 重复选项 (解析成功后展示) -->
-    <div id="nl-repeat-options" class="mb-3 hidden">
-      <p class="text-xs font-bold text-gray-500 mb-2">🔁 重复方式</p>
-      <div class="space-y-1.5" id="nl-repeat-radios"></div>
+    <!-- 剂量 + 饭前饭后 (仅MED) -->
+    <div id="reminder-med-detail" class="mb-3 hidden">
+      <div class="flex gap-2">
+        <div class="flex-1">
+          <p class="text-xs font-bold text-gray-500 mb-1">💊 每次剂量</p>
+          <input id="reminder-dosage" type="text" placeholder="如：2粒" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:border-blue-400 focus:outline-none transition">
+        </div>
+        <div class="flex-1">
+          <p class="text-xs font-bold text-gray-500 mb-1">🍽️ 服用时机</p>
+          <select id="reminder-meal-timing" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:border-blue-400 focus:outline-none transition">
+            <option value="">不限</option>
+            <option value="饭前">饭前服用</option>
+            <option value="饭后">饭后服用</option>
+          </select>
+        </div>
+      </div>
     </div>
-    <!-- 响铃模式 (仅MED类型，解析成功后展示) -->
-    <div id="nl-ring-options" class="mb-3 hidden">
+    <!-- 重复方式 -->
+    <div class="mb-3">
+      <p class="text-xs font-bold text-gray-500 mb-2">🔁 重复方式</p>
+      <div class="flex gap-2" id="reminder-repeat-opts">
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="daily" checked class="sr-only">每天</label>
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="weekly" class="sr-only">每周</label>
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="once" class="sr-only">仅一次</label>
+      </div>
+    </div>
+    <!-- 响铃模式 (仅MED) -->
+    <div id="reminder-ring-opts" class="mb-3">
       <p class="text-xs font-bold text-gray-500 mb-2">🔔 响铃模式</p>
-      <div class="space-y-1.5" id="nl-ring-radios"></div>
+      <div class="flex gap-2">
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="once" checked class="sr-only">响铃一次</label>
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="triple" class="sr-only">响铃三次</label>
+        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="continuous" class="sr-only">持续响铃</label>
+      </div>
+    </div>
+    <!-- 备注 -->
+    <div class="mb-3">
+      <p class="text-xs font-bold text-gray-500 mb-2">📝 备注（选填）</p>
+      <input id="reminder-note" type="text" placeholder="例如：吃药前量血压" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:border-blue-400 focus:outline-none transition">
     </div>
     <div class="flex space-x-3">
-      <button onclick="closeNlReminderModal()" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition text-sm">返回</button>
-      <button id="nl-reminder-submit-btn" onclick="parseNlReminder()" class="flex-1 bg-blue-500 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition text-sm shadow-md">解析并创建</button>
-    </div>
-    <div class="mt-3 text-center">
-      <span onclick="closeNlReminderModal();reminderOpenAdd(window._nlReminderType||'WATER')" class="text-xs text-gray-400 underline cursor-pointer hover:text-gray-600">或选择预设时间</span>
+      <button onclick="closeReminderModal()" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition text-sm">取消</button>
+      <button id="reminder-create-btn" onclick="confirmReminderCreate()" class="flex-1 bg-blue-500 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition text-sm shadow-md">确认创建</button>
     </div>
   </div>
  </div>
@@ -2877,7 +2902,7 @@ function testReminderPopup() {
   console.log('[TEST] dlg exists:', !!dlg, 'display:', dlg ? dlg.style.display : 'N/A');
   var testInfo = {
     type: 'MED_RINGING_ALERT',
-    msg: '🧪 这是一条测试提醒！王奶奶，该服用【测试药】了。',
+    msg: '🧪 这是一条测试提醒！该服用【测试药】了。',
     medId: 'TEST_' + Date.now(),
     medImages: [],
     ringMode: 'once'
@@ -2947,17 +2972,17 @@ function _updateMedDialogInPlace(type, msg, medImages) {
 
   switch (type) {
     case 'MED_URGE_LIGHT':
-      if (titleEl) titleEl.textContent = '⏰ 服药提醒（第1次催促）';
+      if (titleEl) titleEl.textContent = '🔔 第2次提醒';
       if (iconEl) { iconEl.innerHTML = '<span style="font-size:28px;">🔔</span>'; iconEl.style.background = '#fef3c7'; }
       if (card) { card.style.background = '#ffffff'; card.style.border = '2px solid #f59e0b'; }
       break;
     case 'MED_URGE_HEAVY':
-      if (titleEl) titleEl.textContent = '🚨 服药超时（第2次催促）';
+      if (titleEl) titleEl.textContent = '⚠️ 第2次提醒';
       if (iconEl) { iconEl.innerHTML = '<span style="font-size:28px;">⚠️</span>'; iconEl.style.background = '#ffedd5'; }
       if (card) { card.style.background = '#ffffff'; card.style.border = '2px solid #ef4444'; }
       break;
     case 'MED_ESCALATION_CRITICAL':
-      if (titleEl) titleEl.textContent = '🆘 紧急联络已触发';
+      if (titleEl) titleEl.textContent = '🆘 紧急联络';
       if (iconEl) { iconEl.innerHTML = '<span style="font-size:28px;">🆘</span>'; iconEl.style.background = '#fee2e2'; }
       if (card) { card.style.background = '#fef2f2'; card.style.border = '2px solid #ef4444'; }
       break;
@@ -2987,7 +3012,7 @@ function _updateMedDialogInPlace(type, msg, medImages) {
   }
 }
 
-/** 触发紧急联络 */
+/** 触发紧急联络（动态读取管家记忆中的紧急联系人） */
 function _triggerEmergencyContact() {
   _medEscalationLevel = 0;
   _medPendingInfo = null;
@@ -3004,11 +3029,28 @@ function _triggerEmergencyContact() {
   iconEl.innerHTML = '<span style="font-size:28px;">🆘</span>';
   iconEl.style.background = '#fee2e2';
   titleEl.textContent = '已自动联系紧急联系人';
-  bodyEl.innerHTML = '<div style="text-align:center;line-height:1.8;">' +
-    '<p style="font-size:16px;font-weight:700;margin-bottom:8px;">家属张小明</p>' +
-    '<p style="font-size:18px;color:#2563eb;font-weight:900;margin-bottom:12px;">📞 13800000000</p>' +
-    '<p style="color:#6b7280;">由于您超过15分钟未响应服药提醒，</p>' +
-    '<p style="color:#6b7280;">系统已自动通知您的紧急联系人。</p></div>';
+
+  // 从管家记忆读取紧急联系人，兜底占位符
+  fetch(API_BASE + '/api/profile/get')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var p = (data && data.profile && data.profile.personal) ? data.profile.personal : {};
+      var name = p.emergency_contact_name || '【紧急联系人姓名（需要在偏好设置里完善）】';
+      var phone = p.emergency_contact_phone || '【紧急联系人电话（需要在偏好设置里完善）】';
+      bodyEl.innerHTML = '<div style="text-align:center;line-height:1.8;">' +
+        '<p style="font-size:16px;font-weight:700;margin-bottom:8px;">' + name + '</p>' +
+        '<p style="font-size:18px;color:#2563eb;font-weight:900;margin-bottom:12px;">📞 ' + phone + '</p>' +
+        '<p style="color:#6b7280;">由于您超过15分钟未响应服药提醒，</p>' +
+        '<p style="color:#6b7280;">系统已自动通知您的紧急联系人。</p></div>';
+    })
+    .catch(function() {
+      bodyEl.innerHTML = '<div style="text-align:center;line-height:1.8;">' +
+        '<p style="font-size:16px;font-weight:700;margin-bottom:8px;">【紧急联系人姓名（需要在偏好设置里完善）】</p>' +
+        '<p style="font-size:18px;color:#2563eb;font-weight:900;margin-bottom:12px;">📞 【紧急联系人电话（需要在偏好设置里完善）】</p>' +
+        '<p style="color:#6b7280;">由于您超过15分钟未响应服药提醒，</p>' +
+        '<p style="color:#6b7280;">系统已自动通知您的紧急联系人。</p></div>';
+    });
+
   actionsEl.innerHTML = '';
   closeWrap.style.display = 'block';
   dlg.style.display = 'flex';
@@ -3040,21 +3082,26 @@ function _openMedDialog(info) {
   var card = document.getElementById('reminder-dialog-card');
   var imgTop = document.getElementById('reminder-images-top');
 
-  if (level >= 3) {
+  if (level >= 4) {
     if (card) { card.style.background = '#fef2f2'; card.style.border = '2px solid #ef4444'; }
-    iconEl.innerHTML = '<span style="font-size:28px;">🚨</span>';
+    iconEl.innerHTML = '<span style="font-size:28px;">🆘</span>';
     iconEl.style.background = '#fee2e2';
-    titleEl.textContent = '⚠️ 最终服药警告';
-  } else if (level >= 2) {
-    if (card) { card.style.background = '#ffffff'; card.style.border = '2px solid #f59e0b'; }
+    titleEl.textContent = '🆘 紧急联络';
+  } else if (level >= 3) {
+    if (card) { card.style.background = '#ffffff'; card.style.border = '2px solid #ef4444'; }
     iconEl.innerHTML = '<span style="font-size:28px;">⚠️</span>';
     iconEl.style.background = '#ffedd5';
-    titleEl.textContent = '⏰ 服药超时提醒';
+    titleEl.textContent = '⚠️ 第2次提醒';
+  } else if (level >= 2) {
+    if (card) { card.style.background = '#ffffff'; card.style.border = '2px solid #f59e0b'; }
+    iconEl.innerHTML = '<span style="font-size:28px;">🔔</span>';
+    iconEl.style.background = '#fef3c7';
+    titleEl.textContent = '🔔 第2次提醒';
   } else {
     if (card) { card.style.background = '#ffffff'; card.style.border = 'none'; }
     iconEl.innerHTML = '<span style="font-size:28px;">💊</span>';
     iconEl.style.background = '#d1fae5';
-    titleEl.textContent = '💊 服药时间到！';
+    titleEl.textContent = '💊 服药提醒';
   }
 
   if (info.medImages && info.medImages.length > 0) {
@@ -3206,72 +3253,7 @@ function reminderRefreshList() {
     .catch(function() { /* 静默失败 */ });
 }
 
-/**
- * 打开添加提醒的简单弹窗（二级弹窗复用）
- */
-function reminderOpenAdd(type) {
-  var label = type === 'WATER' ? '喝水' : '吃药';
-  var emoji = type === 'WATER' ? '💧' : '💊';
-  var timeOptions = [
-    { value: '08:00', emoji: '🌅', title: '08:00', subtitle: '早上' },
-    { value: '10:00', emoji: '☀️', title: '10:00', subtitle: '上午' },
-    { value: '12:00', emoji: '🌞', title: '12:00', subtitle: '中午' },
-    { value: '14:00', emoji: '🌤️', title: '14:00', subtitle: '下午' },
-    { value: '16:00', emoji: '🌥️', title: '16:00', subtitle: '午后' },
-    { value: '18:00', emoji: '🌆', title: '18:00', subtitle: '傍晚' },
-    { value: '20:00', emoji: '🌙', title: '20:00', subtitle: '晚上' },
-    { value: '22:00', emoji: '🌃', title: '22:00', subtitle: '睡前' },
-    { value: 'custom', emoji: '✏️', title: '自定义时间', subtitle: '手动输入 HH:MM' },
-  ];
-  showSecondModal(
-    emoji + ' 添加' + label + '提醒',
-    '选择需要设置的时间点：',
-    timeOptions,
-    function(val, name) {
-      if (val === 'custom') {
-        var customTime = prompt('请输入时间 (HH:MM)，如 07:30：', '07:30');
-        if (!customTime || !/^\d{1,2}:\d{2}$/.test(customTime)) return;
-        // 补零
-        var parts = customTime.split(':');
-        customTime = String(parts[0]).padStart(2, '0') + ':' + String(parts[1]).padStart(2, '0');
-        val = customTime;
-        name = customTime;
-      }
-      var node = {
-        id: type + '_' + Date.now(),
-        type: type,
-        time: val,
-        state: 'pending',
-        label: label,
-        repeat: 'daily'
-      };
-      fetch(API_BASE + '/api/reminder/add_task', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({node: node})
-      }).then(function(r) { return r.json(); }).then(function(data) {
-        if (data.status === 'SUCCESS') {
-          // 从服务端同步完整排程节点，避免 stripped 格式覆盖
-          fetch(API_BASE + '/api/reminder/tasks').then(function(r2) { return r2.json(); }).then(function(td) {
-            var fullNodes = (td.tasks || []).map(function(t) {
-              return {time: t.time, type: t.type, id: t.id, repeat: t.repeat || 'daily', label: t.label || label, memo: (t.label || label) + '提醒', action: (t.label || label) + '提醒', duration_minutes: 0};
-            });
-            window._clockScheduleNodes = fullNodes;
-            if (fullNodes.length > 0) {
-              clockFetch('POST', '/api/clock/set_schedule', {nodes: fullNodes});
-            }
-          }).catch(function() {});
-          toast('✅ ' + label + '提醒 (' + val + ') 已添加');
-          reminderRefreshList();
-        } else {
-          toast('❌ 添加失败: ' + (data.message || '未知错误'));
-        }
-      }).catch(function() {
-        toast('❌ 网络错误');
-      });
-    }
-  );
-}
+
 
 /**
  * 删除指定 id 的提醒
@@ -3647,9 +3629,13 @@ function openOnboardingModal(mode, existingProfile) {
   if (existing) existing.remove();
 
   var pf = existingProfile || {};
+  var personal = pf.personal || {};
   var taste = pf.taste || {};
   var commute = pf.commute || {};
   var budget = pf.budget || {};
+  var delder = personal.elder_name || '';
+  var demerg_name = personal.emergency_contact_name || '';
+  var demerg_phone = personal.emergency_contact_phone || '';
 
   var dtol = taste.taste_tolerance || '无辣';
   var ddiet = taste.dietary_restrictions || [];
@@ -3713,6 +3699,13 @@ function openOnboardingModal(mode, existingProfile) {
     '</div>' +
   '</div>';
 
+  // --- 👤 个人身份（最上方） ---
+  var personalSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">👤 个人身份</h4>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">对您的称呼</p>' +
+    '<input id="onb_elder" type="text" placeholder="例如 王奶奶" value="' + delder + '" style="width:100%;box-sizing:border-box;border:1.5px solid #e5e7eb;border-radius:10px;padding:8px 12px;font-size:12px;color:#374151;outline:none;background:white;margin-bottom:8px;" onfocus="this.style.borderColor=\'#facc15\'" onblur="this.style.borderColor=\'#e5e7eb\'">' +
+  '</div>';
+
   // --- 🚶 通勤 ---
   var commuteSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
     '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">🚶 通勤偏好</h4>' +
@@ -3752,6 +3745,15 @@ function openOnboardingModal(mode, existingProfile) {
     '</div>' +
   '</div>';
 
+  // --- 📞 紧急联系人（最下方） ---
+  var emergencySec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">📞 紧急联系人</h4>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">联系人姓名</p>' +
+    '<input id="onb_emerg_name" type="text" placeholder="例如 张小明" value="' + demerg_name + '" style="width:100%;box-sizing:border-box;border:1.5px solid #e5e7eb;border-radius:10px;padding:8px 12px;font-size:12px;color:#374151;outline:none;background:white;margin-bottom:8px;" onfocus="this.style.borderColor=\'#facc15\'" onblur="this.style.borderColor=\'#e5e7eb\'">' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">联系人电话</p>' +
+    '<input id="onb_emerg_phone" type="tel" placeholder="例如 13800000000" value="' + demerg_phone + '" style="width:100%;box-sizing:border-box;border:1.5px solid #e5e7eb;border-radius:10px;padding:8px 12px;font-size:12px;color:#374151;outline:none;background:white;" onfocus="this.style.borderColor=\'#facc15\'" onblur="this.style.borderColor=\'#e5e7eb\'">' +
+  '</div>';
+
   // --- 顶部提示（仅 init） ---
   var topHint = '';
   if (isInit) {
@@ -3773,7 +3775,7 @@ function openOnboardingModal(mode, existingProfile) {
       '</div>' +
       '<!-- 可滚动内容 -->' +
       '<div style="flex:1;overflow-y:auto;padding:0 20px 20px 20px;">' +
-        tasteSec + commuteSec + budgetSec +
+        personalSec + tasteSec + commuteSec + budgetSec + emergencySec +
       '</div>' +
       '<!-- 底部固定按钮 -->' +
       '<div style="flex-shrink:0;padding:16px 20px;border-top:1px solid #f3f4f6;">' +
@@ -3793,7 +3795,7 @@ function openOnboardingModal(mode, existingProfile) {
         '</div>' +
         '<!-- 可滚动内容 -->' +
         '<div style="flex:1;overflow-y:auto;padding:0 20px 20px 20px;">' +
-          tasteSec + commuteSec + budgetSec +
+          personalSec + tasteSec + commuteSec + budgetSec + emergencySec +
         '</div>' +
         '<!-- 底部按钮 -->' +
         '<div style="flex-shrink:0;padding:16px 20px;border-top:1px solid #f3f4f6;">' +
@@ -3925,7 +3927,20 @@ function submitOnboarding(isInit) {
   var rateEl = document.querySelector('input[name="onb_rate"]:checked');
   var rateVal = rateEl ? parseFloat(rateEl.value) : 4.0;
 
+  // --- 收集个人身份 ---
+  var elderEl = document.getElementById('onb_elder');
+  var elderVal = elderEl ? elderEl.value.trim() : '';
+  var emergNameEl = document.getElementById('onb_emerg_name');
+  var emergNameVal = emergNameEl ? emergNameEl.value.trim() : '';
+  var emergPhoneEl = document.getElementById('onb_emerg_phone');
+  var emergPhoneVal = emergPhoneEl ? emergPhoneEl.value.trim() : '';
+
   var updates = {
+    personal: {
+      elder_name: elderVal,
+      emergency_contact_name: emergNameVal,
+      emergency_contact_phone: emergPhoneVal
+    },
     taste: {
       taste_tolerance: tolVal,
       dietary_restrictions: dietVal,
@@ -4285,70 +4300,58 @@ function toast(msg) {
   setTimeout(function() { el.remove(); }, 2500);
 }
 
-var _nlReminderType = 'WATER';
-var _nlParsedPreview = null;
+var _reminderType = 'WATER';
+
 var _medImages = [];            // 药品图片 [{base64, name}]
-var _nlSelectedRepeat = 'daily'; // 用户选择的重复模式
-var _nlSelectedRingMode = 'once'; // 响铃模式
 
 /** 打开自然语言提醒输入弹窗 */
-function openNlReminderModal(type) {
-  _nlReminderType = type;
-  _nlParsedPreview = null;
+function openReminderModal(type) {
+  _reminderType = type;
   _medImages = [];
-  _nlSelectedRepeat = 'daily';
-  _nlSelectedRingMode = 'once';
-  document.getElementById('nl-reminder-input').value = '';
-  document.getElementById('nl-reminder-preview').classList.add('hidden');
-  document.getElementById('nl-reminder-preview').innerHTML = '';
-  document.getElementById('nl-repeat-options').classList.add('hidden');
-  document.getElementById('nl-repeat-radios').innerHTML = '';
-  document.getElementById('nl-ring-options').classList.add('hidden');
-  document.getElementById('nl-ring-radios').innerHTML = '';
-  var submitBtn = document.getElementById('nl-reminder-submit-btn');
-  submitBtn.textContent = '解析并创建';
-  submitBtn.className = 'flex-1 bg-blue-500 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition text-sm shadow-md';
 
-  var imgWrap = document.getElementById('nl-med-images-wrap');
-  imgWrap.classList.toggle('hidden', type !== 'MED');
-  if (type === 'MED') resetMedImageGrid();
-
-  var iconWrap = document.getElementById('nl-reminder-icon');
-  var iconSpan = iconWrap.querySelector('span');
-  var titleEl = document.getElementById('nl-reminder-title');
-  var inputEl = document.getElementById('nl-reminder-input');
+  var iconEl = document.getElementById('reminder-modal-icon');
+  var emojiEl = document.getElementById('reminder-modal-emoji');
+  var titleEl = document.getElementById('reminder-modal-title');
+  var medWrap = document.getElementById('reminder-med-images-wrap');
+  var medDetail = document.getElementById('reminder-med-detail');
+  var ringOpts = document.getElementById('reminder-ring-opts');
   if (type === 'WATER') {
-    iconWrap.className = 'w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3';
-    iconSpan.textContent = '💧';
-    titleEl.textContent = '设置喝水提醒';
-    inputEl.placeholder = '例如：每天早上八点到晚上十点，每隔一个小时提醒我喝一次水';
-    submitBtn.className = 'flex-1 bg-blue-500 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition text-sm shadow-md';
+    iconEl.className = 'w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3';
+    emojiEl.textContent = '💧'; titleEl.textContent = '设置喝水提醒';
+    medWrap.classList.add('hidden'); medDetail.classList.add('hidden'); ringOpts.classList.add('hidden');
   } else if (type === 'MED') {
-    iconWrap.className = 'w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3';
-    iconSpan.textContent = '💊';
-    titleEl.textContent = '设置吃药提醒';
-    inputEl.placeholder = '例如：每天早上八点提醒吃降压药';
-    submitBtn.className = 'flex-1 bg-orange-500 text-white font-bold py-3 rounded-2xl hover:bg-orange-600 transition text-sm shadow-md';
+    iconEl.className = 'w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3';
+    emojiEl.textContent = '💊'; titleEl.textContent = '设置吃药提醒';
+    medWrap.classList.remove('hidden'); medDetail.classList.remove('hidden'); ringOpts.classList.remove('hidden');
+    resetMedImageGrid();
   } else {
-    iconWrap.className = 'w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3';
-    iconSpan.textContent = '📝';
-    titleEl.textContent = '设置自定义提醒';
-    inputEl.placeholder = '例如：明天下午3点提醒我去上课 / 每周三晚上8点提醒我浇花';
-    submitBtn.className = 'flex-1 bg-purple-500 text-white font-bold py-3 rounded-2xl hover:bg-purple-600 transition text-sm shadow-md';
+    iconEl.className = 'w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3';
+    emojiEl.textContent = '📝'; titleEl.textContent = '设置自定义提醒';
+    medWrap.classList.add('hidden'); medDetail.classList.add('hidden'); ringOpts.classList.remove('hidden');
   }
-  document.getElementById('nl-reminder-modal').classList.remove('hidden');
+  // 重置表单
+  document.getElementById('reminder-time-val').value = '';
+  document.getElementById('reminder-dosage').value = '';
+  document.getElementById('reminder-meal-timing').value = '';
+  document.getElementById('reminder-note').value = '';
+  document.querySelector('input[name="rem-repeat"][value="daily"]').checked = true;
+  document.querySelector('input[name="rem-ring"][value="once"]').checked = true;
+
+  // 确保弹窗挂载在手机容器内（而非 body）
+  var modal = document.getElementById('nl-reminder-modal');
+  var phone = document.getElementById('main-phone-container');
+  if (modal && phone && modal.parentElement !== phone) {
+    phone.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
 }
 
-/** 关闭自然语言弹窗 */
-function closeNlReminderModal() {
+function closeReminderModal() {
   document.getElementById('nl-reminder-modal').classList.add('hidden');
-  document.getElementById('nl-reminder-input').value = '';
-  document.getElementById('nl-reminder-preview').classList.add('hidden');
-  document.getElementById('nl-repeat-options').classList.add('hidden');
-  document.getElementById('nl-ring-options').classList.add('hidden');
   _medImages = [];
-  _nlParsedPreview = null;
 }
+
+
 
 /** 重置药品图片网格 */
 function resetMedImageGrid() {
@@ -4465,7 +4468,7 @@ function renderRingOptions() {
     { value: 'triple', label: '三次响铃', desc: '弹窗时叮咚三声' },
     { value: 'continuous', label: '持续响铃', desc: '每秒叮咚直到确认' },
   ];
-  _nlSelectedRingMode = 'once';
+  
   container.innerHTML = options.map(function(o) {
     var checked = o.value === 'once' ? ' border-yellow-400 bg-yellow-50' : ' border-gray-200';
     return '<div class="flex items-center gap-2 p-2 rounded-xl border cursor-pointer hover:border-yellow-300 transition' + checked + '" onclick="selectRingOption(\'' + o.value + '\', this)" data-value="' + o.value + '">' +
@@ -4541,120 +4544,6 @@ function _extractLabel(text, type) {
 }
 
 // ===== 核心解析函数 =====
-function parseNlReminder() {
-  if (_nlParsedPreview) { confirmNlReminderCreate(); return; }
-  var input = document.getElementById('nl-reminder-input').value.trim();
-  if (!input) { toast('⚠️ 请输入提醒规则'); return; }
-  var type = _nlReminderType;
-  var previewDiv = document.getElementById('nl-reminder-preview');
-
-  if (type === 'WATER' || type === 'MED') {
-    var timeRange = parseChineseTimeRange(input);
-    var intervalMin = parseInterval(input);
-    var typeLabel = type === 'WATER' ? '喝水' : '吃药';
-    if (timeRange && intervalMin) {
-      var slots = generateTimeSlots(timeRange.startHour, timeRange.endHour, intervalMin);
-      if (slots.length === 0) { previewDiv.innerHTML = '<div class="text-red-500">⚠️ 无法生成有效提醒时间点</div>'; previewDiv.classList.remove('hidden'); return; }
-      if (slots.length > 48) { previewDiv.innerHTML = '<div class="text-red-500">⚠️ 提醒过于频繁（超过48次/天）</div>'; previewDiv.classList.remove('hidden'); return; }
-      _nlParsedPreview = { type: type, timeRange: timeRange, intervalMin: intervalMin, slots: slots, label: typeLabel, isRange: true };
-      var timeStr = String(timeRange.startHour).padStart(2,'0') + ':00 ~ ' + String(timeRange.endHour).padStart(2,'0') + ':00';
-      previewDiv.innerHTML = '<div class="space-y-1.5"><p class="font-bold text-gray-700 mb-1">📋 解析结果预览</p>' +
-        '<p>🏷️ 类型：<b>' + typeLabel + '提醒</b></p><p>⏰ 时间范围：<b>' + timeStr + '</b></p>' +
-        '<p>🔄 间隔：<b>每' + intervalMin + '分钟</b></p><p>📌 共 <b>' + slots.length + '</b> 个时间点</p>' +
-        '<p class="text-gray-500">' + slots.slice(0,8).join('、') + (slots.length > 8 ? '…' : '') + '</p></div>';
-      previewDiv.classList.remove('hidden');
-      renderRepeatOptions('daily');
-      if (_nlReminderType === 'MED') renderRingOptions();
-      setSubmitToConfirm(); return;
-    }
-  }
-
-  var dateStr = _extractDate(input);
-  var repeatStr = _extractRepeat(input);
-  var singleTime = parseSingleTime(input);
-  var label = _extractLabel(input, type);
-  var weekday = null;
-  if (repeatStr === 'weekly') {
-    var wkM = input.match(/每周\s*([一二三四五六七日天])/);
-    if (wkM) { var wkMap2 = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'日':0,'七':0,'天':0}; weekday = wkMap2[wkM[1]]; }
-  }
-  if (!repeatStr) { repeatStr = dateStr ? 'once' : (type === 'WATER' || type === 'MED' ? 'daily' : 'once'); }
-
-  if (singleTime === null) {
-    if (type === 'WATER' || type === 'MED') {
-      previewDiv.innerHTML = '<div class="text-red-500">⚠️ 未能识别时间，请尝试如"每天早上八点"或"中午十二点"</div>';
-      previewDiv.classList.remove('hidden'); return;
-    }
-    previewDiv.innerHTML = '<div class="text-red-500">⚠️ 未能识别时间，请尝试如"下午3点""明天早上9点"等表述</div>';
-    previewDiv.classList.remove('hidden'); return;
-  }
-
-  var timeStr = String(singleTime).padStart(2,'0') + ':00';
-  _nlParsedPreview = { type: type, time: timeStr, date: dateStr, repeat: repeatStr, label: label, weekday: weekday, slots: [timeStr], isRange: false };
-
-  var repeatLabel = { once: '仅一次', daily: '每天', weekly: '每周' + (weekday ? '（周' + ['日','一','二','三','四','五','六'][weekday] + '）' : '') }[repeatStr] || '每天';
-  var emoji = type === 'WATER' ? '💧' : (type === 'MED' ? '💊' : '📝');
-  previewDiv.innerHTML = '<div class="space-y-1.5"><p class="font-bold text-gray-700 mb-1">📋 解析结果预览</p>' +
-    '<p>🏷️ 类型：<b>' + emoji + ' ' + label + '</b></p>' +
-    '<p>⏰ 时间：<b>' + timeStr + '</b>' + (dateStr ? '（' + dateStr + '）' : '') + '</p>' +
-    '<p>🔁 重复：<b>' + repeatLabel + '</b></p></div>';
-  previewDiv.classList.remove('hidden');
-  renderRepeatOptions(repeatStr, weekday);
-  if (_nlReminderType === 'MED') renderRingOptions();
-  setSubmitToConfirm();
-}
-
-function setSubmitToConfirm() {
-  var btn = document.getElementById('nl-reminder-submit-btn');
-  btn.textContent = '确认创建';
-  btn.className = 'flex-1 bg-green-500 text-white font-bold py-3 rounded-2xl hover:bg-green-600 transition text-sm shadow-md';
-}
-
-function confirmNlReminderCreate() {
-  if (!_nlParsedPreview) return;
-  var p = _nlParsedPreview;
-  closeNlReminderModal();
-  var type = p.type;
-  var label = p.label || (type === 'WATER' ? '喝水' : (type === 'MED' ? '吃药' : '自定义提醒'));
-  var slots = p.slots;
-  var repeatVal = _nlSelectedRepeat || p.repeat || 'daily';
-  var dateVal = p.date || '';
-  var ringMode = _nlSelectedRingMode || 'once';
-  var created = 0, errors = [], total = slots.length;
-  var images = _medImages.map(function(im) { return im.base64; });
-
-  function createOne(idx) {
-    if (idx >= slots.length) {
-      fetch(API_BASE + '/api/reminder/tasks').then(function(r) { return r.json(); }).then(function(td) {
-        var fullNodes = (td.tasks || []).map(function(t) {
-          return {time: t.time, type: t.type, id: t.id, repeat: t.repeat || 'daily', label: t.label || label, memo: (t.label || label) + '提醒', action: (t.label || label) + '提醒', duration_minutes: 0};
-        });
-        window._clockScheduleNodes = fullNodes;
-        if (fullNodes.length > 0) { clockFetch('POST', '/api/clock/set_schedule', {nodes: fullNodes}); }
-        butlerRenderContent();
-      }).catch(function() { butlerRenderContent(); });
-      _nlParsedPreview = null; _medImages = [];
-      if (errors.length > 0) { toast('⚠️ ' + created + '/' + total + ' 个提醒已创建，' + errors.length + ' 个失败'); }
-      else if (total === 1) { toast('✅ ' + label + '提醒已创建（' + (repeatVal === 'once' ? '单次' : repeatVal === 'weekly' ? '每周' : '每天') + '）'); }
-      else { toast('✅ ' + label + '提醒已创建（共' + total + '个时间点）'); }
-      return;
-    }
-    var timeVal = slots[idx];
-    var node = {
-      id: type + '_nl_' + Date.now() + '_' + idx, type: type, time: timeVal, state: 'pending', label: label,
-      repeat: repeatVal, date: dateVal, ring_mode: ringMode,
-      images: images, note: '', created_at: new Date().toISOString()
-    };
-    fetch(API_BASE + '/api/reminder/add_task', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({node: node})
-    }).then(function(r) { return r.json(); }).then(function(data) {
-      if (data.status === 'SUCCESS') { created++; } else { errors.push(timeVal); }
-    }).catch(function() { errors.push(timeVal); }).finally(function() { createOne(idx + 1); });
-  }
-  createOne(0);
-}
-
-// ===== NL解析工具函数 =====
 function _parseChineseHour(token) {
   var t = token.trim();
   if (/凌晨/.test(t)) { var m = t.match(/(\d+)/); return m ? parseInt(m[1]) : 0; }
@@ -4801,8 +4690,86 @@ function clearAllReminders() {
 }
 
 function butlerAddReminder(type) {
-  // 打开自然语言输入弹窗
-  openNlReminderModal(type);
+  openReminderModal(type);
+}
+
+/** 时间输入框自动补全：晚上8点→20:00, 8→08:00, 18→18:00, 830→08:30 */
+function autoFixTimeInput(el) {
+  var v = (el.value || '').trim();
+  if (!v || /^\d{1,2}:\d{2}$/.test(v)) return;
+
+  var h = 0, m = 0, matched = false;
+
+  // 中文时段 + 数字
+  var m1 = v.match(/(凌晨|早上|早晨|上午|中午|正午|下午|傍晚|黄昏|晚上|夜里|夜晚|每晚|睡前)\s*(\d{1,2})\s*[点时：:]?\s*(\d{0,2})/);
+  if (m1) {
+    var period = m1[1]; h = parseInt(m1[2]); m = parseInt(m1[3] || '0'); matched = true;
+    if (/凌晨/.test(period)) { /* 凌晨2点→02:00 */ }
+    else if (/中午|正午/.test(period)) { h = 12; }
+    else if (/下午|傍晚|黄昏|晚上|夜里|夜晚|每晚|睡前/.test(period)) { if (h < 12) h += 12; }
+    // 早上/早晨/上午 → h stays as-is
+  }
+  // 数字+点
+  if (!matched) {
+    var m2 = v.match(/(\d{1,2})\s*[：:点]\s*(\d{0,2})/);
+    if (m2) { h = parseInt(m2[1]); m = parseInt(m2[2] || '0'); if (h <= 6) h += 12; matched = true; }
+  }
+  // 纯数字
+  if (!matched && /^\d+$/.test(v.replace(/\s/g, ''))) {
+    var n = v.replace(/\s/g, '');
+    if (n.length <= 2) { h = parseInt(n); if (h < 6) h += 12; if (h > 23) h = 23; m = 0; }
+    else if (n.length === 3) { h = parseInt(n[0]); m = parseInt(n.slice(1)); }
+    else if (n.length === 4) { h = parseInt(n.slice(0,2)); m = parseInt(n.slice(2)); }
+    if (h > 23) h = 23; if (m > 59) m = 59;
+    matched = true;
+  }
+
+  if (matched) {
+    el.value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  }
+}
+
+function confirmReminderCreate(presetTime) {
+  var type = _reminderType || 'WATER';
+  var timeEl = document.getElementById('reminder-time-val');
+  if (timeEl) { autoFixTimeInput(timeEl); }
+  var timeVal = presetTime || (timeEl?.value || '').trim();
+  if (!timeVal) { toast('⚠️ 请输入提醒时间'); return; }
+  if (!/^\d{1,2}:\d{2}$/.test(timeVal)) {
+    var parts = timeVal.split(/[：:]/);
+    if (parts.length === 2) timeVal = parts[0].padStart(2,'0') + ':' + parts[1].padStart(2,'0');
+    else { toast('⚠️ 时间格式错误，请用 HH:MM'); return; }
+  }
+  var labelMap = {WATER:'喝水', MED:'吃药', CUSTOM:'自定义提醒'};
+  var label = window._parsedMedLabel || labelMap[type] || '提醒';
+  window._parsedMedLabel = null;
+  var repeatVal = (document.querySelector('input[name="rem-repeat"]:checked') || {}).value || 'daily';
+  var ringMode = (document.querySelector('input[name="rem-ring"]:checked') || {}).value || 'once';
+  var note = (document.getElementById('reminder-note')?.value || '').trim();
+  var dosage = (document.getElementById('reminder-dosage')?.value || '').trim();
+  var mealTiming = (document.getElementById('reminder-meal-timing')?.value || '').trim();
+  var images = _medImages.map(function(im) { return im.base64; });
+  var node = {
+    id: type + '_' + Date.now(), type: type, time: timeVal, state: 'pending', label: label,
+    repeat: repeatVal, ring_mode: ringMode, note: note, dosage: dosage, meal_timing: mealTiming,
+    images: images, created_at: new Date().toISOString()
+  };
+  fetch(API_BASE + '/api/reminder/add_task', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({node: node})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.status === 'SUCCESS') {
+      fetch(API_BASE + '/api/reminder/tasks').then(function(r2) { return r2.json(); }).then(function(td) {
+        var fullNodes = (td.tasks || []).map(function(t) {
+          return {time: t.time, type: t.type, id: t.id, repeat: t.repeat || 'daily', label: t.label || label, memo: (t.label || label) + '提醒', action: (t.label || label) + '提醒', duration_minutes: 0};
+        });
+        window._clockScheduleNodes = fullNodes;
+        if (fullNodes.length > 0) clockFetch('POST', '/api/clock/set_schedule', {nodes: fullNodes});
+      }).catch(function() {});
+      toast('✅ ' + label + '提醒 (' + timeVal + ') 已添加');
+      reminderRefreshList();
+      closeReminderModal();
+    } else { toast('❌ 添加失败: ' + (data.message || '未知错误')); }
+  }).catch(function() { toast('❌ 网络错误'); });
 }
 
 function butlerDeleteTask(taskId) {
