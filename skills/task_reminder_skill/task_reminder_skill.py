@@ -112,6 +112,10 @@ def process_reminder_pipeline(
         ev_note = event.get("note", "")
         ev_dosage = event.get("dosage", "")
         ev_meal = event.get("meal_timing", "")
+        ev_pill_shape = event.get("pill_shape", "")
+        ev_pill_color = event.get("pill_color", "")
+        ev_pill_color2 = event.get("pill_color2", "")
+        ev_med_name = event.get("med_name", "")
 
         if ev_type == "WATER":
             output_notifications.append({
@@ -145,6 +149,13 @@ def process_reminder_pipeline(
                 "note": ev_note,
                 "dosage": ev_dosage,
                 "meal_timing": ev_meal,
+                "pill_shape": ev_pill_shape,
+                "pill_color": ev_pill_color,
+                "pill_color2": ev_pill_color2,
+                "med_name": ev_med_name,
+                "images": ev_images,
+                "ring_mode": ev_ring_mode,
+                "label": ev_label,
             }
             mgr.set_med_state(session_id, ev_id, med_state)
 
@@ -166,6 +177,10 @@ def process_reminder_pipeline(
                 "label": ev_label or med_name,
                 "images": ev_images,
                 "ring_mode": ev_ring_mode,
+                "pill_shape": ev_pill_shape,
+                "pill_color": ev_pill_color,
+                "pill_color2": ev_pill_color2,
+                "meal_timing": ev_meal,
                 "message": msg,
             })
 
@@ -213,7 +228,7 @@ def process_reminder_pipeline(
                 "type": "MED_ESCALATION_CRITICAL",
                 "med_id": med_id,
                 "time": _m_to_t(last_m + 15),
-                "message": _build_med_msg("第3次提醒", _elder, state['med_name'], med_dosage, med_meal, med_note),
+                "message": f"🆘 {_elder}，系统检测到您已超过15分钟未响应服药提醒，已自动通知紧急联络人：{_contact}",
             })
 
         elif elapsed >= 10 and current_miss < 2:
@@ -222,7 +237,7 @@ def process_reminder_pipeline(
                 "type": "MED_URGE_HEAVY",
                 "med_id": med_id,
                 "time": _m_to_t(last_m + 10),
-                "message": _build_med_msg("第2次提醒", _elder, state['med_name'], med_dosage, med_meal, med_note),
+                "message": _build_med_msg("第3次提醒", _elder, state['med_name'], med_dosage, med_meal, med_note),
             })
 
         elif elapsed >= 5 and current_miss < 1:
@@ -250,6 +265,8 @@ def handle_user_action(
     mgr = _REMINDER_MANAGER
     mgr.init_session(session_id)
     active_meds = mgr.get_all_active_meds(session_id)
+    # 称呼兜底（process_reminder_pipeline 通过参数传入，handle_user_action 无此参数，加 fallback）
+    _elder = "老人家"
 
     # 寻找当前正在挂起等待交互的药物节点
     pending_med = None
@@ -311,12 +328,24 @@ def handle_user_action(
                 "type": "MED",
                 "id": med_id,
                 "name": med_name,
+                "label": pending_med.get("label", med_name),
+                "ring_mode": pending_med.get("ring_mode", "once"),
+                "note": pending_med.get("note", ""),
+                "dosage": pending_med.get("dosage", ""),
+                "meal_timing": pending_med.get("meal_timing", ""),
+                "images": pending_med.get("images", []),
+                "pill_shape": pending_med.get("pill_shape", ""),
+                "pill_color": pending_med.get("pill_color", ""),
+                "pill_color2": pending_med.get("pill_color2", ""),
+                "med_name": pending_med.get("med_name", ""),
                 "_postponed": True,
             })
             time_master.set_schedule(session_id, current_schedule)
 
-            # 重置状态机为 IDLE，等待 30 分钟后由 Time Master 二次唤醒
+            # 重置状态机为 IDLE + 清空催促计数，等待 30 分钟后由 Time Master 二次唤醒
             pending_med["status"] = "IDLE"
+            pending_med["miss_count"] = 0
+            pending_med["last_action_time"] = now_time
             return {
                 "status": "POSTPONED",
                 "message": (

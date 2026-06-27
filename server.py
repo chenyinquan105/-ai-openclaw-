@@ -2522,6 +2522,10 @@ def reminder_add_task():
         "ring_mode": node.get("ring_mode", "once"),
         "dosage": node.get("dosage", ""),
         "meal_timing": node.get("meal_timing", ""),
+        "pill_shape": node.get("pill_shape", ""),
+        "pill_color": node.get("pill_color", ""),
+        "pill_color2": node.get("pill_color2", ""),
+        "med_name": node.get("med_name", ""),
     }
     tm = time_master.get_master()
     cs = tm.get_or_create_session(_CLOCK_SESSION_ID)
@@ -2555,6 +2559,54 @@ def reminder_remove_task():
     ]
     # 如果删除的是自定义提醒，同步持久化
     _persist_custom_reminders(current)
+    return jsonify({"status": "SUCCESS"})
+
+
+@app.route("/api/reminder/update_task", methods=["POST"])
+def reminder_update_task():
+    """编辑指定 id 的提醒节点，用新数据覆盖旧节点（保留原 id）"""
+    data = request.get_json(silent=True) or {}
+    task_id = data.get("task_id", "")
+    node = data.get("node", {})
+    if not task_id or not node:
+        return jsonify({"status": "ERROR", "message": "缺少 task_id 或 node"}), 400
+    tm = time_master.get_master()
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    if not cs:
+        return jsonify({"status": "ERROR", "message": "时钟会话不存在"}), 400
+    # 找到并替换旧节点
+    updated = False
+    new_nodes = []
+    for n in cs.schedule_nodes:
+        if n.get("id") == task_id:
+            normalized = {
+                "id": task_id,  # 保留原 id
+                "type": node.get("type", n.get("type", "MED")),
+                "time": node.get("time", n.get("time", "")),
+                "state": node.get("state", n.get("state", "pending")),
+                "label": node.get("label", n.get("label", "")),
+                "repeat": node.get("repeat", n.get("repeat", "daily")),
+                "date": node.get("date", n.get("date", "")),
+                "images": node.get("images", n.get("images", [])),
+                "note": node.get("note", n.get("note", "")),
+                "created_at": node.get("created_at", n.get("created_at", "")),
+                "ring_mode": node.get("ring_mode", n.get("ring_mode", "once")),
+                "dosage": node.get("dosage", n.get("dosage", "")),
+                "meal_timing": node.get("meal_timing", n.get("meal_timing", "")),
+                "pill_shape": node.get("pill_shape", n.get("pill_shape", "")),
+                "pill_color": node.get("pill_color", n.get("pill_color", "")),
+                "pill_color2": node.get("pill_color2", n.get("pill_color2", "")),
+                "med_name": node.get("med_name", n.get("med_name", "")),
+            }
+            new_nodes.append(normalized)
+            updated = True
+        else:
+            new_nodes.append(n)
+    if not updated:
+        return jsonify({"status": "ERROR", "message": "未找到对应任务"}), 404
+    tm.set_schedule(_CLOCK_SESSION_ID, new_nodes)
+    # CUSTOM 类型同步持久化
+    _persist_custom_reminders(new_nodes)
     return jsonify({"status": "SUCCESS"})
 
 
