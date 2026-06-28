@@ -104,11 +104,12 @@
   80% { transform: translateX(6px); }
 }
 .shake { animation: shake 0.5s ease; }
+@keyframes toast-in { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
  </style>
 </head>
 <body class="bg-gray-100 text-gray-900 font-sans p-4 md:p-8">
 
- <div class="max-w-5xl flex flex-col lg:flex-row items-start justify-start gap-6 min-h-screen" style="margin: 0 auto;">
+ <div class="flex flex-col lg:flex-row items-start justify-center gap-6 min-h-screen" style="margin: 0 auto;">
 
  <!-- 左侧控制台（异常模拟） -->
  <div class="w-full lg:w-72 bg-gray-900 text-gray-100 p-5 rounded-[32px] shadow-2xl border border-gray-800 space-y-5 lg:sticky lg:top-8 flex-shrink-0 z-20">
@@ -229,7 +230,7 @@
  </div>
  </div>
 
- <button onclick="testReminderPopup()" style="background:#ef4444;color:white;font-weight:bold;padding:8px 12px;border-radius:12px;border:none;cursor:pointer;font-size:12px;width:100%;margin-top:8px;">🧪 测试弹窗</button>
+
  <!-- 全天候私人管家嵌入（弹窗在下方） -->
  </div>
 
@@ -1077,53 +1078,25 @@ function renderSchedule(data) {
  for (let i = 0; i < data.timeline.length; i++) {
  const item = data.timeline[i];
  let dotColor = 'bg-yellow-400';
- let label = '';
+ // 优先用新字段 header/detail，兜底兼容旧字段 memo/sub_task
+ let label = item.header || '';
  let subHtml = '';
 
  if (item.action === 'DEPART') {
- label = '出发';
- dotColor = 'bg-yellow-400';
- } else if (item.action === 'MOVE' || item.action === 'MOVE_AND_EXEC') {
-   var name = shopName(item.memo);
-   var hasDrop = item.memo && item.memo.includes('放下');
-   var hasStart = item.memo && item.memo.includes('人在场');
-   var hasPick = item.memo && item.memo.includes('回收');
-   if (hasDrop) {
-     label = '去 ' + name;
-     dotColor = 'bg-blue-400';
-   } else if (hasPick) {
-     label = '取回 ' + name;
-     dotColor = 'bg-green-400';
-   } else {
-     label = '前往 ' + name;
-     dotColor = 'bg-indigo-400';
+   dotColor = 'bg-yellow-400';
+ } else if (item.action === 'MOVE_AND_EXEC') {
+   var detail = item.detail || '';
+   if (detail.includes('放下')) dotColor = 'bg-blue-400';
+   else if (detail.includes('取回')) dotColor = 'bg-green-400';
+   else dotColor = 'bg-indigo-400';
+   // 详情行
+   if (detail) {
+     var endLabel = item.end_time ? '<span class="text-gray-500">' + item.end_time + ' 结束</span>' : '';
+     subHtml = '<p class="text-xs text-gray-400 mt-1 flex justify-between"><span>── ' + detail + '</span>' + endLabel + '</p>';
    }
-   // 子任务行
-   if (item.sub_task) {
-     var endTime = '';
-     if (item.time && item.sub_task.duration_minutes) {
-       var parts = item.time.split(':');
-       if (parts.length === 2) {
-         var h = parseInt(parts[0]), m = parseInt(parts[1]);
-         m += item.sub_task.duration_minutes;
-         h += Math.floor(m / 60);
-         m = m % 60;
-         endTime = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-       }
-     }
-     subHtml = '<p class="text-xs text-gray-400 mt-1 flex justify-between"><span>── 进行' + item.sub_task.action + '（预计 ' + item.sub_task.duration_minutes + ' 分钟）</span><span class="text-gray-500">' + endTime + ' 结束</span></p>';
-   }
- } else if (item.action === 'PICK_TASK') {
-   var name = shopName(item.memo);
-   label = '去 ' + name + ' 接回宠物';
-   dotColor = 'bg-green-400';
  } else if (item.action === 'WAIT') {
-   label = '等待中';
+   label = label || '等待中';
    dotColor = 'bg-blue-400';
- } else {
-   label = item.memo || '';
-   if (item.action === 'DROP_TASK' || item.action === 'WAIT') dotColor = 'bg-blue-400';
-   else if (item.action === 'PICK_TASK') dotColor = 'bg-green-400';
  }
 
  html += `
@@ -1246,23 +1219,12 @@ let execContentCache = '';
 function renderMetroTimeline(data) {
  const departureTime = clockPowerOn && window._clockVirtualTime ? window._clockVirtualTime : data.departure_time;
 
- function nameFromMemo(memo) {
-   if (!memo) return '';
-   let m = memo.match(/前往(?:执行)?\s*(.+?)(?: —.*)?$/);
-   if (m) return m[1];
-   m = memo.match(/完成回收:\s*(.+)/);
-   if (m) return m[1];
-   m = memo.match(/到达\s*(.+)/);
-   if (m) return m[1];
-   return memo;
- }
- function dotColor(action, memo) {
+ function dotColor(action, detail) {
    if (action === 'DEPART') return 'bg-yellow-400';
    if (action === 'WAIT') return 'bg-blue-400';
-   if (action === 'PICK_TASK') return 'bg-green-400';
-   if (action === 'MOVE' || action === 'MOVE_AND_EXEC') {
-     if (memo && memo.includes('放下')) return 'bg-blue-400';
-     if (memo && memo.includes('回收')) return 'bg-green-400';
+   if (action === 'MOVE_AND_EXEC') {
+     if (detail && detail.includes('放下')) return 'bg-blue-400';
+     if (detail && detail.includes('取回')) return 'bg-green-400';
      return 'bg-indigo-400';
    }
    return 'bg-gray-400';
@@ -1270,7 +1232,6 @@ function renderMetroTimeline(data) {
  function timeLabel(action) {
    if (action === 'DEPART') return '出发';
    if (action === 'WAIT') return '等待';
-   if (action === 'PICK_TASK') return '取回';
    return '';
  }
 
@@ -1278,41 +1239,41 @@ function renderMetroTimeline(data) {
  const nodes = [];
  for (let i = 0; i < data.timeline.length; i++) {
    const item = data.timeline[i];
-   const name = nameFromMemo(item.memo);
    nodes.push({
      time: item.time,
-     name: name || timeLabel(item.action) || item.memo,
-     dot: dotColor(item.action, item.memo),
-     sub: item.sub_task ? item.sub_task.action : '',
-     duration: item.sub_task ? item.sub_task.duration_minutes : '',
+     name: item.header || timeLabel(item.action) || '',
+     dot: dotColor(item.action, item.detail || ''),
+     detail: item.detail || '',
+     end_time: item.end_time || '',
      action: item.action,
    });
  }
 
- // 构建每个节点（固定宽度 140px，确保所有圆点中心对齐，圆点骑在水平线上）
+ // 构建每个节点（固定宽度 156px，确保所有圆点中心对齐，圆点骑在水平线上）
  function nodeHtml(node, isLast) {
-   const durText = node.duration ? node.duration + 'min' : '';
-   const subLine = node.sub ? `<span class="block text-[10px] text-gray-400 whitespace-nowrap">${node.sub} ${durText}</span>` : '';
-   const nodeW = 140;
+   const nodeW = 156;
+   const detailLine = node.detail ? `<div class="text-[10px] text-gray-400 whitespace-nowrap" style="overflow:hidden; text-overflow:ellipsis;">── ${node.detail}</div>` : '';
+   const endLine = node.end_time ? `<div class="text-[10px] text-gray-500 whitespace-nowrap">${node.end_time} 结束</div>` : '';
    return `
-     <div style="display:inline-block; vertical-align:top; text-align:center; width:${nodeW}px; margin-right:16px; overflow:hidden;">
+     <div style="display:inline-block; vertical-align:top; text-align:center; width:${nodeW}px; margin-right:12px; overflow:hidden;">
        <!-- 时间 -->
        <div style="height:32px; line-height:32px;">
          <span class="text-xs text-yellow-400 font-bold whitespace-nowrap">${node.time}</span>
        </div>
-       <!-- 圆点区域：扩大间距让整体下沉 -->
+       <!-- 圆点区域 -->
        <div style="position:relative; height:28px;">
          <div class="w-[20px] h-[20px] ${node.dot} rounded-full border-[3px] border-gray-900 z-10 relative" style="position:absolute; left:50%; top:50%; margin-left:-10px; margin-top:-10px;"></div>
        </div>
-       <!-- 名称 + 子任务 -->
-       <div style="max-width:${nodeW}px; margin-top:10px;">
-         <div class="text-sm font-bold text-white leading-snug" style="overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; word-break:break-all;">${node.name}</div>
-         ${subLine}
+       <!-- 名称 + 详情 + 结束时间 -->
+       <div style="max-width:${nodeW}px; margin-top:8px;">
+         <div class="text-xs font-bold text-white leading-snug" style="overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; word-break:break-all;">${node.name}</div>
+         ${detailLine}
+         ${endLine}
        </div>
      </div>`;
  }
 
- var nodeWidth = 140;
+ var nodeWidth = 156;
  var nodeGap = 12;
  const totalText = data.total_minutes + 'min';
 
@@ -1704,6 +1665,11 @@ function getPlanBOptions(type) {
 let selectedPlanBOption = null;
 
 function triggerDemoException(type, description) {
+ // 只有计划正在执行时才能触发异常控制器
+ if (!lastScheduleData || !lastScheduleData.timeline || lastScheduleData.timeline.length === 0) {
+   _showToast('⚠️ 无法触发异常状态<br><span style="font-size:12px;opacity:0.8">当前没有正在执行的计划，请先创建并执行一个出行计划后再试。</span>');
+   return;
+ }
  const selectEl = document.getElementById('console-node-select');
  const targetScopeText = selectEl ? selectEl.options[selectEl.selectedIndex].text : '整个行程';
 
@@ -2116,6 +2082,67 @@ async function _rescheduleWithVirtualTime() {
 }
 
 /**
+ * 底部轻量 toast：不灰屏，2秒渐变消失
+ */
+function _showToast(html) {
+  var existing = document.getElementById('global-toast');
+  if (existing) existing.remove();
+  var t = document.createElement('div');
+  t.id = 'global-toast';
+  t.innerHTML = html;
+  t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;'
+    + 'background:#1f2937;color:#fbbf24;padding:14px 24px;border-radius:16px;font-size:14px;font-weight:700;'
+    + 'text-align:center;max-width:85vw;box-shadow:0 8px 32px rgba(0,0,0,0.35);'
+    + 'animation:toast-in 0.3s ease-out;transition:opacity 0.4s ease-out;cursor:pointer;';
+  t.onclick = function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); };
+  document.body.appendChild(t);
+  setTimeout(function() {
+    if (t.parentNode) { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 400); }
+  }, 2000);
+}
+
+/**
+ * 统一打车确认：所有自动打车前必须经过用户确认
+ */
+function _confirmThenCallTaxi(reason) {
+  showSecondModal(
+    '🚕 确认打车',
+    (reason || '即将为您叫车') + '，确定要切换为打车接驳吗？',
+    [
+      { value: 'yes', emoji: '🚕', title: '确认打车', subtitle: '切换为打车出行，司机将尽快到达' },
+      { value: 'cancel', emoji: '❌', title: '取消', subtitle: '保持当前交通方式不变' }
+    ],
+    function(val) {
+      if (val === 'yes') {
+        selectedTransport = '打车';
+        document.querySelectorAll('.transport-option').forEach(function(o) {
+          if (o.dataset.transport === '打车') {
+            o.className = 'transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center';
+          } else {
+            o.className = 'transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center';
+          }
+        });
+        _simulateTaxiCall();
+        fetch(API_BASE + '/api/replan', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ transport_mode: 'taxi' })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.timeline) { renderSchedule(data); }
+          _planbFlushExecCover();
+        })
+        .catch(function() {
+          if (lastScheduleData) { renderSchedule(lastScheduleData); }
+          _planbFlushExecCover();
+        });
+      }
+    }
+  );
+}
+
+/**
  * 核心 Plan B 执行函数
  */
 function executePlanB() {
@@ -2126,39 +2153,16 @@ function executePlanB() {
   var optionLabel = document.querySelector('.planb-option.border-yellow-400 .text-sm.font-bold');
   var label = optionLabel ? optionLabel.textContent : optId;
 
-  // ---- 1. 打车类：切换交通方式（让后端重算）----
+  // ---- 1. 打车类：先确认再执行 ----
   if (optId === 'switch_to_taxi') {
-    selectedTransport = '打车';
-    document.querySelectorAll('.transport-option').forEach(function(o) {
-      if (o.dataset.transport === '打车') {
-        o.className = 'transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center';
-      } else {
-        o.className = 'transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center';
-      }
-    });
     activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
-    // 并行：叫车动画 + 后端重排
-    _simulateTaxiCall();
-    fetch(API_BASE + '/api/replan', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ transport_mode: 'taxi' })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.timeline) { renderSchedule(data); }
-      _planbFlushExecCover();
-    })
-    .catch(function() {
-      if (lastScheduleData) { renderSchedule(lastScheduleData); }
-      _planbFlushExecCover();
-    });
+    _confirmThenCallTaxi('暴雨天气，建议打车出行');
     return;
   }
 
-  // ---- 2. 避雨：先拉附近饮品店列表→三级分流 ----
+  // ---- 2. 避雨：告知最近饮品店 + 询问三选一（去避雨 / 打车 / 取消）----
   if (optId === 'find_shelter') {
     activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
@@ -2170,8 +2174,6 @@ function executePlanB() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var allShops = (data.shops && data.shops.length) ? data.shops : [];
-      var nearbyShops = allShops.filter(function(s) { return (s.distance_meters || 9999) <= 1000; });
-      var farShops = allShops.filter(function(s) { return (s.distance_meters || 9999) > 1000; });
 
       // 辅助函数：插入避雨店
       function _doInsertShelter(shopId, shopName) {
@@ -2191,117 +2193,45 @@ function executePlanB() {
         });
       }
 
-      // 辅助函数：回退方案弹窗
-      function _showShelterFallback() {
-        showSecondModal(
-          '☔ 附近无合适避雨点，请选择替代方案',
-          '1公里内没有饮品店，选择其他应对方式：',
-          [
-            { value: 'switch_to_taxi', emoji: '🚕', title: '改步行为打车', subtitle: '将后续步行路段切换为打车接驳' },
-            { value: 'postpone', emoji: '⏳', title: '暂缓行程', subtitle: '等待雨停后再出发' },
-            { value: 'cancel_trip', emoji: '❌', title: '取消计划', subtitle: '取消整个行程' }
-          ],
-          function(fallbackVal, fallbackName) {
-            if (fallbackVal === 'switch_to_taxi') {
-              selectedTransport = '打车';
-              _simulateTaxiCall();
-              fetch(API_BASE + '/api/replan', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ transport_mode: 'taxi' })
-              })
-              .then(function(r) { return r.json(); })
-              .then(function(d) {
-                if (d.timeline) { renderSchedule(d); _planbFlushExecCover(); }
-              })
-              .catch(function() {});
-            } else if (fallbackVal === 'postpone') {
-              // 延后30分钟
-              fetch(API_BASE + '/api/replan', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ delay_minutes: 30 })
-              })
-              .then(function(r) { return r.json(); })
-              .then(function(d) {
-                appendExecChatMessage('已暂缓行程 ⏳（延后 30 分钟），等待雨势减小。');
-                if (d.timeline) { renderSchedule(d); _planbFlushExecCover(); }
-              })
-              .catch(function() {
-                appendExecChatMessage('已暂缓行程 ⏳。');
-              });
-            } else if (fallbackVal === 'cancel_trip') {
-              execContentCache = '';
-              document.getElementById('exec-plan-content').innerHTML = '';
-              var ss = document.getElementById('schedule-section');
-              if (ss) ss.innerHTML = '<p class="text-gray-500 italic py-8 text-center">行程已取消</p>';
-              lastScheduleData = null;
-              var ec = document.getElementById('exec-cover');
-              if (ec) ec.classList.add('hidden');
-              appendExecChatMessage('已取消行程，如需重新规划请随时告诉我。');
-              fetch(API_BASE + '/api/cancel_trip', { method: 'POST' }).catch(function(){});
-            }
-          }
-        );
-      }
-
-      // === Case 3: 无店铺 ===
+      // 无店铺：告知 + 二选一（打车 / 取消），打车需确认
       if (data.error || allShops.length === 0) {
         appendExecChatMessage('⚠️ 附近暂无可避雨的饮品店。');
-        _showShelterFallback();
-        return;
-      }
-
-      // === Case 2: 有店但全超过 1km ===
-      if (nearbyShops.length === 0 && farShops.length > 0) {
-        var nearest = farShops[0];
-        var distText = nearest.distance_km ? nearest.distance_km + 'km' : (nearest.distance || '较远');
-        // 用 confirm 对话框让用户确认
-        var confirmMsg = '⚠️ 1公里内没有饮品店，最近的饮品店是【' + nearest.name + '】在 ' + distText + ' 外，需要前往吗？';
         showSecondModal(
-          '☕ 1公里内无饮品店',
-          confirmMsg,
+          '☔ 附近无饮品店',
+          '附近未找到饮品店，请选择替代方案：',
           [
-            { value: nearest.shop_id, emoji: '☕', title: '前往 ' + nearest.name, subtitle: '距离 ' + distText },
-            { value: '__fallback__', emoji: '🔄', title: '换其他方案', subtitle: '打车、暂缓或取消行程' }
+            { value: 'taxi', emoji: '🚕', title: '打车离开', subtitle: '切换为打车接驳' },
+            { value: 'cancel', emoji: '❌', title: '取消', subtitle: '关闭不做更改' }
           ],
-          function(chosenVal, chosenName) {
-            if (chosenVal === '__fallback__') {
-              _showShelterFallback();
-            } else {
-              _doInsertShelter(chosenVal, chosenName);
+          function(val) {
+            if (val === 'taxi') {
+              _confirmThenCallTaxi('暴雨天气，附近无避雨饮品店，建议打车');
             }
           }
         );
         return;
       }
 
-      // === Case 1: 有 1km 内的店 ===
-      var shopOpts = nearbyShops.map(function(s) {
-        return {
-          value: s.shop_id,
-          emoji: '☕',
-          title: s.name,
-          subtitle: '★' + s.rating + '  ' + (s.distance || '')
-        };
-      });
-      // 如有更远的店，追加一个分隔
-      if (farShops.length > 0) {
-        farShops.forEach(function(s) {
-          shopOpts.push({
-            value: s.shop_id,
-            emoji: '📍',
-            title: s.name + ' (较远)',
-            subtitle: '★' + s.rating + '  ' + (s.distance || '')
-          });
-        });
-      }
+      // 有店铺：取最近的一家，展示店名+距离+三选一
+      var nearest = allShops[0];
+      var distText = nearest.distance || (nearest.distance_km ? nearest.distance_km + 'km' : '未知');
+      var shopName = nearest.name;
+      var shopId = nearest.shop_id;
+
       showSecondModal(
-        '☕ 选择避雨饮品店',
-        '请选择要前往的店铺避雨，系统将安排在行程第一个目的地。',
-        shopOpts,
-        function(shelterShopId, shelterShopName) {
-          _doInsertShelter(shelterShopId, shelterShopName);
+        '☔ 突发暴雨，就近避雨',
+        '最近饮品店：<b>' + shopName + '</b>，距离 <b>' + distText + '</b>',
+        [
+          { value: 'shelter', emoji: '☕', title: '去 ' + shopName + ' 避雨', subtitle: '距离 ' + distText + '，前往暂避' },
+          { value: 'taxi', emoji: '🚕', title: '打车离开', subtitle: '切换为打车接驳离开' },
+          { value: 'cancel', emoji: '❌', title: '取消', subtitle: '关闭不做更改' }
+        ],
+        function(chosenVal) {
+          if (chosenVal === 'shelter') {
+            _doInsertShelter(shopId, shopName);
+          } else if (chosenVal === 'taxi') {
+            _confirmThenCallTaxi('暴雨天气，打车离开');
+          }
         }
       );
     })
@@ -3050,26 +2980,6 @@ var _emergencyContactTriggered = false;  // 防重入：紧急联络是否已触
 
 /** 获取当前虚拟分钟数（时钟关闭时退回真实时间） */
 
-/** 测试弹窗：直接调用 _openMedDialog */
-function testReminderPopup() {
-  console.log('[TEST] Directly calling _openMedDialog...');
-  var dlg = document.getElementById('reminder-dialog');
-  console.log('[TEST] dlg exists:', !!dlg, 'display:', dlg ? dlg.style.display : 'N/A');
-  var testInfo = {
-    type: 'MED_RINGING_ALERT',
-    msg: '🧪 这是一条测试提醒！该服用【测试药】了。',
-    medId: 'TEST_' + Date.now(),
-    medImages: [],
-    ringMode: 'once'
-  };
-  _medEscalationLevel = 1;
-  _medPendingInfo = testInfo;
-  _openMedDialog(testInfo);
-  setTimeout(function() {
-    var dlg2 = document.getElementById('reminder-dialog');
-    console.log('[TEST] After 500ms: display=' + (dlg2 ? dlg2.style.display : 'N/A') + ' visible=' + (dlg2 ? (dlg2.offsetHeight > 0) : 'N/A'));
-  }, 500);
-}
 
 /** 动态创建 reminder-dialog 到手机容器内（仅覆盖手机屏幕区域） */
 function initReminderDialog() {

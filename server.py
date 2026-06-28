@@ -1052,6 +1052,9 @@ def _run_schedule_from_session():
         else:
             coord = "39.93,116.45"
         human_needed = info.get("human_needed", True)
+        # 兜底：品类强制修正（防止预置缓存等非 _normalize_poi 来源的数据错误）
+        if cat in ("pet", "laundry"):
+            human_needed = False
         # time_mode:
         #   "fixed" → 用户说几点出发，该时间就是出发时间，不设 fixed_start_time
         #   "arrive_by" → 用户说几点到店，该时间就是到店时间，设 fixed_start_time
@@ -1066,6 +1069,11 @@ def _run_schedule_from_session():
             "category": cat,
         })
         spatial_matrix["locations"][sid] = {"name": sname, "coord": coord}
+
+    # —— 诊断日志：打印 task_list 的 human_needed 分类 ——
+    print(f"[调度] task_list 共 {len(task_list)} 个任务:", flush=True)
+    for t in task_list:
+        print(f"  - {t['name']} | human_needed={t['human_needed']} | fixed={t['fixed_start_time']} | cat={t.get('category','')}", flush=True)
 
     # —— 交通模式自动计算（Phase 4.4）——
     _transport_priority = _read_profile().get("commute", {}).get("transport_priority", "步行优先")
@@ -1132,6 +1140,14 @@ def _run_schedule():
         session_state["rejected_ids"],
     )
 
+    # —— 诊断日志：调度器返回结果 ——
+    if schedule_res.get("status") == "SUCCESS":
+        tl = schedule_res.get("timeline", [])
+        drop_ct = sum(1 for x in tl if x.get("action") == "DROP_TASK")
+        exec_ct = sum(1 for x in tl if x.get("action") == "START_TASK")
+        pick_ct = sum(1 for x in tl if x.get("action") == "PICK_TASK")
+        print(f"[调度] ✅ SUCCESS | DROP={drop_ct} EXEC={exec_ct} PICK={pick_ct} 总耗时={schedule_res.get('total_duration_minutes')}min", flush=True)
+
     if schedule_res.get("status") == "CONFIRM_REQUIRED":
         session_state["phase"] = "conflict"
         session_state["conflict_task"] = schedule_res["conflict_task"]
@@ -1147,9 +1163,28 @@ def _run_schedule():
 
     elif schedule_res.get("status") == "SUCCESS":
         session_state["phase"] = "done"
-        # 修正时间线：MOVE 条目的时间改为后续 DROP/START 的时间，删除后续重复条目
         raw = schedule_res["timeline"]
-        # 构建 task_id → {name, duration_minutes, human_needed} 映射
+
+        # ── 品类 → 具体事项描述 ──
+        _SPECIFIC_ACTIONS = {
+            "hair": "理发", "pet": "给宠物洗澡美容", "laundry": "洗衣",
+            "cafe": "喝杯饮品", "gym": "健身锻炼", "restaurant": "用餐",
+            "hotpot": "吃火锅", "japanese": "吃日料", "cinema": "看电影",
+        }
+
+        # ── 时间计算 ──
+        def _calc_end(time_str: str, add_min: int) -> str:
+            try:
+                parts = time_str.split(":")
+                h, m = int(parts[0]), int(parts[1])
+                m += add_min
+                h += m // 60
+                m = m % 60
+                return f"{h:02d}:{m:02d}"
+            except:
+                return ""
+
+        # task_id → {name, duration, human_needed, action_name, category}
         task_map = {}
         for t in session_state["task_list"]:
             tid = t.get("task_id")
@@ -1160,43 +1195,105 @@ def _run_schedule():
                     "duration_minutes": t.get("duration_minutes", 45),
                     "human_needed": t.get("human_needed", True),
                     "action_name": backend.CATEGORY_NAME_CN.get(cat, t.get("name", "")),
+                    "category": cat,
                 }
+
+        # 截短店名
+        def _short(name: str) -> str:
+            s = re.split(r'[\(（·]', name)[0].strip()
+            s = re.sub(r'[—–-].*$', '', s).strip()
+            return s
+
+        # location id → {full, short}
+        loc_map = {}
+        for lid, ldata in session_state.get("spatial_matrix", {}).get("locations", {}).items():
+            full = ldata.get("name", lid)
+            loc_map[lid] = {"full": full, "short": _short(full)}
+
         cleaned = []
         skip = set()
         for i in range(len(raw)):
             if i in skip:
                 continue
             item = raw[i]
-            if item["action"] == "MOVE" and i + 1 < len(raw):
-                nxt = raw[i + 1]
-                if nxt["action"] in ("DROP_TASK", "START_TASK", "PICK_TASK"):
-                    # 保留 MOVE 条目，时间改为到达时间，memo 添加执行内容
-                    act_label = {"DROP_TASK": "放下", "START_TASK": "开始", "PICK_TASK": "回收"}
-                    tag = act_label.get(nxt["action"], "")
-                    item["time"] = nxt["time"]
-                    item["memo"] = f"{item['memo']} — {nxt['memo']}"
-                    item["action"] = "MOVE_AND_EXEC"
-                    skip.add(i + 1)
-            # 提取 task_id 对应的子任务信息
-            sub_task_info = None
-            tid = item.get("task_id")
-            if tid and tid in task_map:
-                info = task_map[tid]
-                if info["human_needed"]:
-                    # 只在 MOVE 或 MOVE_AND_EXEC 条目上附加子任务行
-                    if item["action"] in ("MOVE", "MOVE_AND_EXEC"):
-                        sub_task_info = {
-                            "action": info["action_name"],
-                            "duration_minutes": info["duration_minutes"],
-                        }
-            # 清洗 memo：将 "前往锚点: xxx" 统一转为 "前往 xxx"
-            memo = item["memo"]
-            memo = re.sub(r'^前往锚点:\s*', '前往 ', memo)
+
+            # ── DEPART ──
+            if item["action"] == "DEPART":
+                first_dest = ""
+                for j in range(i + 1, len(raw)):
+                    if raw[j]["action"] == "MOVE":
+                        nid = raw[j].get("next_location_id", "")
+                        first_dest = loc_map.get(nid, {}).get("short", "")
+                        break
+                item["header"] = f"出发，前往{first_dest}" if first_dest else "出发"
+
+            # ── MOVE + 后续动作合并 ──
+            elif item["action"] == "MOVE":
+                nxt_idx = i + 1
+                # 跳过中间的 WAIT（如 MOVE → WAIT → PICK_TASK）
+                while nxt_idx < len(raw) and raw[nxt_idx]["action"] == "WAIT":
+                    nxt_idx += 1
+                if nxt_idx < len(raw):
+                    nxt = raw[nxt_idx]
+                    if nxt["action"] in ("DROP_TASK", "START_TASK", "PICK_TASK"):
+                        tgt_short = loc_map.get(item.get("next_location_id", ""), {}).get("short", "")
+                        tid = nxt.get("task_id", "")
+                        tinfo = task_map.get(tid, {})
+                        act_name = tinfo.get("action_name", "")
+                        cat = tinfo.get("category", "")
+                        specific = _SPECIFIC_ACTIONS.get(cat, act_name)
+                        duration = tinfo.get("duration_minutes", 45)
+
+                        # 找下一个 MOVE 的目的地
+                        next_dest = ""
+                        for j in range(nxt_idx + 1, len(raw)):
+                            if raw[j]["action"] == "MOVE":
+                                nid = raw[j].get("next_location_id", "")
+                                next_dest = loc_map.get(nid, {}).get("short", "")
+                                break
+
+                        item["time"] = nxt["time"]
+                        item["action"] = "MOVE_AND_EXEC"
+                        item["task_id"] = nxt.get("task_id", item.get("task_id", ""))
+
+                        if nxt["action"] == "DROP_TASK":
+                            item["header"] = f"去 {tgt_short}"
+                            item["detail"] = f"放下{act_name}（后台处理约 {duration} 分钟）"
+                            item["end_time"] = _calc_end(nxt["time"], duration + 5)  # DROP + DROP_PICK
+                        elif nxt["action"] == "START_TASK":
+                            item["header"] = f"去 {tgt_short}"
+                            item["detail"] = f"{specific}（预计 {duration} 分钟）"
+                            item["end_time"] = _calc_end(nxt["time"], duration)
+                        elif nxt["action"] == "PICK_TASK":
+                            item["header"] = f"去 {tgt_short}"
+                            item["detail"] = f"取回{act_name}"
+                            item["end_time"] = _calc_end(nxt["time"], 5)  # PICK 约5分钟
+
+                        # 标记跳过 MOVE 和合并的动作（以及中间的 WAIT）
+                        skip.add(nxt_idx)
+                        for w in range(i + 1, nxt_idx):
+                            skip.add(w)
+
+            # ── 未被合并的独立 action（WAIT / 未匹配的 PICK 等）──
+            if item["action"] not in ("DEPART", "MOVE_AND_EXEC"):
+                # 保留原样但用新字段
+                item["header"] = item.get("memo", "")
+                # 去掉旧字段
+                item.pop("memo", None)
+
+            # 清理内部标记
+            item.pop("memo", None)
+            item.pop("sub_task", None)
+            item.pop("_pick_merge", None)
+            item.pop("target_location_id", None)
+            item.pop("next_location_id", None)
+
             cleaned.append({
-                "time": item["time"],
-                "memo": memo,
-                "action": item["action"],
-                "sub_task": sub_task_info,
+                "time": item.get("time", ""),
+                "action": item.get("action", ""),
+                "header": item.get("header", ""),
+                "detail": item.get("detail", ""),
+                "end_time": item.get("end_time", ""),
                 "task_id": item.get("task_id", ""),
             })
 
@@ -2040,7 +2137,7 @@ def api_planb_default():
                 "task_id": new_sid, "name": new_shop["name"],
                 "location_id": new_sid,
                 "duration_minutes": corrupted_task["duration_minutes"] if corrupted_task else 60,
-                "human_needed": True, "fixed_start_time": None, "category": corrupted_cat,
+                "human_needed": corrupted_task.get("human_needed", True) if corrupted_task else True, "fixed_start_time": None, "category": corrupted_cat,
             }
             spatial_matrix["locations"][new_sid] = {
                 "name": new_shop["name"],

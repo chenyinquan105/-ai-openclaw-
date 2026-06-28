@@ -117,6 +117,13 @@ def solve_concurrent_timeline(
     # 初始分类
     nonfixed_drop = [t for t in task_list if not t.get("fixed_start_time") and not t["human_needed"]]
     nonfixed_exec = [t for t in task_list if not t.get("fixed_start_time") and t["human_needed"]]
+
+    # —— 诊断日志 ——
+    print(f"[调度器] 分类: FIXED={len(fixed_tasks)} DROP={len(nonfixed_drop)} EXEC={len(nonfixed_exec)}", flush=True)
+    for t in nonfixed_drop:
+        print(f"  DROP: {t['name']} (human_needed={t['human_needed']})", flush=True)
+    for t in nonfixed_exec:
+        print(f"  EXEC: {t['name']} (human_needed={t['human_needed']})", flush=True)
     
     occupied_slots = {}
     for ft in fixed_tasks:
@@ -205,6 +212,8 @@ def solve_concurrent_timeline(
     push("DEPART", cur_min, target_loc=cur_loc, memo="准备出发")
 
     # 阶段 A: 顺路 DROP
+    if nonfixed_drop:
+        print(f"[调度器] Phase A DROP: {[t['name'] for t in nonfixed_drop]}", flush=True)
     for task in nonfixed_drop:
         mode, dist = _get_route(cur_loc, task["location_id"], spatial_matrix)
         t_min = _travel_min(mode, dist)
@@ -212,11 +221,13 @@ def solve_concurrent_timeline(
         bg_finish_map[task["location_id"]] = cur_min + task["duration_minutes"]
         push("MOVE", cur_min - t_min, target_loc=cur_loc, next_loc=task["location_id"],
              task_id=task["task_id"], memo=f"前往 {task['name']}")
-        push("DROP_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="放下物品，开始后台处理")
+        push("DROP_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo=f"放下{task['name']}")
         cur_min += DROP_PICK_DURATION
         cur_loc = task["location_id"]
 
     # 阶段 B: 顺路 EXEC (必须人在场)
+    if nonfixed_exec:
+        print(f"[调度器] Phase B EXEC: {[t['name'] for t in nonfixed_exec]}", flush=True)
     for task in nonfixed_exec:
         mode, dist = _get_route(cur_loc, task["location_id"], spatial_matrix)
         t_min = _travel_min(mode, dist)
@@ -226,9 +237,9 @@ def solve_concurrent_timeline(
             post_anchor_tasks.append(task)
             continue
         push("MOVE", cur_min, target_loc=cur_loc, next_loc=task["location_id"],
-             task_id=task["task_id"], memo=f"前往执行 {task['name']}")
+             task_id=task["task_id"], memo=f"前往 {task['name']}")
         cur_min = arr_min
-        push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="人在场执行中")
+        push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo=f"开始{task['name']}")
         cur_min += task["duration_minutes"]
         cur_loc = task["location_id"]
 
@@ -240,13 +251,13 @@ def solve_concurrent_timeline(
         fs_min = _parse(task["fixed_start_time"])
         
         push("MOVE", cur_min, target_loc=cur_loc, next_loc=task["location_id"],
-             task_id=task["task_id"], memo=f"前往锚点: {task['name']}")
+             task_id=task["task_id"], memo=f"前往 {task['name']}")
         if arr_min < fs_min:
             push("WAIT", arr_min, target_loc=task["location_id"], memo="提前到达，等待开始")
             arr_min = fs_min
         
         cur_min = arr_min
-        push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo=f"开始固定任务: {task['name']}")
+        push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo=f"开始{task['name']}")
         cur_min += task["duration_minutes"]
         cur_loc = task["location_id"]
 
@@ -259,27 +270,33 @@ def solve_concurrent_timeline(
             bg_finish_map[task["location_id"]] = cur_min + task["duration_minutes"]
             push("MOVE", cur_min - t_min, target_loc=cur_loc, next_loc=task["location_id"],
                  task_id=task["task_id"], memo=f"前往 {task['name']}")
-            push("DROP_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="延后Drop处理")
+            push("DROP_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo=f"放下{task['name']}")
             cur_min += DROP_PICK_DURATION
         else:
             push("MOVE", cur_min - t_min, target_loc=cur_loc, next_loc=task["location_id"],
-                 task_id=task["task_id"], memo=f"前往执行 {task['name']}")
-            push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo="延后人在场执行")
+                 task_id=task["task_id"], memo=f"前往 {task['name']}")
+            push("START_TASK", cur_min, target_loc=task["location_id"], task_id=task["task_id"], memo=f"开始{task['name']}")
             cur_min += task["duration_minutes"]
         cur_loc = task["location_id"]
 
     # 阶段 D: PICK 收尾 — 去回收地的 MOVE
+    pick_tasks = [t for t in task_list if not t["human_needed"] and not t.get("fixed_start_time") and t["location_id"] in bg_finish_map]
+    if pick_tasks:
+        print(f"[调度器] Phase D PICK: {[t['name'] for t in pick_tasks]}", flush=True)
     for task in task_list:
         if task["human_needed"] or task.get("fixed_start_time"): continue
         dest = task["location_id"]
         if dest not in bg_finish_map: continue
-        
+
         mode, dist = _get_route(cur_loc, dest, spatial_matrix)
-        cur_min += _travel_min(mode, dist)
+        t_min = _travel_min(mode, dist)
+        push("MOVE", cur_min, target_loc=cur_loc, next_loc=dest,
+             task_id=task["task_id"], memo=f"前往取回 {task['name']}")
+        cur_min += t_min
         if cur_min < bg_finish_map[dest]:
-            push("WAIT", cur_min, target_loc=dest, memo=f"等待[{task['name']}]后台处理完成")
+            push("WAIT", cur_min, target_loc=dest, memo=f"等待{task['name']}后台处理完成")
             cur_min = bg_finish_map[dest]
-        push("PICK_TASK", cur_min, target_loc=dest, task_id=task["task_id"], memo=f"完成回收: {task['name']}")
+        push("PICK_TASK", cur_min, target_loc=dest, task_id=task["task_id"], memo=f"取回{task['name']}")
         cur_min += DROP_PICK_DURATION
         cur_loc = dest
 
