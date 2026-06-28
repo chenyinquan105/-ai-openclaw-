@@ -9,6 +9,16 @@
  .meituan-shadow { box-shadow: 0 10px 30px -10px rgba(255, 208, 0, 0.3); }
  .scrollbar-hide::-webkit-scrollbar { display: none; }
 
+ /* 聊天打字动画（思考中...） */
+ .typing-dots-inline { display: inline-flex; gap: 3px; vertical-align: middle; margin-right: 2px; }
+ .typing-dots-inline span { width: 5px; height: 5px; border-radius: 50%; background: #9ca3af; animation: chat-dot-bounce 1.2s ease-in-out infinite; }
+ .typing-dots-inline span:nth-child(2) { animation-delay: 0.2s; }
+ .typing-dots-inline span:nth-child(3) { animation-delay: 0.4s; }
+ @keyframes chat-dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+ }
+
 /* 顶级 AI 语义流体光晕动画 */
 @keyframes siri-fluid-blue {
  0%, 100% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
@@ -254,12 +264,6 @@
        </button>
       </div>
      </div>
-     <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
-      <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
-      <div class="bg-yellow-400 p-2 rounded-full shadow-lg cursor-pointer">
-       <svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-      </div>
-     </div>
     </header>
     <!-- 内容区 -->
     <main class="flex-1 overflow-y-auto p-6 space-y-8">
@@ -281,6 +285,17 @@
       </div>
      </div>
     </main>
+
+    <!-- 底部搜索栏（原顶部搜索框移至此） -->
+    <div class="flex-shrink-0 px-6 pb-6 pt-2 bg-white">
+     <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
+      <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
+      <div class="bg-yellow-400 p-2 rounded-full shadow-lg cursor-pointer">
+       <svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </div>
+     </div>
+    </div>
+
    </div>
 
    <!-- ===== 背面（全天候管家UI） ===== -->
@@ -615,12 +630,14 @@
 const API_BASE = '';
 
 // --- DOM 引用 ---
-const searchInput = document.querySelector('header input[type="text"]');
-const searchBtn = document.querySelector('header .rounded-full + div, header .bg-yellow-400');
+const searchInput = document.querySelector('#main-face-front input[type="text"]');
+const searchBtn = document.querySelector('#main-face-front .bg-yellow-400');
 const mainEl = document.getElementById('dynamic-content');
 
 // 首屏原始内容（硬编码示例），用户输入后会被动态替换
 let firstRun = true;
+// 当前活跃的聊天卡片容器（品类选择等交互卡片），追加历史不覆盖
+let activeChatCard = null;
 
 // --- 自动滚动 ---
 var userScrolledUp = false;
@@ -702,7 +719,7 @@ function calcTransportMinutes(distanceMeters, mode) {
 
 /** 获取当前所有已选店铺的平均距离（m） */
 function getAvgSelectedDistanceMeters() {
-  var cards = document.querySelectorAll('.shop-card.border-yellow-400');
+  var card = activeChatCard; var cards = card ? card.querySelectorAll('.shop-card.border-yellow-400') : [];
   if (!cards.length) return 0;
   var total = 0, count = 0;
   cards.forEach(function(c) {
@@ -724,17 +741,19 @@ function getAvgSelectedDistanceMeters() {
 
 /** 更新所有交通方式的时间标签 */
 function updateTransportTimeLabels() {
+  var card = activeChatCard;
+  if (!card) return;
   var avgDist = getAvgSelectedDistanceMeters();
   if (avgDist <= 0) {
     // 无数据时显示占位
     ['步行','公共交通','打车','驾车'].forEach(function(m) {
-      var el = document.getElementById('time-label-' + m);
+      var el = card.querySelector('.time-label-val[data-transport="' + m + '"]');
       if (el) el.textContent = '';
     });
     return;
   }
   ['步行','公共交通','打车','驾车'].forEach(function(m) {
-    var el = document.getElementById('time-label-' + m);
+    var el = card.querySelector('.time-label-val[data-transport="' + m + '"]');
     if (!el) return;
     var min = calcTransportMinutes(avgDist, m);
     el.textContent = '约 ' + min + ' 分钟';
@@ -742,48 +761,209 @@ function updateTransportTimeLabels() {
 }
 
 // ======================================================================
-// 搜索按钮事件
+// 搜索/聊天输入事件
 // ======================================================================
 function bindSearch() {
- const btn = document.querySelector('header .bg-yellow-400');
- if (btn) {
- btn.onclick = doSearch;
- btn.style.cursor = 'pointer';
+ if (searchBtn) {
+ searchBtn.onclick = doSearch;
+ searchBtn.style.cursor = 'pointer';
  }
  if (searchInput) {
  searchInput.onkeydown = function(e) { if (e.key === 'Enter') doSearch(); };
  }
 }
 
+function _addChatBubble(role, html) {
+ if (firstRun) { mainEl.innerHTML = ''; firstRun = false; }
+ var row = document.createElement('div');
+ row.className = 'chat-row flex mb-3 animate-fade-in';
+
+ if (role === 'user') {
+  // 用户消息：右对齐，白色气泡，四角统一圆角（无尾巴）
+  row.classList.add('justify-end');
+  var bubble = document.createElement('div');
+  bubble.className = 'chat-bubble-user max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed';
+  bubble.style.cssText = 'background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.06);';
+  bubble.innerHTML = html;
+  row.appendChild(bubble);
+ } else {
+  // AI消息：左对齐，纯消息框无头像
+  row.classList.add('items-start');
+  var bubble = document.createElement('div');
+  bubble.className = 'chat-bubble-ai max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed';
+  bubble.style.cssText = 'background:#facc15;border:1px solid #eab308;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);';
+  bubble.innerHTML = html;
+  row.appendChild(bubble);
+ }
+
+ mainEl.appendChild(row);
+ scrollToBottom();
+ return row;
+}
+
+function _addLoadingBubble() {
+ var row = document.createElement('div');
+ row.id = 'chat-loading-row';
+ row.className = 'chat-row flex items-start mb-3 animate-fade-in';
+ var bubble = document.createElement('div');
+ bubble.className = 'chat-bubble-ai max-w-[75%] px-4 py-3';
+ bubble.style.cssText = 'background:#facc15;border:1px solid #eab308;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);';
+ bubble.innerHTML = '<span class="typing-dots-inline"><span></span><span></span><span></span></span>';
+ row.appendChild(bubble);
+ mainEl.appendChild(row);
+ scrollToBottom();
+ return row;
+}
+
+function _removeLoadingBubble() {
+ var lb = document.getElementById('chat-loading-row');
+ if (lb) lb.remove();
+}
+
 async function doSearch() {
  const text = searchInput ? searchInput.value.trim() : '';
  if (!text) return;
 
- firstRun = false;
+ // 清空输入框
+ if (searchInput) { searchInput.value = ''; }
 
- // 显示加载状态
- mainEl.innerHTML = `
- <div class="p-6 text-center">
- <div class="animate-pulse text-gray-400">
- <svg class="w-8 h-8 mx-auto mb-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
- <p class="text-sm">正在搜索附近商户...</p>
- </div>
- </div>
- `;
+ // 1. 用户气泡（白色，右对齐）
+ _addChatBubble('user', '<span>' + _escHtml(text) + '</span>');
+
+ // 2. 加载气泡（三点弹跳）
+ _addLoadingBubble();
+
+ // 3. SSE 流式请求 /api/chat/stream
+ var startTime = Date.now();
+ var aiBubbleRow = null;
+ var aiBubble = null;
+ var fullResponse = '';
+ var loadingRemoved = false;
+ var toolEmojiMap = {
+  search_poi:'🔍', plan_route:'🗺️', hail_taxi:'🚕', add_reminder:'⏰',
+  remove_reminder:'🗑️', list_reminders:'📋', check_weather:'🌤️',
+  read_profile:'📝', update_profile:'⚙️', check_queue:'🪧',
+  start_trip:'🚀', edit_trip:'✏️', cancel_trip:'❌',
+  get_trip_status:'📊', plan_transit:'🚌'
+ };
+
+ function _ensureAiBubble() {
+  if (!aiBubbleRow) {
+   _removeLoadingBubble();
+   loadingRemoved = true;
+   aiBubbleRow = document.createElement('div');
+   aiBubbleRow.className = 'chat-row flex items-start mb-3 animate-fade-in';
+   aiBubble = document.createElement('div');
+   aiBubble.className = 'chat-bubble-ai max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed';
+   aiBubble.style.cssText = 'background:#facc15;border:1px solid #eab308;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);';
+   aiBubbleRow.appendChild(aiBubble);
+   mainEl.appendChild(aiBubbleRow);
+  }
+ }
 
  try {
- const res = await fetch(API_BASE + '/api/start', {
- method: 'POST',
- headers: {'Content-Type': 'application/json'},
- body: JSON.stringify({text})
- });
- const data = await res.json();
- if (data.error) { showError(data.error); return; }
- if (data.phase === 'choose_shop') {
- renderCategorySelection(data.categories);
- }
+  var res = await fetch(API_BASE + '/api/chat/stream', {
+   method: 'POST',
+   headers: {'Content-Type': 'application/json'},
+   body: JSON.stringify({message: text})
+  });
+
+  if (!res.ok) {
+   var errData = null;
+   try { errData = await res.json(); } catch(__) {}
+   throw new Error((errData && errData.error) ? errData.error : '服务器错误 (' + res.status + ')');
+  }
+
+  var reader = res.body.getReader();
+  var decoder = new TextDecoder();
+  var buf = '';
+  var currentEvent = '';
+
+  while (true) {
+   var chunk = await reader.read();
+   if (chunk.done) break;
+
+   buf += decoder.decode(chunk.value, {stream: true});
+   var lines = buf.split('\n');
+   buf = lines.pop() || '';
+
+   for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (line.startsWith('event: ')) {
+     currentEvent = line.slice(7).trim();
+    } else if (line.startsWith('data: ')) {
+     var dataStr = line.slice(6);
+     try {
+      var data = JSON.parse(dataStr);
+
+      if (currentEvent === 'message') {
+       if (data.role === 'assistant' && data.content) {
+        fullResponse += data.content;
+        _ensureAiBubble();
+        aiBubble.innerHTML = '<span>' + _escHtml(fullResponse).replace(/\n/g, '<br>') + '</span>';
+        scrollToBottom();
+       }
+      } else if (currentEvent === 'tool_call') {
+       _ensureAiBubble();
+       var tEmoji = toolEmojiMap[data.name] || '🔧';
+       var tName = data.name || '处理中';
+       aiBubble.innerHTML = '<span>' + tEmoji + ' 正在为您' + tName + '...</span>';
+       scrollToBottom();
+      } else if (currentEvent === 'tool_result') {
+       // 工具执行完毕，展示结果；若LLM后续有文本流会覆盖
+       _ensureAiBubble();
+       var trEmoji = toolEmojiMap[data.name] || '✅';
+       var resultText = '';
+       if (data.result && data.result.message) {
+        resultText = data.result.message;
+       } else if (data.result && data.result.data && data.result.data.shops) {
+        var shops = data.result.data.shops;
+        resultText = '为您找到 ' + shops.length + ' 家店铺：\n';
+        for (var si = 0; si < Math.min(shops.length, 5); si++) {
+         resultText += '• ' + shops[si].name + ' ★' + shops[si].rating + ' | ' + (shops[si].distance || '?') + 'm\n';
+        }
+        if (shops.length > 5) resultText += '...等' + shops.length + '家';
+       } else if (data.status === 'failed') {
+        resultText = '操作未能完成：' + ((data.result && data.result.message) || '未知错误');
+       } else {
+        resultText = '操作已完成';
+       }
+       aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText).replace(/\n/g, '<br>') + '</span>';
+       scrollToBottom();
+       // 如果后续没有LLM文本流，保留此工具结果
+       fullResponse = resultText;
+      } else if (currentEvent === 'error') {
+       _removeLoadingBubble();
+       loadingRemoved = true;
+       if (aiBubbleRow) aiBubbleRow.remove();
+       _addChatBubble('ai', '<span>❌ ' + _escHtml(data.message || '服务出错了，请稍后再试') + '</span>');
+       return;
+      }
+      // 'done' event: stream complete, fall through to cleanup
+     } catch(__) { /* JSON parse error, skip malformed line */ }
+    }
+   }
+  }
  } catch(e) {
- showError('网络错误: ' + e.message);
+  _removeLoadingBubble();
+  loadingRemoved = true;
+  if (aiBubbleRow) aiBubbleRow.remove();
+  _addChatBubble('ai', '<span>❌ ' + _escHtml(e.message || '网络错误，请稍后重试') + '</span>');
+  return;
+ }
+
+ // 确保至少等待1s（流式响应中首token已有延迟，此处兜底）
+ var elapsed = Date.now() - startTime;
+ if (elapsed < 1000) {
+  await new Promise(function(r) { setTimeout(r, 1000 - elapsed); });
+ }
+
+ // 清理加载气泡（如果还在）
+ if (!loadingRemoved) _removeLoadingBubble();
+
+ // 如果没有任何AI回复内容，显示兜底消息
+ if (!aiBubbleRow && !fullResponse) {
+  _addChatBubble('ai', '<span>抱歉，我暂时无法回复，请稍后再试~</span>');
  }
 }
 
@@ -844,22 +1024,22 @@ function renderCategorySelection(categories) {
  html += `
  <div class="bg-gray-50 rounded-[32px] p-5 mt-4">
  <p class="text-sm font-bold text-gray-800 mb-3">🚶 选择行进方式</p>
- <div class="grid grid-cols-4 gap-2" id="transport-grid">
+ <div class="grid grid-cols-4 gap-2 transport-grid">
  <div class="transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center" data-transport="步行" onclick="selectTransport(this)">
    <span>🚶 步行</span>
-   <span id="time-label-步行" class="text-[10px] opacity-80 mt-0.5">计算中...</span>
+   <span class="time-label-val text-[10px] opacity-80 mt-0.5" data-transport="步行">计算中...</span>
  </div>
  <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center" data-transport="公共交通" onclick="selectTransport(this)">
    <span>🚌 公共交通</span>
-   <span id="time-label-公共交通" class="text-[10px] opacity-80 mt-0.5">计算中...</span>
+   <span class="time-label-val text-[10px] opacity-80 mt-0.5" data-transport="公共交通">计算中...</span>
  </div>
  <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center" data-transport="打车" onclick="selectTransport(this)">
    <span>🚕 打车</span>
-   <span id="time-label-打车" class="text-[10px] opacity-80 mt-0.5">计算中...</span>
+   <span class="time-label-val text-[10px] opacity-80 mt-0.5" data-transport="打车">计算中...</span>
  </div>
  <div class="transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center" data-transport="驾车" onclick="selectTransport(this)">
    <span>🚗 驾车</span>
-   <span id="time-label-驾车" class="text-[10px] opacity-80 mt-0.5">计算中...</span>
+   <span class="time-label-val text-[10px] opacity-80 mt-0.5" data-transport="驾车">计算中...</span>
  </div>
  </div>
  </div>
@@ -870,11 +1050,16 @@ function renderCategorySelection(categories) {
  确认选择，继续
  </button>
  </section>
- <div id="time-section"></div>
- <div id="schedule-section" class="mt-6"></div>
+ <div class="time-section"></div>
+ <div class="schedule-section mt-6"></div>
  `;
 
- mainEl.innerHTML = html;
+ // 追加为聊天卡片，不替换已有内容
+ var card = document.createElement('div');
+ card.className = 'chat-shop-card bg-white rounded-[32px] p-4 mb-4 border-2 border-yellow-200 shadow-sm animate-fade-in';
+ card.innerHTML = html;
+ mainEl.appendChild(card);
+ activeChatCard = card;
  currentPhase = 'choose_shop';
  // 渲染完毕后计算交通时间
  updateTransportTimeLabels();
@@ -883,7 +1068,9 @@ function renderCategorySelection(categories) {
 
 // 点击切换卡片选中状态
 function selectTransport(el) {
-  document.querySelectorAll('.transport-option').forEach(o => {
+  var card = activeChatCard;
+  if (!card) return;
+  card.querySelectorAll('.transport-option').forEach(function(o) {
     o.className = 'transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center';
   });
   el.className = 'transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center';
@@ -892,21 +1079,24 @@ function selectTransport(el) {
 
 function toggleShopCard(el) {
  const category = el.dataset.category;
+ // 限定在当前卡片容器内查找，避免跨轮次影响
+ var card = el.closest('.chat-shop-card') || document;
  // 同品类其他卡片取消选中
- const siblings = document.querySelectorAll(`.shop-card[data-category="${category}"]`);
- siblings.forEach(s => {
+ const siblings = card.querySelectorAll('.shop-card[data-category="' + category + '"]');
+ for (var i = 0; i < siblings.length; i++) {
+ var s = siblings[i];
  s.classList.remove('border-yellow-400', 'meituan-shadow');
  s.classList.add('border-transparent', 'opacity-60');
  // 移除选中勾
- const check = s.querySelector('.absolute.top-3');
+ var check = s.querySelector('.absolute.top-3');
  if (check) check.remove();
- });
+ }
 
  // 当前卡片选中
  el.classList.remove('border-transparent', 'opacity-60');
  el.classList.add('border-yellow-400', 'meituan-shadow');
  if (!el.querySelector('.absolute.top-3')) {
- const div = document.createElement('div');
+ var div = document.createElement('div');
  div.className = 'absolute top-3 right-3 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center';
  div.innerHTML = '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg>';
  el.appendChild(div);
@@ -917,7 +1107,9 @@ function toggleShopCard(el) {
 
 // 确认选店
 async function confirmShopSelection() {
- const cards = document.querySelectorAll('.shop-card.border-yellow-400');
+ var card = activeChatCard;
+ if (!card) return;
+ const cards = card.querySelectorAll('.shop-card.border-yellow-400');
  const selections = [];
  cards.forEach(c => {
  selections.push({
@@ -943,7 +1135,9 @@ async function confirmShopSelection() {
 
 // 提交选店（私有方法，宠物弹窗确认后也调用此）
 async function confirmShopSelectionSubmit() {
- const cards = document.querySelectorAll('.shop-card.border-yellow-400');
+ var card = activeChatCard;
+ if (!card) return;
+ const cards = card.querySelectorAll('.shop-card.border-yellow-400');
  const selections = [];
  cards.forEach(c => {
  selections.push({
@@ -982,7 +1176,7 @@ function renderTimeInput(data) {
  <div class="bg-gray-100 rounded-[32px] p-6">
  <h3 class="text-sm font-bold mb-2">⏰ 预计什么时间去？</h3>
  <div class="flex space-x-3">
- <input type="text" id="time-input" placeholder="例如：下午3点 / 明天上午"
+ <input type="text" class="time-input" placeholder="例如：下午3点 / 明天上午"
  class="flex-1 bg-white rounded-full px-4 py-3 text-sm border-2 border-transparent focus:border-yellow-400 outline-none"
  onkeydown="if(event.key==='Enter') submitTime()">
  <button onclick="submitTime()" class="bg-yellow-400 text-black font-bold px-6 py-3 rounded-full hover:scale-95 transition-transform">确定</button>
@@ -991,19 +1185,22 @@ function renderTimeInput(data) {
  </section>
  `;
 
- const timeSection = document.getElementById('time-section');
+ var card = activeChatCard;
+ var timeSection = card ? card.querySelector('.time-section') : null;
  if (timeSection) timeSection.innerHTML = timeHtml;
- else {
- const dc = document.getElementById('dynamic-content');
+ else if (card) {
+ card.insertAdjacentHTML('beforeend', timeHtml);
+ } else {
+ var dc = document.getElementById('dynamic-content');
  dc.insertAdjacentHTML('beforeend', timeHtml);
  }
 
  // 自动聚焦
- setTimeout(() => document.getElementById('time-input')?.focus(), 100);
+ setTimeout(function() { var ti = activeChatCard ? activeChatCard.querySelector('.time-input') : null; if (ti) ti.focus(); }, 100);
 }
 
 async function submitTime() {
- const timeInput = document.getElementById('time-input');
+ var card = activeChatCard; const timeInput = card ? card.querySelector('.time-input') : null;
  const time = timeInput ? timeInput.value.trim() : '';
 
  try {
@@ -1126,10 +1323,13 @@ function renderSchedule(data) {
  </section>
  `;
 
- const scheduleSection = document.getElementById('schedule-section');
+ var card = activeChatCard;
+ var scheduleSection = card ? card.querySelector('.schedule-section') : null;
  if (scheduleSection) scheduleSection.innerHTML = html;
- else {
- const dc = document.getElementById('dynamic-content');
+ else if (card) {
+ card.insertAdjacentHTML('beforeend', html);
+ } else {
+ var dc = document.getElementById('dynamic-content');
  dc.insertAdjacentHTML('beforeend', html);
  }
 
@@ -1181,16 +1381,17 @@ async function conflictChoice(choice) {
 // 工具函数
 // ======================================================================
 function showError(msg) {
- mainEl.innerHTML = `
- <div class="p-6 text-center">
- <div class="bg-red-50 border-2 border-red-200 rounded-[32px] p-6">
- <p class="text-red-500 font-bold text-sm">⚠️ ${msg}</p>
- <button onclick="resetAll()" class="mt-4 bg-gray-100 text-gray-700 font-bold px-6 py-3 rounded-2xl hover:bg-gray-200 transition">
- 重新开始
- </button>
- </div>
- </div>
- `;
+ // 追加错误消息到聊天流（无头像，纯气泡）
+ var row = document.createElement('div');
+ row.className = 'chat-row flex items-start mb-3 animate-fade-in';
+ var bubble = document.createElement('div');
+ bubble.className = 'chat-bubble-ai max-w-[75%] px-3.5 py-2.5 text-sm leading-relaxed';
+ bubble.style.cssText = 'background:#fef2f2;border:1px solid #fecaca;border-radius:16px;';
+ bubble.innerHTML = '<p class="text-red-600 font-bold text-sm">⚠️ ' + _escHtml(msg) + '</p>' +
+  '<button onclick="resetAll()" class="mt-2 bg-white border border-gray-200 text-gray-600 font-bold px-4 py-1.5 rounded-lg hover:bg-gray-50 transition text-xs">重新开始</button>';
+ row.appendChild(bubble);
+ mainEl.appendChild(row);
+ scrollToBottom();
 }
 
 async function resetAll() {
@@ -1205,7 +1406,7 @@ let execTimelineData = null;
 
 function handleNavigation() {
  // 从当前已渲染的 schedule 中获取数据
- const scheduleSection = document.getElementById('schedule-section');
+ var scheduleSection = activeChatCard ? activeChatCard.querySelector('.schedule-section') : null;
  if (!scheduleSection) return;
  // 数据已经在 renderSchedule 时存到 window
  openExecCover();
@@ -1341,7 +1542,7 @@ function openExecCover() {
  var chatBubbles = content.querySelectorAll('.bg-blue-50');
  var chatHTML = '';
  chatBubbles.forEach(function(b) { chatHTML += b.outerHTML; });
- const scheduleSection = document.getElementById('schedule-section');
+ var scheduleSection = activeChatCard ? activeChatCard.querySelector('.schedule-section') : null;
  if (scheduleSection && content) {
  // 1. 取竖向布局的 innerHTML
  content.innerHTML = scheduleSection.innerHTML;
@@ -2115,13 +2316,13 @@ function _confirmThenCallTaxi(reason) {
     function(val) {
       if (val === 'yes') {
         selectedTransport = '打车';
-        document.querySelectorAll('.transport-option').forEach(function(o) {
+        var card = activeChatCard; if (card) { card.querySelectorAll('.transport-option').forEach(function(o) {
           if (o.dataset.transport === '打车') {
             o.className = 'transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center';
           } else {
             o.className = 'transport-option bg-gray-200 text-gray-700 font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:bg-gray-300 transition flex flex-col items-center';
           }
-        });
+        }); }
         _simulateTaxiCall();
         fetch(API_BASE + '/api/replan', {
           method: 'POST',
@@ -2267,7 +2468,7 @@ function executePlanB() {
       // cancel_trip：清空一切
       execContentCache = '';
       document.getElementById('exec-plan-content').innerHTML = '';
-      var schedSec = document.getElementById('schedule-section');
+      var schedSec = activeChatCard ? activeChatCard.querySelector('.schedule-section') : null;
       if (schedSec) { schedSec.innerHTML = '<p class="text-gray-500 italic py-8 text-center">行程已取消</p>'; }
       lastScheduleData = null;
       var execCover = document.getElementById('exec-cover');

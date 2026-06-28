@@ -5,3 +5,4 @@ node_modules/
 gunicorn_access.log
 gunicorn_error.log
 *.bak
+chat_history.json

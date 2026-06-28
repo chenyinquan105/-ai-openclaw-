@@ -634,6 +634,156 @@ class MeituanAgent:
                 return None
 
 
+    # ======================================================================
+    # 通用LLM聊天流 — chat_stream()
+    # ======================================================================
+
+    def chat_stream(self, messages: list, tools: list = None, max_tool_rounds: int = 5):
+        """
+        流式LLM聊天生成器，支持工具调用循环。
+
+        参数:
+            messages: 完整对话历史（含system prompt）
+            tools: OpenAI格式工具定义列表
+            max_tool_rounds: 最大工具调用轮次（防止死循环）
+
+        Yields:
+            dict: SSE事件 {event, data}
+        """
+        current_messages = list(messages)  # 不修改原始列表
+        tool_round = 0
+
+        while tool_round <= max_tool_rounds:
+            tool_round += 1
+
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=current_messages,
+                    max_tokens=4096,
+                    tools=tools,
+                    tool_choice="auto" if tools else None,
+                    stream=True,
+                    timeout=120.0
+                )
+            except Exception as e:
+                yield {"event": "error", "data": {"message": f"LLM调用失败: {str(e)}"}}
+                return
+
+            # 收集流式响应，同时检测tool_calls
+            collected_content = ""
+            collected_tool_calls = []
+            # DeepSeek streaming中 tool_calls 分chunk返回
+            tool_call_buffer = {}  # index → {id, name, arguments_str}
+
+            try:
+                for chunk in response:
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if delta is None:
+                        continue
+
+                    # 文本内容
+                    if delta.content:
+                        collected_content += delta.content
+                        yield {"event": "message", "data": {"role": "assistant", "content": delta.content}}
+
+                    # 工具调用（流式：每个chunk可能只传一个function name片段或arguments片段）
+                    if delta.tool_calls:
+                        for tc_delta in delta.tool_calls:
+                            idx = tc_delta.index
+                            if idx not in tool_call_buffer:
+                                tool_call_buffer[idx] = {
+                                    "id": tc_delta.id or "",
+                                    "name": "",
+                                    "arguments_str": ""
+                                }
+                            buf = tool_call_buffer[idx]
+                            if tc_delta.id:
+                                buf["id"] = tc_delta.id
+                            if tc_delta.function:
+                                if tc_delta.function.name:
+                                    buf["name"] += tc_delta.function.name
+                                if tc_delta.function.arguments:
+                                    buf["arguments_str"] += tc_delta.function.arguments
+
+            except Exception as e:
+                yield {"event": "error", "data": {"message": f"流式响应中断: {str(e)}"}}
+                return
+
+            # 处理收集到的内容
+            if collected_content:
+                collected_content = ""  # 已逐块yield，不需要再发
+
+            # 处理工具调用
+            if tool_call_buffer:
+                # 构建完整的tool_calls
+                for idx in sorted(tool_call_buffer.keys()):
+                    buf = tool_call_buffer[idx]
+                    try:
+                        args = json.loads(buf["arguments_str"]) if buf["arguments_str"].strip() else {}
+                    except json.JSONDecodeError:
+                        args = {}
+                    tc = {
+                        "id": buf["id"],
+                        "name": buf["name"],
+                        "arguments": args
+                    }
+                    collected_tool_calls.append(tc)
+
+                    # 添加到消息历史
+                    current_messages.append({
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{
+                            "id": buf["id"],
+                            "type": "function",
+                            "function": {"name": buf["name"], "arguments": buf["arguments_str"]}
+                        }]
+                    })
+
+                    # yield工具调用事件
+                    yield {
+                        "event": "tool_call",
+                        "data": {
+                            "id": buf["id"],
+                            "name": buf["name"],
+                            "arguments": args
+                        }
+                    }
+
+                # 工具调用已yield，等待外部执行后传入结果
+                # 不在内部循环中执行（由server.py的_execute_chat_tool处理）
+                # 返回工具调用信息，让调用方执行
+                if collected_tool_calls:
+                    yield {
+                        "event": "tool_calls_complete",
+                        "data": {
+                            "tool_calls": [{
+                                "id": tc["id"],
+                                "name": tc["name"],
+                                "arguments": tc["arguments"]
+                            } for tc in collected_tool_calls]
+                        }
+                    }
+                    # 工具调用结果由server.py追加到messages后重新调用chat_stream
+                    return
+
+            else:
+                # 没有工具调用，纯文本回复完成
+                yield {"event": "done", "data": {"status": "complete"}}
+                return
+
+        # 超过最大轮次
+        yield {"event": "error", "data": {"message": "工具调用轮次超限，请简化请求"}}
+
+    def chat_stream_continue(self, messages: list, tools: list = None, max_tool_rounds: int = 5):
+        """
+        工具调用完成后的继续流式生成。与chat_stream相同逻辑，
+        但messages中已包含tool_call和tool结果。
+        """
+        return self.chat_stream(messages, tools, max_tool_rounds)
+
+
 if __name__ == "__main__":
     agent = MeituanAgent(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
     agent.run()

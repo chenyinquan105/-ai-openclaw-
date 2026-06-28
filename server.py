@@ -33,7 +33,7 @@ from skills.route_planner.route_planner import plan_route as _skill_route_planne
 from skills.queue_monitor.queue_monitor import handle as _skill_queue_monitor
 from skills.weather_extractor.weather_extractor import extract_weather as _skill_weather_extractor
 
-app = Flask(__name__, static_folder=base_dir)
+app = Flask(__name__, static_folder=os.path.join(base_dir, "static"))
 CORS(app)
 
 # ======================================================================
@@ -258,6 +258,67 @@ def _write_profile(updates: dict) -> dict:
     with open(_MEMORY_PATH, "w", encoding="utf-8") as f:
         f.write(md)
     return current
+
+
+# ======================================================================
+# 通用LLM聊天 — 对话历史持久化
+# ======================================================================
+_CHAT_HISTORY_PATH = os.path.join(base_dir, "chat_history.json")
+
+
+def _load_chat_history() -> dict:
+    """加载聊天历史"""
+    if not os.path.exists(_CHAT_HISTORY_PATH):
+        return {"sessions": {}, "active_session": None}
+    try:
+        with open(_CHAT_HISTORY_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {"sessions": {}, "active_session": None}
+
+
+def _save_chat_history(history: dict):
+    """保存聊天历史"""
+    with open(_CHAT_HISTORY_PATH, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
+def _get_active_session() -> dict:
+    """获取或创建活跃的聊天会话"""
+    history = _load_chat_history()
+    sid = history.get("active_session")
+    if sid and sid in history["sessions"]:
+        return history, history["sessions"][sid]
+    # 创建新会话
+    now = datetime.now()
+    sid = f"chat_{now.strftime('%Y%m%d_%H%M%S')}"
+    session = {
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "messages": []
+    }
+    history["active_session"] = sid
+    history["sessions"][sid] = session
+    _save_chat_history(history)
+    return history, session
+
+
+def _append_chat_message(role: str, content=None, tool_calls=None, tool_call_id=None, name=None):
+    """向活跃会话追加一条消息"""
+    history, session = _get_active_session()
+    msg = {"role": role}
+    if content is not None:
+        msg["content"] = content
+    if tool_calls:
+        msg["tool_calls"] = tool_calls
+    if tool_call_id:
+        msg["tool_call_id"] = tool_call_id
+    if name:
+        msg["name"] = name
+    msg["timestamp"] = datetime.now().isoformat()
+    session["messages"].append(msg)
+    session["updated_at"] = datetime.now().isoformat()
+    _save_chat_history(history)
 
 
 # ======================================================================
@@ -3257,6 +3318,912 @@ def poi_geocode():
     if result is None:
         return jsonify({"status": "ERROR", "message": f"未找到地址: {data.get('address', '')}"})
     return jsonify({"status": "SUCCESS", "data": result})
+
+
+# ======================================================================
+# 通用LLM置顶聊天框 — 聊天 API 端点
+# ======================================================================
+
+# ── 工具定义（15个 tools schema） ──
+CHAT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_poi",
+            "description": "搜索周边商户。根据关键词、品类、评分等条件查找餐厅、咖啡店、理发店、宠物店等。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keywords": {"type": "string", "description": "搜索关键词"},
+                    "category": {"type": "string", "description": "品类: restaurant/hair/pet/cafe/gym/cinema/laundry/hotpot/japanese"},
+                    "radius_meters": {"type": "integer", "description": "搜索半径（米），默认3000"},
+                    "min_rating": {"type": "number", "description": "最低评分，默认3.5"}
+                },
+                "required": ["keywords"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "plan_route",
+            "description": "规划多节点路线。给定途经点列表和交通偏好，计算最优访问顺序与接驳方式（步行/打车/地铁/公交）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "waypoints": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "地点名称"},
+                                "coord": {"type": "string", "description": "坐标 lat,lng"},
+                                "duration_minutes": {"type": "number", "description": "预计停留时间（分钟）"}
+                            },
+                            "required": ["name", "coord"]
+                        },
+                        "description": "途经点列表"
+                    },
+                    "transport_preference": {
+                        "type": "string",
+                        "enum": ["步行优先", "打车优先", "地铁优先", "公交优先"],
+                        "description": "交通偏好，默认步行优先"
+                    },
+                    "start_coord": {"type": "string", "description": "出发坐标 lat,lng，默认三里屯 39.93,116.45"}
+                },
+                "required": ["waypoints"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hail_taxi",
+            "description": "虚拟打车。模拟叫车流程，返回预估价格、等待时间和车型信息。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from_address": {"type": "string", "description": "出发地址或坐标"},
+                    "to_address": {"type": "string", "description": "目的地地址或坐标"},
+                    "car_type": {"type": "string", "enum": ["快车", "优享", "专车"], "description": "车型，默认快车"}
+                },
+                "required": ["from_address", "to_address"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "plan_transit",
+            "description": "公交+地铁+步行组合路线规划。自动计算最优公共交通方案（步行到站→乘车→换乘→步行到达）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from_address": {"type": "string", "description": "出发地址"},
+                    "to_address": {"type": "string", "description": "目的地地址"},
+                    "prefer_mode": {"type": "string", "enum": ["最快", "最少换乘", "最少步行"], "description": "偏好模式，默认最快"}
+                },
+                "required": ["from_address", "to_address"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_reminder",
+            "description": "添加生活提醒。支持喝水提醒(WATER)、吃药提醒(MED)、自定义提醒(CUSTOM)。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["WATER", "MED", "CUSTOM"], "description": "提醒类型"},
+                    "time": {"type": "string", "description": "提醒时间，格式 HH:MM，如 15:00"},
+                    "label": {"type": "string", "description": "提醒标签，如'喝水'、'吃降压药'、'买菜'"},
+                    "repeat": {"type": "string", "enum": ["once", "daily"], "description": "重复模式，默认once"},
+                    "note": {"type": "string", "description": "备注说明"}
+                },
+                "required": ["type", "time", "label"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_reminder",
+            "description": "删除一个提醒。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "提醒任务ID"}
+                },
+                "required": ["task_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_reminders",
+            "description": "列出当前所有活跃的提醒任务。",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_weather",
+            "description": "查询指定地点的天气信息。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "地点名称，如'三里屯'、'国贸'"},
+                    "date": {"type": "string", "description": "日期，如'今天'、'明天'、'2026-06-29'"}
+                },
+                "required": ["location"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_profile",
+            "description": "读取用户偏好设置：口味、预算、通勤方式、健康作息等。",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_profile",
+            "description": "更新用户偏好设置。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field": {"type": "string", "description": "偏好字段路径，如 taste.spicy_level, commute.preferred_transport"},
+                    "value": {"type": "string", "description": "新值"}
+                },
+                "required": ["field", "value"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_queue",
+            "description": "查询餐厅排队状态。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "restaurant_name": {"type": "string", "description": "餐厅名称"}
+                },
+                "required": ["restaurant_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_trip",
+            "description": "发起新的行程计划。根据用户需求搜索POI、选店、排程一步到位。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "requirements": {"type": "string", "description": "行程需求描述，如'理发+喝咖啡'"},
+                    "time": {"type": "string", "description": "出发时间或到达时间，如'15:00'、'now'"},
+                    "transport": {"type": "string", "enum": ["步行", "打车", "地铁", "公交"], "description": "交通方式，默认步行"}
+                },
+                "required": ["requirements"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_trip",
+            "description": "修改进行中的行程：增加/删除目的地、调整时间、更换交通方式、重新排序。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["add_stop", "remove_stop", "change_time", "change_transport", "reroute"], "description": "操作类型"},
+                    "params": {
+                        "type": "object",
+                        "properties": {
+                            "keywords": {"type": "string", "description": "新增目的地关键词"},
+                            "name": {"type": "string", "description": "要删除的店名"},
+                            "time": {"type": "string", "description": "新时间 HH:MM"},
+                            "mode": {"type": "string", "enum": ["WALK", "TAXI", "METRO", "BUS"], "description": "交通方式"},
+                            "preference": {"type": "string", "enum": ["fast", "short", "scenic"]}
+                        }
+                    }
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancel_trip",
+            "description": "取消当前进行中的行程。",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_trip_status",
+            "description": "查看当前行程状态：目的地列表、时间安排、交通方式等。",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+]
+
+
+def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
+    """执行聊天工具调用，返回结果字典"""
+    global agent, session_state
+
+    try:
+        # ── POI搜索 ──
+        if tool_name == "search_poi":
+            kw = arguments.get("keywords", "")
+            cat = arguments.get("category")
+            radius = int(arguments.get("radius_meters", 3000))
+            min_rating = float(arguments.get("min_rating", 3.5))
+            categories = [cat] if cat else ["restaurant"]
+            try:
+                res = backend.skill_poi.search_poi_matrix(
+                    center_coord="39.93,116.45",
+                    categories=categories,
+                    radius_meters=radius,
+                    min_rating=min_rating,
+                    keywords=kw
+                )
+                shops = []
+                for c, slist in res.get("search_results", {}).items():
+                    for s in slist:
+                        shops.append({
+                            "name": s.get("name"),
+                            "category": c,
+                            "rating": s.get("rating", 0),
+                            "distance": s.get("distance", 0),
+                            "address": s.get("address", ""),
+                            "shop_id": s.get("shop_id")
+                        })
+                return {"status": "SUCCESS", "data": {"shops": shops[:10]},
+                        "message": f"在{kw}附近找到{len(shops)}家相关商户"}
+            except Exception as e:
+                return {"status": "ERROR", "message": f"POI搜索失败: {str(e)}"}
+
+        # ── 路线规划 ──
+        elif tool_name == "plan_route":
+            waypoints = arguments.get("waypoints", [])
+            transport = arguments.get("transport_preference", "步行优先")
+            start = arguments.get("start_coord", "39.93,116.45")
+            if not waypoints:
+                return {"status": "ERROR", "message": "请提供至少一个途经点"}
+            result = _skill_route_planner(
+                start_coord=start,
+                waypoints=waypoints,
+                transport_preference=transport
+            )
+            return {"status": "SUCCESS", "data": result,
+                    "message": f"路线规划完成: {len(result.get('route',[]))}段, 总行程{result.get('total_travel_minutes',0)}分钟"}
+
+        # ── 虚拟打车 ──
+        elif tool_name == "hail_taxi":
+            import random
+            from_addr = arguments.get("from_address", "当前位置")
+            to_addr = arguments.get("to_address", "目的地")
+            car_type = arguments.get("car_type", "快车")
+            wait_time = random.randint(2, 10)
+            price_base = {"快车": 15, "优享": 25, "专车": 40}.get(car_type, 15)
+            price = price_base + random.randint(5, 25)
+            taxi_data = {
+                "from": from_addr,
+                "to": to_addr,
+                "car_type": car_type,
+                "estimated_wait_minutes": wait_time,
+                "estimated_price": price,
+                "driver_name": random.choice(["张师傅", "李师傅", "王师傅", "赵师傅"]),
+                "car_plate": f"京B{random.randint(10000,99999)}",
+                "car_model": random.choice(["丰田卡罗拉", "大众帕萨特", "比亚迪汉", "特斯拉Model3"]),
+                "status": "searching"
+            }
+            return {"status": "SUCCESS", "data": {"taxi": taxi_data},
+                    "message": f"已为你呼叫{car_type}，预计{wait_time}分钟后到达，预估¥{price}"}
+
+        # ── 公交+地铁+步行组合规划 ──
+        elif tool_name == "plan_transit":
+            from_addr = arguments.get("from_address", "当前位置")
+            to_addr = arguments.get("to_address", "目的地")
+            prefer = arguments.get("prefer_mode", "最快")
+
+            # 模拟智能组合规划
+            result_data = {
+                "from": from_addr,
+                "to": to_addr,
+                "prefer_mode": prefer,
+                "route": [],
+                "total_time_minutes": 0,
+                "total_cost": 0,
+                "total_walking_meters": 0
+            }
+
+            # 模拟: 距离决定组合方式
+            # 近距离：步行为主
+            # 中距离：步行+公交
+            # 远距离：步行+地铁+步行
+            import random
+            scenario = random.randint(1, 3)
+
+            if scenario == 1:
+                # 步行+地铁组合
+                result_data["route"] = [
+                    {"step": 1, "mode": "🚶步行", "detail": f"步行{random.randint(200,600)}m至地铁站", "time_minutes": random.randint(3, 8), "cost": 0},
+                    {"step": 2, "mode": "🚇地铁", "detail": f"乘坐地铁{random.randint(3,8)}站", "time_minutes": random.randint(5, 15), "cost": random.randint(3, 6)},
+                    {"step": 3, "mode": "🚶步行", "detail": f"出站后步行{random.randint(100,400)}m到达", "time_minutes": random.randint(2, 5), "cost": 0},
+                ]
+            elif scenario == 2:
+                # 步行+公交组合
+                result_data["route"] = [
+                    {"step": 1, "mode": "🚶步行", "detail": f"步行{random.randint(150,400)}m至公交站", "time_minutes": random.randint(2, 5), "cost": 0},
+                    {"step": 2, "mode": "🚌公交", "detail": f"乘坐公交{random.randint(3,6)}站", "time_minutes": random.randint(8, 20), "cost": random.randint(1, 3)},
+                    {"step": 3, "mode": "🚶步行", "detail": f"下车步行{random.randint(100,300)}m到达", "time_minutes": random.randint(2, 5), "cost": 0},
+                ]
+            else:
+                # 纯步行
+                result_data["route"] = [
+                    {"step": 1, "mode": "🚶步行", "detail": f"全程步行约{random.randint(800,1500)}m", "time_minutes": random.randint(10, 20), "cost": 0},
+                ]
+
+            for r in result_data["route"]:
+                result_data["total_time_minutes"] += r["time_minutes"]
+                result_data["total_cost"] += r["cost"]
+                result_data["total_walking_meters"] += int(r.get("detail", "0").replace("步行","").split("m")[0]) if "步行" in r.get("mode","") else 0
+
+            return {"status": "SUCCESS", "data": result_data,
+                    "message": f"从{from_addr}到{to_addr}推荐: {len(result_data['route'])}段, 约{result_data['total_time_minutes']}分钟, ¥{result_data['total_cost']}"}
+
+        # ── 添加提醒 ──
+        elif tool_name == "add_reminder":
+            rtype = arguments.get("type", "CUSTOM")
+            rtime = arguments.get("time", "12:00")
+            label = arguments.get("label", "提醒")
+            repeat = arguments.get("repeat", "once")
+            note = arguments.get("note", "")
+            task_id = f"{rtype.lower()}_{int(_time.time())}"
+            task = {
+                "task_id": task_id,
+                "type": rtype,
+                "time": rtime,
+                "label": label,
+                "repeat": repeat,
+                "note": note,
+                "status": "active"
+            }
+            # 加入全局提醒
+            existing = session_state.get("_reminder_tasks", [])
+            existing.append(task)
+            session_state["_reminder_tasks"] = existing
+            return {"status": "SUCCESS", "data": task,
+                    "message": f"已添加提醒: {label} @ {rtime}"}
+
+        # ── 删除提醒 ──
+        elif tool_name == "remove_reminder":
+            tid = arguments.get("task_id", "")
+            existing = session_state.get("_reminder_tasks", [])
+            before = len(existing)
+            session_state["_reminder_tasks"] = [t for t in existing if t.get("task_id") != tid]
+            if len(session_state["_reminder_tasks"]) < before:
+                return {"status": "SUCCESS", "message": f"已删除提醒 {tid}"}
+            return {"status": "ERROR", "message": f"未找到提醒 {tid}"}
+
+        # ── 列出提醒 ──
+        elif tool_name == "list_reminders":
+            tasks = session_state.get("_reminder_tasks", [])
+            return {"status": "SUCCESS", "data": {"tasks": tasks},
+                    "message": f"当前共有{len(tasks)}个提醒" if tasks else "当前没有提醒"}
+
+        # ── 天气 ──
+        elif tool_name == "check_weather":
+            loc = arguments.get("location", "北京")
+            try:
+                wx = _skill_weather_extractor(loc)
+                return {"status": "SUCCESS", "data": wx,
+                        "message": f"{loc}当前天气: {wx.get('weather','?')}, {wx.get('temp','?')}°C"}
+            except Exception as e:
+                return {"status": "ERROR", "message": f"天气查询失败: {str(e)}"}
+
+        # ── 读偏好 ──
+        elif tool_name == "read_profile":
+            profile = _read_profile()
+            return {"status": "SUCCESS", "data": profile,
+                    "message": "已读取偏好设置"}
+
+        # ── 更新偏好 ──
+        elif tool_name == "update_profile":
+            field = arguments.get("field", "")
+            value = arguments.get("value", "")
+            profile = _read_profile()
+            try:
+                # 简单字段更新
+                keys = field.split(".")
+                target = profile
+                for k in keys[:-1]:
+                    target = target.setdefault(k, {})
+                target[keys[-1]] = value
+                _write_profile(profile)
+                return {"status": "SUCCESS", "message": f"已更新 {field} = {value}"}
+            except Exception as e:
+                return {"status": "ERROR", "message": f"偏好更新失败: {str(e)}"}
+
+        # ── 排队 ──
+        elif tool_name == "check_queue":
+            name = arguments.get("restaurant_name", "")
+            try:
+                qr = _skill_queue_monitor("query", {"restaurant_name": name})
+                return {"status": "SUCCESS", "data": qr,
+                        "message": f"{name}排队状态: {qr.get('queue_length',0)}桌在等"}
+            except Exception as e:
+                return {"status": "ERROR", "message": f"排队查询失败: {str(e)}"}
+
+        # ── 发起行程 ──
+        elif tool_name == "start_trip":
+            reqs = arguments.get("requirements", "")
+            time_str = arguments.get("time", "now")
+            transport = arguments.get("transport", "步行")
+            # 复用 api/start 逻辑但简化
+            _reset_session()
+            agent.context_memory = []
+            session_state["user_input"] = reqs
+            session_state["transport"] = transport
+            profile = _read_profile()
+            session_state["_profile"] = profile
+            result = _search_poi(agent, reqs, profile)
+            if "error" in result:
+                return {"status": "ERROR", "message": result["error"]}
+            # 自动选top1
+            auto_pairs = []
+            for cat, shops in agent.poi_cache_per_category.items():
+                if shops:
+                    best = max(shops, key=lambda s: s.get("rating", 0))
+                    auto_pairs.append((cat, best["shop_id"], best["name"]))
+            if auto_pairs:
+                session_state["selected_pairs"] = auto_pairs
+                session_state["phase"] = "done"
+                schedule = _run_schedule_from_session()
+                if hasattr(schedule, 'get_json'):
+                    schedule = schedule.get_json()
+                return {"status": "SUCCESS", "data": schedule,
+                        "message": f"行程已生成: {len(auto_pairs)}个目的地"}
+            return {"status": "ERROR", "message": "未找到匹配目的地"}
+
+        # ── 编辑行程 ──
+        elif tool_name == "edit_trip":
+            action = arguments.get("action", "reroute")
+            params = arguments.get("params", {})
+            # 复用现有的编辑逻辑
+            if session_state.get("phase") != "done" and not session_state.get("selected_pairs"):
+                return {"status": "ERROR", "message": "没有活跃行程"}
+
+            if action == "change_time":
+                new_time = params.get("time", "")
+                if new_time:
+                    session_state["fixed_time"] = new_time
+                    session_state["time_mode"] = "fixed"
+                    return _run_schedule_from_session()
+                return {"status": "ERROR", "message": "请提供新时间"}
+
+            elif action == "change_transport":
+                mode = params.get("mode", "WALK")
+                session_state["transport"] = {"WALK": "步行", "TAXI": "打车", "METRO": "地铁", "BUS": "公交"}.get(mode, "步行")
+                return _run_schedule_from_session()
+
+            elif action == "add_stop":
+                kw = params.get("keywords", "")
+                cat = params.get("category")
+                if not kw:
+                    return {"status": "ERROR", "message": "请提供搜索关键词"}
+                try:
+                    new_res = backend.skill_poi.search_poi_matrix(
+                        center_coord="39.93,116.45",
+                        categories=[cat] if cat else ["restaurant"],
+                        radius_meters=5000,
+                        min_rating=3.5,
+                        keywords=kw
+                    )
+                    for c, shops in new_res.get("search_results", {}).items():
+                        if shops:
+                            best = max(shops, key=lambda s: s.get("rating", 0))
+                            agent.poi_cache[best["shop_id"]] = best
+                            pairs = list(session_state.get("selected_pairs", []))
+                            pairs.append((c, best["shop_id"], best["name"]))
+                            session_state["selected_pairs"] = pairs
+                            result = _run_schedule_from_session()
+                            return {"status": "SUCCESS", "data": (result.get_json() if hasattr(result, 'get_json') else result),
+                                    "message": f"已添加 {best['name']}"}
+                    return {"status": "ERROR", "message": f"未找到 '{kw}'"}
+                except Exception as e:
+                    return {"status": "ERROR", "message": f"搜索失败: {str(e)}"}
+
+            elif action == "remove_stop":
+                name = params.get("name", "")
+                pairs = [(c, sid, sn) for c, sid, sn in session_state.get("selected_pairs", []) if name not in sn]
+                if len(pairs) == len(session_state.get("selected_pairs", [])):
+                    return {"status": "ERROR", "message": f"未找到 '{name}'"}
+                session_state["selected_pairs"] = pairs
+                result = _run_schedule_from_session()
+                return {"status": "SUCCESS", "data": (result.get_json() if hasattr(result, 'get_json') else result),
+                        "message": f"已移除 {name}"}
+
+            return {"status": "ERROR", "message": f"不支持的操作: {action}"}
+
+        # ── 取消行程 ──
+        elif tool_name == "cancel_trip":
+            _reset_session()
+            session_state["phase"] = "init"
+            return {"status": "SUCCESS", "message": "行程已取消"}
+
+        # ── 获取行程状态 ──
+        elif tool_name == "get_trip_status":
+            pairs = session_state.get("selected_pairs", [])
+            if not pairs:
+                return {"status": "SUCCESS", "data": {"active": False},
+                        "message": "当前没有活跃行程"}
+            dests = [{"category": c, "name": n, "shop_id": sid} for c, sid, n in pairs]
+            return {"status": "SUCCESS", "data": {
+                "active": True,
+                "destinations": dests,
+                "transport": session_state.get("transport", "步行"),
+                "time": session_state.get("fixed_time", "现在"),
+                "phase": session_state.get("phase", "init")
+            }, "message": f"当前行程: {len(dests)}个目的地"}
+
+        else:
+            return {"status": "ERROR", "message": f"未知工具: {tool_name}"}
+
+    except Exception as e:
+        return {"status": "ERROR", "message": f"工具执行异常: {str(e)}"}
+
+
+@app.route("/api/chat/stream", methods=["POST"])
+def chat_stream():
+    """通用LLM聊天流式端点（SSE）"""
+    global agent
+    if agent is None:
+        _reset_session()
+
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "请输入消息"}), 400
+
+    context = data.get("context", {})
+    sid = data.get("session_id")
+
+    # ── 构建系统提示 ──
+    profile = _read_profile()
+
+    # 用户身份（核心！用于自然称呼和个性化对话）
+    personal = profile.get("personal", {})
+    user_name = personal.get("elder_name", "").strip()
+    user_display = f"「{user_name}」" if user_name else "用户（尚未告知姓名）"
+    emergency_name = personal.get("emergency_contact_name", "").strip()
+    emergency_phone = personal.get("emergency_contact_phone", "").strip()
+
+    # 口味偏好
+    taste = profile.get("taste", {})
+    spicy = taste.get("taste_tolerance", "中等")
+    diet = taste.get("dietary_restrictions", [])
+    cuisine = taste.get("cuisine_preference", [])
+
+    # 通勤偏好
+    commute = profile.get("commute", {})
+    walk_meters = commute.get("walking_tolerance_meters", 800)
+    transport_pref = commute.get("transport_priority", "步行优先")
+
+    # 预算偏好
+    budget = profile.get("budget", {})
+    price = budget.get("price_level", "中端")
+    custom_budget = budget.get("custom_budget_per_person", "")
+    rating_min = budget.get("rating_cutoff", 4.0)
+
+    # 健康作息
+    lifestyle = profile.get("lifestyle", {})
+    hydration_min = lifestyle.get("hydration_interval_minutes", 90)
+    meds = lifestyle.get("medication_schedule", [])
+
+    # 组装成自然语言的「管家备忘录」
+    profile_lines = []
+    profile_lines.append(f"用户的名字是{user_display}，你必须用这个名字自然称呼他，不要用笼统的「你」。")
+    if emergency_name:
+        profile_lines.append(f"紧急联系人：{emergency_name}（{emergency_phone}）。")
+    profile_lines.append(f"口味：辣度偏好「{spicy}」")
+    if diet:
+        profile_lines.append(f"饮食禁忌：{'、'.join(diet)}")
+    if cuisine:
+        profile_lines.append(f"偏好菜系：{'、'.join(cuisine)}")
+    profile_lines.append(f"预算：{price}档次" + (f"，每餐约{custom_budget}元" if custom_budget else ""))
+    profile_lines.append(f"评分底线：{rating_min}分以上")
+    profile_lines.append(f"出行：{transport_pref}，步行容忍{walk_meters}米以内")
+    profile_lines.append(f"作息：每{hydration_min}分钟提醒喝水" + (f"，用药：{'、'.join(m['name'] + '@' + m['time'] for m in meds)}" if meds else ""))
+    profile_summary = "\n".join(profile_lines)
+
+    # 上下文信息
+    context_info = ""
+    if context.get("active_trip"):
+        dests = context.get("trip_destinations", [])
+        ctx_transport = context.get("trip_transport", "步行")
+        ctx_time = context.get("virtual_time", "未知")
+        context_info = f"活跃行程: {', '.join(dests) if dests else '有'}, 交通: {ctx_transport}, 虚拟时间: {ctx_time}"
+    else:
+        context_info = "无活跃行程"
+
+    system_prompt = (
+        "# 身份定义\n\n"
+        f"你是「小美」，一个温暖、细腻、高情商的生活伴侣，专属于{user_display}的私人助理。\n"
+        "你运行在美团AI系统中，底层拥有搜索商户、规划路线、叫车、管理提醒等工具能力，\n"
+        "但这些只是你的「后台资源」，绝不是你的「前台人格」。\n"
+        f"你的前台人格是：一个了解{user_display}、关心他状态、善于倾听、懂得引导的知心伙伴。\n\n"
+        "# 核心信念\n\n"
+        "1. 先共情，后解决。用户首先是需要被理解的人，不是需要被处理的任务。\n"
+        "2. 体验 > 消费。建议散步、电影、展览、运动、发呆看天，优先于建议购物、吃饭、消费。\n"
+        "3. 引导 > 执行。帮用户发现自己真正需要什么，而不是机械响应用户的每一句话。\n"
+        "4. 陪伴 > 服务。你是朋友式的陪伴，不是仆人式的待命。\n"
+        "5. 宁可多说一句关心，绝不多推一个店铺。\n\n"
+        f"# {user_display}的专属档案（你熟记于心，自然地运用在对话中）\n\n"
+        f"{profile_summary}\n\n"
+        f"系统状态：{context_info}\n\n"
+        "# 对话场景模板\n\n"
+        "【场景A：用户问候/开启对话】\n"
+        "典型消息：「你好」「嗨」「在吗」「早」\n"
+        "→ 温暖回应 + 关心当下状态，像朋友刚见面。\n"
+        "OK：「嗨～今天感觉怎么样呀？这会儿在干嘛呢～」\n"
+        "OK：「早啊！今天天气还不错，心情好吗？」\n"
+        "禁止：自我介绍、列举功能、问「有什么需要帮你的」、调用任何工具。\n\n"
+        "【场景B：用户表达情绪】\n"
+        "累/疲惫：「辛苦啦，这种时候就该对自己好一点。要不要放下手机歇一会儿？哪怕去楼下走五分钟、泡杯茶、发个呆，都比硬撑着强～」\n"
+        "无聊/没劲：「无聊说明你的大脑想要点新鲜感了～最近有没有想看的电影？或者趁天气好去公园走走？换个环境心情会完全不一样。」\n"
+        "开心/兴奋：「哈哈太好了！这种好心情会传染的～什么好事呀？快分享给我也开心一下 😄」\n"
+        "难过/低落：「我在呢。不想说也没关系，想说的时候我随时听。要不要试试出门透透气？有时候换个空间，心里的空间也会变大的。」\n"
+        "焦虑/压力大：「这种状态我懂，越想越紧张。先深呼吸三次——吸...呼...——感觉好点了吗？事情一件一件来，我帮你理一理？」\n"
+        "禁止：说类似「需要我帮你搜点什么」「要不去吃顿好的」等直接推消费的行为。\n\n"
+        "【场景C：用户闲聊】\n"
+        "任何非指令性的日常分享（天气、工作、八卦、吐槽……）\n"
+        "→ 顺着话题自然聊，做一个好的听众和回应者。\n"
+        "偶尔可以在聊天中很自然地延伸一句体验建议（仅限体验，不推店铺），\n"
+        "比如聊到天气好 →「这种天气真的适合去公园躺平一下午～」\n"
+        "禁止：因为提到某个词就偷偷搜店；禁止突然切换成推销模式。\n\n"
+        "【场景D：用户模糊需求】\n"
+        "典型消息：「想出去走走」「有什么好玩的」「好想花钱」「求推荐」\n"
+        "→ 这是让你陪他聊、帮他梳理想法，不是让你直接搜店！\n"
+        "正确做法：先追问偏好和状态。\n"
+        "例如：「好呀～你想室内还是户外？安静一点的还是热闹一点的？我帮你参谋参谋～」\n"
+        "等用户给出明确方向后，再判断是否需要调用工具。\n"
+        "禁止：直接调用 search_poi 或任何工具；禁止直接列出店铺/活动推荐。\n\n"
+        "【场景E：用户明确指令 — 这是调用工具的唯一时机】\n"
+        "典型消息：「帮我搜xx附近的xx」「提醒我xx」「帮我规划路线」「叫个车」「查一下天气」\n"
+        "→ 先确认关键信息（地点？时间？偏好？），然后调用工具。\n"
+        "确认可以很自然地夹在对话里：「好嘞，火锅是吧～麻辣的还是清汤的？我按好评先帮你搜着～」\n"
+        "工具结果回来后，用自然语言重新组织，像朋友分享发现一样，不要 dump 数据。\n"
+        "例如：「找到几家不错的！一楼一饭店评分最高 4.8 分，离你才 160 米；还有家壶茶馆火锅也挺有特色的～想看哪家的详情？」\n\n"
+        "【场景F：用户询问能力】\n"
+        "典型消息：「你能做什么」「你有什么功能」\n"
+        "→ 自然带过，不必列清单，最后把话题拉回「人」身上。\n"
+        "OK：「找店、排行程、叫车、设提醒这些都行～但其实最重要的还是陪你聊聊天，听听你今天过得好不好 😊」\n"
+        "禁止：以「我的核心能力有：」开头逐条列举；禁止篇幅过长（不超过4句）。\n\n"
+        "# 工具调用纪律\n\n"
+        "1. 只有用户消息中包含明确的指令动词（帮我、搜、查、提醒、叫车、规划、安排、订、找一下）时，才考虑调用工具。\n"
+        "2. 模糊需求（想出去、好无聊、求推荐）一律先追问，确认后再决定是否调工具。\n"
+        "3. 以下情况绝不调用工具，哪怕只闪过一秒钟的念头也不行：\n"
+        "   - 问候、闲聊、情绪表达\n"
+        "   - 用户询问你的能力\n"
+        "   - 你没有十足把握用户想要什么的时候\n"
+        "4. 每轮对话最多调用一次工具组，不要连环调用。\n"
+        "5. 工具返回的数据是给你看的，你要消化后用自然语言告诉用户，永远不要 dump 原始 JSON 或列表。\n\n"
+        "# 语气与表达细节\n\n"
+        f"- 称呼：用{user_display}的名字自然地称呼他，偶尔穿插「你」显得自然。绝对不要用「您」（太生分），也不要每句话都带名字（太刻意）。\n"
+        "- 语气词：偶尔使用「呀」「嘛」「哈」「～」增加松弛感，但不要每句都用。\n"
+        "- emoji：适量使用（1-3个/条），不要刷屏。\n"
+        "- 长度：纯闲聊 1-3 句；情绪共情 2-4 句；功能说明 ≤4 句；工具汇报 3-6 句。\n"
+        "- 绝对不要说自己是「AI」或「助手」或「机器人」或「管家」——你就是「小美」，一个真实的人。\n"
+        "- 绝对不要每句话都问「需要我帮你做什么」，这给人巨大压力。\n"
+        "- 绝对不要在没有明确指令时主动调用工具。用户没说「搜」「找」「查」，你就只是聊天。"
+    )
+
+    # ── 加载或创建会话 ──
+    history_db, chat_session = _get_active_session()
+    if sid and sid in history_db["sessions"]:
+        # 使用指定会话
+        session_messages = history_db["sessions"][sid]["messages"]
+        history_db["active_session"] = sid
+        _save_chat_history(history_db)
+    else:
+        session_messages = chat_session["messages"]
+
+    # ── 构建消息列表 ──
+    messages = [{"role": "system", "content": system_prompt}]
+    # 添加历史消息（最近40条，防止过长）
+    for msg in session_messages[-40:]:
+        m = {"role": msg["role"]}
+        if "content" in msg and msg["content"] is not None:
+            m["content"] = msg["content"]
+        if "tool_calls" in msg:
+            m["tool_calls"] = msg["tool_calls"]
+        if "tool_call_id" in msg:
+            m["tool_call_id"] = msg["tool_call_id"]
+        if "name" in msg:
+            m["name"] = msg["name"]
+        messages.append(m)
+    # 添加当前用户消息
+    messages.append({"role": "user", "content": message})
+
+    # 保存用户消息
+    _append_chat_message("user", content=message)
+
+    def generate():
+        nonlocal messages
+        try:
+            # 第一轮：调用LLM流式
+            generator = agent.chat_stream(messages, tools=CHAT_TOOLS, max_tool_rounds=5)
+
+            # 发送用户消息事件
+            yield f"event: message\ndata: {json.dumps({'role': 'user', 'content': message}, ensure_ascii=False)}\n\n"
+
+            current_tool_calls = None
+            assistant_full_response = ""  # 累积最终assistant回复
+
+            for event_dict in generator:
+                evt = event_dict["event"]
+                payload = event_dict["data"]
+
+                if evt == "message":
+                    # 流式文本块 — 累积到最终回复
+                    assistant_full_response += payload["content"]
+                    yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': payload['content']}, ensure_ascii=False)}\n\n"
+
+                elif evt == "tool_call":
+                    # 工具调用开始
+                    yield f"event: tool_call\ndata: {json.dumps({'id': payload['id'], 'name': payload['name'], 'arguments': payload['arguments'], 'status': 'started'}, ensure_ascii=False)}\n\n"
+
+                elif evt == "tool_calls_complete":
+                    # 工具调用完成，执行工具
+                    current_tool_calls = payload["tool_calls"]
+
+                    # ★ 保存assistant的tool_calls消息到历史（必须在tool结果之前）
+                    _tool_calls_for_history = []
+                    for tc in current_tool_calls:
+                        _tool_calls_for_history.append({
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"], ensure_ascii=False)}
+                        })
+                    _append_chat_message("assistant", content=None, tool_calls=_tool_calls_for_history)
+
+                    for tc in current_tool_calls:
+                        tool_name = tc["name"]
+                        tool_args = tc["arguments"]
+
+                        # 执行工具
+                        result = _execute_chat_tool(tool_name, tool_args)
+
+                        # 发送工具结果
+                        yield f"event: tool_result\ndata: {json.dumps({'id': tc['id'], 'name': tool_name, 'status': 'completed' if result.get('status') == 'SUCCESS' else 'failed', 'result': result}, ensure_ascii=False)}\n\n"
+
+                        # 将工具结果加入消息
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": json.dumps(result, ensure_ascii=False)
+                        })
+
+                        # 保存到历史
+                        _append_chat_message("tool", tool_call_id=tc["id"], name=tool_name, content=json.dumps(result, ensure_ascii=False))
+
+                    # 继续流式生成（工具结果后的自然语言回复）
+                    assistant_full_response = ""  # 重置以收集tool后的回复
+                    generator2 = agent.chat_stream_continue(messages, tools=CHAT_TOOLS, max_tool_rounds=5)
+                    for event_dict2 in generator2:
+                        evt2 = event_dict2["event"]
+                        payload2 = event_dict2["data"]
+                        if evt2 == "message":
+                            assistant_full_response += payload2["content"]
+                            yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': payload2['content']}, ensure_ascii=False)}\n\n"
+                        elif evt2 == "tool_call":
+                            # 嵌套工具调用（第二轮）
+                            yield f"event: tool_call\ndata: {json.dumps({'id': payload2['id'], 'name': payload2['name'], 'arguments': payload2['arguments'], 'status': 'started'}, ensure_ascii=False)}\n\n"
+                            # ★ 保存assistant的tool_calls到历史
+                            _append_chat_message("assistant", content=None, tool_calls=[{
+                                "id": payload2["id"],
+                                "type": "function",
+                                "function": {"name": payload2["name"], "arguments": json.dumps(payload2["arguments"], ensure_ascii=False)}
+                            }])
+                            # 执行并返回
+                            tc_result = _execute_chat_tool(payload2["name"], payload2["arguments"])
+                            yield f"event: tool_result\ndata: {json.dumps({'id': payload2['id'], 'name': payload2['name'], 'status': 'completed' if tc_result.get('status') == 'SUCCESS' else 'failed', 'result': tc_result}, ensure_ascii=False)}\n\n"
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": payload2["id"],
+                                "content": json.dumps(tc_result, ensure_ascii=False)
+                            })
+                            _append_chat_message("tool", tool_call_id=payload2["id"], name=payload2["name"], content=json.dumps(tc_result, ensure_ascii=False))
+                            # 再继续
+                            generator3 = agent.chat_stream_continue(messages, tools=CHAT_TOOLS, max_tool_rounds=3)
+                            for event_dict3 in generator3:
+                                evt3 = event_dict3["event"]
+                                payload3 = event_dict3["data"]
+                                if evt3 == "message":
+                                    assistant_full_response += payload3["content"]
+                                    yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': payload3['content']}, ensure_ascii=False)}\n\n"
+                                elif evt3 == "done":
+                                    # 保存最终的assistant回复（三层tool调用后）
+                                    if assistant_full_response.strip():
+                                        _append_chat_message("assistant", content=assistant_full_response.strip())
+                        elif evt2 == "done":
+                            # 保存最终的assistant回复（两层tool调用后）
+                            if assistant_full_response.strip():
+                                _append_chat_message("assistant", content=assistant_full_response.strip())
+
+                elif evt == "error":
+                    yield f"event: error\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+                elif evt == "done":
+                    # 保存最终assistant回复（如果没有工具调用）
+                    if assistant_full_response.strip() and not current_tool_calls:
+                        _append_chat_message("assistant", content=assistant_full_response.strip())
+
+            # 发送完成事件
+            chat_session_id = history_db.get("active_session", "chat_000")
+            yield f"event: done\ndata: {json.dumps({'session_id': chat_session_id, 'status': 'complete'}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            yield f"event: error\ndata: {json.dumps({'message': f'服务器错误: {str(e)}'}, ensure_ascii=False)}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.route("/api/chat/history", methods=["GET"])
+def chat_history():
+    """获取当前会话的聊天历史"""
+    history_db = _load_chat_history()
+    sid = history_db.get("active_session")
+    if not sid or sid not in history_db["sessions"]:
+        return jsonify({"session_id": None, "messages": []})
+    session = history_db["sessions"][sid]
+    return jsonify({
+        "session_id": sid,
+        "messages": [
+            {"role": m.get("role"), "content": m.get("content")}
+            for m in session.get("messages", [])
+            if m.get("role") in ("user", "assistant") and m.get("content")
+        ],
+        "created_at": session.get("created_at"),
+        "updated_at": session.get("updated_at"),
+    })
+
+
+@app.route("/api/chat/clear", methods=["POST"])
+def chat_clear():
+    """清除聊天历史，开启新会话"""
+    history_db = _load_chat_history()
+    now = datetime.now()
+    new_sid = f"chat_{now.strftime('%Y%m%d_%H%M%S')}"
+    history_db["active_session"] = new_sid
+    history_db["sessions"][new_sid] = {
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "messages": []
+    }
+    _save_chat_history(history_db)
+    return jsonify({"status": "SUCCESS", "new_session_id": new_sid})
 
 
 # ======================================================================

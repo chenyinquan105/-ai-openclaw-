@@ -1,0 +1,582 @@
+/* ======================================================================
+   chat.css — 通用LLM置顶聊天框样式
+   ====================================================================== */
+
+/* ── 聊天容器 ── */
+#chat-container {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 35;
+  pointer-events: none;
+}
+
+/* ── 收起态：迷你栏 ── */
+#chat-mini-bar {
+  pointer-events: auto;
+  height: 52px;
+  margin: 0 12px 8px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  cursor: pointer;
+  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+#chat-mini-bar:hover {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 -2px 24px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+#chat-mini-bar:active {
+  transform: scale(0.98);
+}
+#chat-mini-bar .mini-bar-text {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#chat-mini-bar .mini-bar-icon {
+  font-size: 18px;
+}
+#chat-mini-bar .mini-bar-badge {
+  display: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
+}
+#chat-mini-bar .mini-bar-badge.show {
+  display: block;
+}
+
+/* ── 展开态：聊天面板 ── */
+#chat-panel {
+  pointer-events: auto;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-radius: 24px 24px 0 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.12);
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#chat-panel.expanded {
+  height: 62%;
+}
+
+/* ── 聊天头部 ── */
+#chat-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.95);
+}
+#chat-header .chat-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#chat-header .chat-title .ai-badge {
+  font-size: 10px;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #000;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 800;
+}
+#chat-header .chat-actions {
+  display: flex;
+  gap: 6px;
+}
+#chat-header .chat-actions button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+#chat-header .chat-actions button:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+#chat-header .chat-actions button.clear-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+/* ── 消息滚动区 ── */
+#chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  scroll-behavior: smooth;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#chat-messages::-webkit-scrollbar {
+  width: 3px;
+}
+#chat-messages::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+}
+
+/* 空状态 */
+.chat-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #9ca3af;
+  gap: 10px;
+}
+.chat-empty-state .empty-icon {
+  font-size: 40px;
+  opacity: 0.6;
+}
+.chat-empty-state .empty-text {
+  font-size: 13px;
+  font-weight: 500;
+}
+.chat-empty-state .empty-hint {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* ── 消息气泡 ── */
+.chat-bubble {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+  animation: chat-bubble-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+@keyframes chat-bubble-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 用户气泡 */
+.chat-bubble.user {
+  align-self: flex-end;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #1f2937;
+  border-bottom-right-radius: 6px;
+}
+
+/* AI气泡 */
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #1f2937;
+  border-bottom-left-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* 流式追加中的AI气泡 */
+.chat-bubble.assistant.streaming {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.2);
+}
+
+/* 消息时间戳 */
+.chat-bubble .msg-time {
+  display: block;
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 4px;
+  text-align: right;
+}
+
+/* ── 工具调用卡片 ── */
+.chat-tool-card {
+  align-self: stretch;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-left: 3px solid #3b82f6;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 12px;
+  animation: chat-bubble-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.chat-tool-card .tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #1e40af;
+  margin-bottom: 6px;
+}
+.chat-tool-card .tool-header .tool-icon {
+  font-size: 16px;
+}
+.chat-tool-card .tool-header .tool-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #bfdbfe;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: tool-spin 0.6s linear infinite;
+  margin-left: auto;
+}
+@keyframes tool-spin {
+  to { transform: rotate(360deg); }
+}
+.chat-tool-card .tool-status-running {
+  color: #2563eb;
+  font-size: 11px;
+}
+.chat-tool-card .tool-status-done {
+  color: #16a34a;
+  font-size: 11px;
+  font-weight: 600;
+}
+.chat-tool-card .tool-status-error {
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 600;
+}
+.chat-tool-card .tool-params {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 11px;
+  color: #374151;
+  max-height: 100px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+.chat-tool-card .tool-result {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #166534;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.chat-tool-card .tool-result.error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+/* 工具结果中的商户列表 */
+.chat-tool-card .poi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chat-tool-card .poi-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+.chat-tool-card .poi-item .poi-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+.chat-tool-card .poi-item .poi-meta {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* 工具结果中的路线步骤 */
+.chat-tool-card .route-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-tool-card .route-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #374151;
+}
+.chat-tool-card .route-step .step-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* ── 打字指示器 ── */
+#chat-typing {
+  display: none;
+  align-self: flex-start;
+  padding: 10px 16px;
+  margin-left: 4px;
+}
+#chat-typing.active {
+  display: flex;
+}
+.typing-dots {
+  display: flex;
+  gap: 4px;
+}
+.typing-dots .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d1d5db;
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.typing-dots .dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots .dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ── 快捷操作区 ── */
+#chat-quick-actions {
+  flex-shrink: 0;
+  padding: 6px 16px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+#chat-quick-actions::-webkit-scrollbar { display: none; }
+#chat-quick-actions .quick-chip {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+#chat-quick-actions .quick-chip:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+}
+#chat-quick-actions .quick-chip:active {
+  transform: scale(0.95);
+}
+#chat-quick-actions .quick-chip.primary {
+  background: #fef3c7;
+  border-color: #fde68a;
+  color: #92400e;
+}
+#chat-quick-actions .quick-chip.primary:hover {
+  background: #fde68a;
+}
+
+/* ── 输入区 ── */
+#chat-input-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 16px 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.95);
+}
+#chat-input {
+  flex: 1;
+  resize: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  outline: none;
+  font-family: inherit;
+  max-height: 100px;
+  min-height: 40px;
+  background: #f9fafb;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+#chat-input:focus {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15);
+  background: #fff;
+}
+#chat-input:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+#chat-send-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #000;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.3);
+}
+#chat-send-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 14px rgba(251, 191, 36, 0.4);
+}
+#chat-send-btn:active {
+  transform: scale(0.95);
+}
+#chat-send-btn:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── 错误提示 ── */
+.chat-error-toast {
+  align-self: center;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: chat-bubble-in 0.25s ease;
+}
+.chat-error-toast button {
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* ── 滚动到底按钮 ── */
+#chat-scroll-bottom {
+  position: absolute;
+  bottom: 130px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  z-index: 2;
+  transition: all 0.2s;
+}
+#chat-scroll-bottom.show {
+  display: flex;
+}
+#chat-scroll-bottom:hover {
+  background: #f9fafb;
+  transform: translateY(-2px);
+}
+
+/* ── 打车卡片特殊样式 ── */
+.chat-tool-card.taxi-card {
+  background: linear-gradient(135deg, #fef3c7, #fff7ed);
+  border-left-color: #f59e0b;
+}
+.chat-tool-card.taxi-card .taxi-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #fde68a;
+}
+.chat-tool-card.taxi-card .taxi-car {
+  font-size: 28px;
+  animation: taxi-drive 1.5s ease-in-out infinite;
+}
+@keyframes taxi-drive {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+.chat-tool-card.taxi-card .taxi-info {
+  flex: 1;
+}
+.chat-tool-card.taxi-card .taxi-countdown {
+  font-weight: 800;
+  color: #f59e0b;
+  font-size: 14px;
+}
+
+/* ── 响应式适配 ── */
+@media (max-width: 1024px) {
+  #chat-panel.expanded {
+    height: 55%;
+  }
+  #chat-mini-bar {
+    margin: 0 8px 6px;
+    height: 46px;
+    padding: 0 14px;
+  }
+  #chat-mini-bar .mini-bar-text {
+    font-size: 12px;
+  }
+}
