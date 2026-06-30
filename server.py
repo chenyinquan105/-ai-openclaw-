@@ -3245,11 +3245,47 @@ def api_weather():
     return jsonify(result)
 
 
+@app.route("/api/weather/realtime", methods=["POST"])
+def api_weather_realtime():
+    """
+    实时天气 API：调用高德天气 API 获取真实天气数据。
+    接受 adcode 或 coord 参数；若提供 coord 则逆地理编码获取 adcode。
+    """
+    data = request.get_json(silent=True) or {}
+    adcode = data.get("adcode", "")
+    coord = data.get("coord", "")
+
+    # 若未提供 adcode 但提供了坐标，逆地理编码获取 adcode
+    if not adcode and coord:
+        try:
+            parts = coord.strip().split(",")
+            lng = float(parts[1].strip())
+            lat = float(parts[0].strip())
+            rev_geo = _amap_client.reverse_geocode(lng=lng, lat=lat)
+            if rev_geo and isinstance(rev_geo, dict):
+                adcode = rev_geo.get("adcode", "")
+        except Exception:
+            pass
+
+    # 兜底：默认北京
+    if not adcode:
+        adcode = "110000"
+
+    try:
+        result = _amap_weather_client.get_real_time_weather(adcode=adcode)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "ERROR", "message": f"天气查询失败: {str(e)}"})
+
+
 # ======================================================================
 # 高德 POI API（真实数据检索 + 地理编码）
 # ======================================================================
 from skills.amap_poi.amap_poi import AmapPOIClient
 _amap_client = AmapPOIClient()
+
+from skills.amap_weather.amap_weather import AmapWeatherClient
+_amap_weather_client = AmapWeatherClient()
 
 
 @app.route("/api/poi/search", methods=["POST"])
@@ -4306,6 +4342,54 @@ def chat_clear():
     }
     _save_chat_history(history_db)
     return jsonify({"status": "SUCCESS", "new_session_id": new_sid})
+
+
+@app.route("/api/chat/sessions", methods=["GET"])
+def list_chat_sessions():
+    """列出所有会话摘要（按时间倒序）"""
+    history_db = _load_chat_history()
+    sessions_list = []
+    for sid, sess in history_db.get("sessions", {}).items():
+        msgs = sess.get("messages", [])
+        # 取第一条用户消息作为摘要
+        summary = ""
+        for m in msgs:
+            if m.get("role") == "user" and m.get("content"):
+                summary = m["content"][:50]
+                break
+        msg_count = sum(1 for m in msgs if m.get("role") in ("user", "assistant") and m.get("content"))
+        sessions_list.append({
+            "session_id": sid,
+            "created_at": sess.get("created_at"),
+            "updated_at": sess.get("updated_at"),
+            "message_count": msg_count,
+            "summary": summary or "(空对话)"
+        })
+    # 按创建时间倒序
+    sessions_list.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return jsonify({
+        "sessions": sessions_list,
+        "active_session": history_db.get("active_session")
+    })
+
+
+@app.route("/api/chat/session/<session_id>", methods=["GET"])
+def get_session_detail(session_id):
+    """获取指定会话的完整消息"""
+    history_db = _load_chat_history()
+    if session_id not in history_db.get("sessions", {}):
+        return jsonify({"error": "Session not found"}), 404
+    session = history_db["sessions"][session_id]
+    return jsonify({
+        "session_id": session_id,
+        "messages": [
+            {"role": m.get("role"), "content": m.get("content")}
+            for m in session.get("messages", [])
+            if m.get("role") in ("user", "assistant") and m.get("content")
+        ],
+        "created_at": session.get("created_at"),
+        "updated_at": session.get("updated_at"),
+    })
 
 
 # ======================================================================
