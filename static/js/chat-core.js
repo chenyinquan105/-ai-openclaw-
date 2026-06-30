@@ -582,6 +582,32 @@ function formatToolResult(result) {
   if (!result) return '';
   var data = result.data || result;
 
+  // ★ 品类分组结果（新版 search_poi 返回）→ 按品类展示Top3
+  if (data.categories && Array.isArray(data.categories)) {
+    var html = '<div class="poi-list">';
+    for (var ci = 0; ci < data.categories.length; ci++) {
+      var cat = data.categories[ci];
+      var label = cat.label || cat.category;
+      html += '<div style="font-weight:700;color:#374151;margin:6px 0 2px">' + escapeHtml(label) + '</div>';
+      var shops = cat.shops || [];
+      for (var si = 0; si < Math.min(shops.length, 3); si++) {
+        var s = shops[si];
+        html += '<div class="poi-item">' +
+          '<div><span class="poi-name">' + escapeHtml(s.name || '未知') + '</span></div>' +
+          '<div class="poi-meta">' +
+            (s.rating ? '★' + s.rating + ' ' : '') +
+            (s.distance ? s.distance : '') +
+          '</div>' +
+        '</div>';
+      }
+    }
+    html += '</div>';
+    if (result.message) {
+      html += '<div style="margin-top:4px;color:#6b7280;font-size:11px">' + escapeHtml(result.message) + '</div>';
+    }
+    return html;
+  }
+
   // POI搜索结果 → 商户列表
   if (data.shops || data.search_results) {
     var shops = data.shops || [];

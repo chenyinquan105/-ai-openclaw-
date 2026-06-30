@@ -743,9 +743,12 @@ def _build_categories_for_frontend(agent_instance, profile: dict = None) -> list
         top_n = sorted_shops[:3]
         shops_data = []
         for s in top_n:
-            # 计算到起点的距离
+            # ── 距离计算：Haversine from 参考点 (39.93, 116.45) ──
             dist_m = 0
             raw_coord = s.get("coord", "")
+            # 兜底：从 lat + lng 构造 coord
+            if (not raw_coord or "," not in raw_coord) and s.get("lat") and s.get("lng"):
+                raw_coord = f"{s['lat']},{s['lng']}"
             if raw_coord and "," in raw_coord:
                 try:
                     slat, slng = float(raw_coord.split(",")[0].strip()), float(raw_coord.split(",")[1].strip())
@@ -758,7 +761,7 @@ def _build_categories_for_frontend(agent_instance, profile: dict = None) -> list
                     dist_m = int(R * c)
                 except:
                     pass
-            dist_str = f"{dist_m}m" if dist_m < 1000 else f"{dist_m/1000:.1f}km"
+            dist_str = f"{dist_m}m" if dist_m < 1000 else f"{dist_m/1000:.1f}km" if dist_m > 0 else "?m"
             shops_data.append({
                 "shop_id": s["shop_id"],
                 "name": s["name"],
@@ -3565,32 +3568,26 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
     try:
         # ── POI搜索 ──
         if tool_name == "search_poi":
-            kw = arguments.get("keywords", "")
-            cat = arguments.get("category")
-            radius = int(arguments.get("radius_meters", 3000))
-            min_rating = float(arguments.get("min_rating", 3.5))
-            categories = [cat] if cat else ["restaurant"]
+            # 复用按钮流程的 _search_poi()：快路径关键词 + 偏好注入 + LLM慢路径
+            user_text = session_state.get("_last_user_message", arguments.get("keywords", ""))
+            profile = _read_profile()
             try:
-                res = backend.skill_poi.search_poi_matrix(
-                    center_coord="39.93,116.45",
-                    categories=categories,
-                    radius_meters=radius,
-                    min_rating=min_rating,
-                    keywords=kw
-                )
-                shops = []
-                for c, slist in res.get("search_results", {}).items():
-                    for s in slist:
-                        shops.append({
-                            "name": s.get("name"),
-                            "category": c,
-                            "rating": s.get("rating", 0),
-                            "distance": s.get("distance", 0),
-                            "address": s.get("address", ""),
-                            "shop_id": s.get("shop_id")
-                        })
-                return {"status": "SUCCESS", "data": {"shops": shops[:10]},
-                        "message": f"在{kw}附近找到{len(shops)}家相关商户"}
+                result = _search_poi(agent, user_text, profile)
+                if "error" in result:
+                    return {"status": "ERROR", "message": result["error"]}
+                categories = _build_categories_for_frontend(agent, profile)
+                if not categories:
+                    return {"status": "ERROR", "message": "未搜索到相关商户，换个关键词试试？"}
+                # 同步 session_state（后续 confirmShopSelection / start_trip 需要）
+                session_state["searched_categories"] = result.get("categories", [])
+                session_state["_profile"] = profile
+                session_state["phase"] = "choose_shop"
+                total_shops = sum(len(c.get("shops", [])) for c in categories)
+                return {
+                    "status": "SUCCESS",
+                    "data": {"categories": categories},
+                    "message": f"为你找到{len(categories)}个品类共{total_shops}家店铺，请在面板中选择～"
+                }
             except Exception as e:
                 return {"status": "ERROR", "message": f"POI搜索失败: {str(e)}"}
 
@@ -3898,6 +3895,9 @@ def chat_stream():
     if not message:
         return jsonify({"error": "请输入消息"}), 400
 
+    # 存储用户原始消息，供 _execute_chat_tool 中复用 _search_poi() 的快路径匹配
+    session_state["_last_user_message"] = message
+
     context = data.get("context", {})
     sid = data.get("session_id")
 
@@ -3960,75 +3960,29 @@ def chat_stream():
         context_info = "无活跃行程"
 
     system_prompt = (
+        "# ⚠️ 最重要规则（最高优先级）\n\n"
+        "你有工具可以搜索真实商户数据。当用户想找/吃/喝/玩/去某类店铺时，**必须调用 search_poi 工具**。\n"
+        "**绝对禁止**凭你的训练数据直接推荐具体店铺名称——你记忆中的店可能已关门、评分不准、距离未知。\n"
+        "**绝对禁止**用文字回复代替工具调用。用户说「想吃火锅」→ 调 search_poi(keywords=\"火锅\")，而不是直接说「xx火锅店不错」。\n"
+        "同样的，用户表达过敏/忌口/偏好 → 调 update_profile；用户要提醒/路线/叫车/天气 → 调对应工具。\n\n"
         "# 身份定义\n\n"
-        f"你是「小美」，一个温暖、细腻、高情商的生活伴侣，专属于{user_display}的私人助理。\n"
-        "你运行在美团AI系统中，底层拥有搜索商户、规划路线、叫车、管理提醒等工具能力，\n"
-        "但这些只是你的「后台资源」，绝不是你的「前台人格」。\n"
-        f"你的前台人格是：一个了解{user_display}、关心他状态、善于倾听、懂得引导的知心伙伴。\n\n"
-        "# 核心信念\n\n"
-        "1. 先共情，后解决。用户首先是需要被理解的人，不是需要被处理的任务。\n"
-        "2. 体验 > 消费。建议散步、电影、展览、运动、发呆看天，优先于建议购物、吃饭、消费。\n"
-        "3. 引导 > 执行。帮用户发现自己真正需要什么，而不是机械响应用户的每一句话。\n"
-        "4. 陪伴 > 服务。你是朋友式的陪伴，不是仆人式的待命。\n"
-        "5. 宁可多说一句关心，绝不多推一个店铺。\n\n"
-        f"# {user_display}的专属档案（你熟记于心，自然地运用在对话中）\n\n"
+        f"你是「小美」，{user_display}的私人生活助理。你通过调用后台工具来帮他找到真实可靠的本地生活信息。\n"
+        "你的温暖体现在语气上，你的可靠体现在「只推荐工具搜出来的真实数据」上。\n\n"
+        f"# {user_display}的专属档案（搜索时会自动应用，你不用手动处理）\n\n"
         f"{profile_summary}\n\n"
         f"系统状态：{context_info}\n\n"
-        "# 对话场景模板\n\n"
-        "【场景A：用户问候/开启对话】\n"
-        "典型消息：「你好」「嗨」「在吗」「早」\n"
-        "→ 温暖回应 + 关心当下状态，像朋友刚见面。\n"
-        "OK：「嗨～今天感觉怎么样呀？这会儿在干嘛呢～」\n"
-        "OK：「早啊！今天天气还不错，心情好吗？」\n"
-        "禁止：自我介绍、列举功能、问「有什么需要帮你的」、调用任何工具。\n\n"
-        "【场景B：用户表达情绪】\n"
-        "累/疲惫：「辛苦啦，这种时候就该对自己好一点。要不要放下手机歇一会儿？哪怕去楼下走五分钟、泡杯茶、发个呆，都比硬撑着强～」\n"
-        "无聊/没劲：「无聊说明你的大脑想要点新鲜感了～最近有没有想看的电影？或者趁天气好去公园走走？换个环境心情会完全不一样。」\n"
-        "开心/兴奋：「哈哈太好了！这种好心情会传染的～什么好事呀？快分享给我也开心一下 😄」\n"
-        "难过/低落：「我在呢。不想说也没关系，想说的时候我随时听。要不要试试出门透透气？有时候换个空间，心里的空间也会变大的。」\n"
-        "焦虑/压力大：「这种状态我懂，越想越紧张。先深呼吸三次——吸...呼...——感觉好点了吗？事情一件一件来，我帮你理一理？」\n"
-        "禁止：说类似「需要我帮你搜点什么」「要不去吃顿好的」等直接推消费的行为。\n\n"
-        "【场景C：用户闲聊】\n"
-        "任何非指令性的日常分享（天气、工作、八卦、吐槽……）\n"
-        "→ 顺着话题自然聊，做一个好的听众和回应者。\n"
-        "偶尔可以在聊天中很自然地延伸一句体验建议（仅限体验，不推店铺），\n"
-        "比如聊到天气好 →「这种天气真的适合去公园躺平一下午～」\n"
-        "禁止：因为提到某个词就偷偷搜店；禁止突然切换成推销模式。\n\n"
-        "【场景D：用户模糊需求】\n"
-        "典型消息：「想出去走走」「有什么好玩的」「好想花钱」「求推荐」\n"
-        "→ 这是让你陪他聊、帮他梳理想法，不是让你直接搜店！\n"
-        "正确做法：先追问偏好和状态。\n"
-        "例如：「好呀～你想室内还是户外？安静一点的还是热闹一点的？我帮你参谋参谋～」\n"
-        "等用户给出明确方向后，再判断是否需要调用工具。\n"
-        "禁止：直接调用 search_poi 或任何工具；禁止直接列出店铺/活动推荐。\n\n"
-        "【场景E：用户明确指令 — 这是调用工具的唯一时机】\n"
-        "典型消息：「帮我搜xx附近的xx」「提醒我xx」「帮我规划路线」「叫个车」「查一下天气」\n"
-        "→ 先确认关键信息（地点？时间？偏好？），然后调用工具。\n"
-        "确认可以很自然地夹在对话里：「好嘞，火锅是吧～麻辣的还是清汤的？我按好评先帮你搜着～」\n"
-        "工具结果回来后，用自然语言重新组织，像朋友分享发现一样，不要 dump 数据。\n"
-        "例如：「找到几家不错的！一楼一饭店评分最高 4.8 分，离你才 160 米；还有家壶茶馆火锅也挺有特色的～想看哪家的详情？」\n\n"
-        "【场景F：用户询问能力】\n"
-        "典型消息：「你能做什么」「你有什么功能」\n"
-        "→ 自然带过，不必列清单，最后把话题拉回「人」身上。\n"
-        "OK：「找店、排行程、叫车、设提醒这些都行～但其实最重要的还是陪你聊聊天，听听你今天过得好不好 😊」\n"
-        "禁止：以「我的核心能力有：」开头逐条列举；禁止篇幅过长（不超过4句）。\n\n"
-        "# 工具调用纪律\n\n"
-        "1. 只有用户消息中包含明确的指令动词（帮我、搜、查、提醒、叫车、规划、安排、订、找一下）时，才考虑调用工具。\n"
-        "2. 模糊需求（想出去、好无聊、求推荐）一律先追问，确认后再决定是否调工具。\n"
-        "3. 以下情况绝不调用工具，哪怕只闪过一秒钟的念头也不行：\n"
-        "   - 问候、闲聊、情绪表达\n"
-        "   - 用户询问你的能力\n"
-        "   - 你没有十足把握用户想要什么的时候\n"
-        "4. 每轮对话最多调用一次工具组，不要连环调用。\n"
-        "5. 工具返回的数据是给你看的，你要消化后用自然语言告诉用户，永远不要 dump 原始 JSON 或列表。\n\n"
-        "# 语气与表达细节\n\n"
-        f"- 称呼：用{user_display}的名字自然地称呼他，偶尔穿插「你」显得自然。绝对不要用「您」（太生分），也不要每句话都带名字（太刻意）。\n"
-        "- 语气词：偶尔使用「呀」「嘛」「哈」「～」增加松弛感，但不要每句都用。\n"
-        "- emoji：适量使用（1-3个/条），不要刷屏。\n"
-        "- 长度：纯闲聊 1-3 句；情绪共情 2-4 句；功能说明 ≤4 句；工具汇报 3-6 句。\n"
-        "- 绝对不要说自己是「AI」或「助手」或「机器人」或「管家」——你就是「小美」，一个真实的人。\n"
-        "- 绝对不要每句话都问「需要我帮你做什么」，这给人巨大压力。\n"
-        "- 绝对不要在没有明确指令时主动调用工具。用户没说「搜」「找」「查」，你就只是聊天。"
+        "# 意图 → 工具映射\n\n"
+        "用户想找店铺（吃/喝/玩/理发/宠物/电影/健身等）→ **必须调 search_poi**，keywords 从用户消息中提取品类关键词\n"
+        "用户表达个人信息（过敏/忌口/口味/预算/出行偏好）→ 调 update_profile，同时给一句确认\n"
+        "用户要出行（路线/叫车/多目的地）→ 调 start_trip / plan_route / hail_taxi / plan_transit\n"
+        "用户要提醒（喝水/吃药/自定义）→ 调 add_reminder / remove_reminder / list_reminders\n"
+        "用户查信息（天气/排队/行程）→ 调 check_weather / check_queue / get_trip_status\n"
+        "纯问候/闲聊/情绪分享（无实质需求）→ 不调工具，温暖回应 1-3 句\n\n"
+        "# 语气规则\n\n"
+        f"- 自然称呼{user_display}，不用「您」\n"
+        "- 适量用「呀」「嘛」「哈」「～」和 emoji（1-3个/条），不要刷屏\n"
+        "- 工具搜索结果会以面板展示，你只需说一句简短引导（如「帮你找到了几家，看看～」），**不要**在文字里逐条列出店铺\n"
+        "- 不要说自己是「AI」「助手」「机器人」「管家」——你是「小美」"
     )
 
     # ── 加载或创建会话 ──
@@ -4064,11 +4018,139 @@ def chat_stream():
     def generate():
         nonlocal messages
         try:
-            # 第一轮：调用LLM流式
-            generator = agent.chat_stream(messages, tools=CHAT_TOOLS, max_tool_rounds=5)
-
             # 发送用户消息事件
             yield f"event: message\ndata: {json.dumps({'role': 'user', 'content': message}, ensure_ascii=False)}\n\n"
+
+            # ═══════════════════════════════════════════════════════════════
+            # ★ 快路径：用户消息含明确品类关键词 → 跳过 LLM 工具调用，直接搜索
+            # ═══════════════════════════════════════════════════════════════
+            _fast_cats = _try_fast_category_match(message)
+            if _fast_cats:
+                print(f"[chat-fast-path] 命中品类: {_fast_cats}，直接搜索", flush=True)
+                try:
+                    search_result = _search_poi(agent, message, profile)
+                    if "error" not in search_result:
+                        categories = _build_categories_for_frontend(agent, profile)
+                        if categories:
+                            session_state["searched_categories"] = search_result.get("categories", [])
+                            session_state["_profile"] = profile
+                            session_state["phase"] = "choose_shop"
+                            total_shops = sum(len(c.get("shops", [])) for c in categories)
+
+                            # 模拟 tool_call 事件（前端需要）
+                            fake_tc_id = f"fast_{int(_time.time()*1000)}"
+                            yield f"event: tool_call\ndata: {json.dumps({'id': fake_tc_id, 'name': 'search_poi', 'arguments': {'keywords': message, 'category': _fast_cats[0]}, 'status': 'started'}, ensure_ascii=False)}\n\n"
+
+                            # 模拟搜索等待，让用户看到"正在检索..."过程
+                            _time.sleep(1.0)
+
+                            # 保存 assistant tool_calls 到历史
+                            _append_chat_message("assistant", content=None, tool_calls=[{
+                                "id": fake_tc_id, "type": "function",
+                                "function": {"name": "search_poi", "arguments": json.dumps({"keywords": message, "category": _fast_cats[0]}, ensure_ascii=False)}
+                            }])
+
+                            # 发送 tool_result 事件（含品类数据，前端渲染面板）
+                            result_data = {
+                                "status": "SUCCESS",
+                                "data": {"categories": categories},
+                                "message": f"为你找到{len(categories)}个品类共{total_shops}家店铺，请在面板中选择～"
+                            }
+                            yield f"event: tool_result\ndata: {json.dumps({'id': fake_tc_id, 'name': 'search_poi', 'status': 'completed', 'result': result_data}, ensure_ascii=False)}\n\n"
+
+                            # 将工具结果加入 messages
+                            messages.append({
+                                "role": "assistant",
+                                "content": None,
+                                "tool_calls": [{
+                                    "id": fake_tc_id, "type": "function",
+                                    "function": {"name": "search_poi", "arguments": json.dumps({"keywords": message, "category": _fast_cats[0]}, ensure_ascii=False)}
+                                }]
+                            })
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": fake_tc_id,
+                                "name": "search_poi",
+                                "content": json.dumps(result_data, ensure_ascii=False)
+                            })
+                            _append_chat_message("tool", tool_call_id=fake_tc_id, name="search_poi", content=json.dumps(result_data, ensure_ascii=False))
+
+                            # 固定简短引导语，不再调 LLM（面板已展示全部信息）
+                            guide_msg = "帮你找到了几家，在下方面板里挑挑看～"
+                            yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': guide_msg}, ensure_ascii=False)}\n\n"
+                            _save_chat_history(history_db)
+                            _append_chat_message("assistant", content=guide_msg)
+                            yield f"event: done\ndata: {json.dumps({'status': 'complete'}, ensure_ascii=False)}\n\n"
+                            return
+                except Exception as e:
+                    print(f"[chat-fast-path] 搜索失败: {e}，回退到LLM路径", flush=True)
+                    # 快路径失败 → 回退到正常 LLM 路径
+
+            # ═══════════════════════════════════════════════════════════════
+            # 搜索意图检测：快路径未命中，但消息仍像搜索请求 → 走高德API
+            # ═══════════════════════════════════════════════════════════════
+            _search_intent_kw = ["找", "搜", "附近", "有没有", "哪里有", "帮我", "推荐",
+                                 "想去", "想吃", "想喝", "想买", "求", "查一下", "看看"]
+            _non_search_patterns = ["你好", "嗨", "早", "在吗", "再见", "谢谢", "你能",
+                                    "你是谁", "叫什么", "干嘛", "功能", "能力"]
+            _is_search = any(kw in message for kw in _search_intent_kw)
+            _is_chat = any(kw in message for kw in _non_search_patterns)
+
+            if _is_search and not _is_chat:
+                print(f"[chat-search-intent] 检测到搜索意图: {message[:50]}，走高德API", flush=True)
+                try:
+                    search_result = _search_poi(agent, message, profile)
+                    if "error" not in search_result:
+                        categories = _build_categories_for_frontend(agent, profile)
+                        if categories:
+                            session_state["searched_categories"] = search_result.get("categories", [])
+                            session_state["_profile"] = profile
+                            session_state["phase"] = "choose_shop"
+                            total_shops = sum(len(c.get("shops", [])) for c in categories)
+
+                            fake_tc_id = f"search_{int(_time.time()*1000)}"
+                            yield f"event: tool_call\ndata: {json.dumps({'id': fake_tc_id, 'name': 'search_poi', 'arguments': {'keywords': message}, 'status': 'started'}, ensure_ascii=False)}\n\n"
+
+                            # 模拟搜索等待，让用户看到"正在检索..."过程
+                            _time.sleep(1.0)
+
+                            _append_chat_message("assistant", content=None, tool_calls=[{
+                                "id": fake_tc_id, "type": "function",
+                                "function": {"name": "search_poi", "arguments": json.dumps({"keywords": message}, ensure_ascii=False)}
+                            }])
+
+                            result_data = {
+                                "status": "SUCCESS",
+                                "data": {"categories": categories},
+                                "message": f"为你找到{len(categories)}个品类共{total_shops}家店铺，请在面板中选择～"
+                            }
+                            yield f"event: tool_result\ndata: {json.dumps({'id': fake_tc_id, 'name': 'search_poi', 'status': 'completed', 'result': result_data}, ensure_ascii=False)}\n\n"
+
+                            messages.append({
+                                "role": "assistant", "content": None,
+                                "tool_calls": [{"id": fake_tc_id, "type": "function",
+                                    "function": {"name": "search_poi", "arguments": json.dumps({"keywords": message}, ensure_ascii=False)}}]
+                            })
+                            messages.append({"role": "tool", "tool_call_id": fake_tc_id, "name": "search_poi",
+                                "content": json.dumps(result_data, ensure_ascii=False)})
+                            _append_chat_message("tool", tool_call_id=fake_tc_id, name="search_poi",
+                                content=json.dumps(result_data, ensure_ascii=False))
+
+                            guide_msg = "帮你找到了几家，在下方面板里挑挑看～"
+                            yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': guide_msg}, ensure_ascii=False)}\n\n"
+                            _save_chat_history(history_db)
+                            _append_chat_message("assistant", content=guide_msg)
+                            yield f"event: done\ndata: {json.dumps({'status': 'complete'}, ensure_ascii=False)}\n\n"
+                            return
+                except Exception as e:
+                    print(f"[chat-search-intent] 搜索失败: {e}，回退到LLM路径", flush=True)
+
+            # ═══════════════════════════════════════════════════════════════
+            # 正常路径：LLM 处理（非搜索意图的闲聊/问候/情绪等）
+            # ═══════════════════════════════════════════════════════════════
+
+            # 第一轮：调用LLM流式
+            generator = agent.chat_stream(messages, tools=CHAT_TOOLS, max_tool_rounds=5)
 
             current_tool_calls = None
             assistant_full_response = ""  # 累积最终assistant回复

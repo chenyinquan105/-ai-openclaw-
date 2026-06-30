@@ -564,7 +564,17 @@ def search_poi_matrix(
         # 全部品类命中预置 → 直接返回
         if len(pre_hits) == len(categories):
             print(f"[pre-cached] ✅ 全部命中 {categories}，0 网络延迟", flush=True)
-            return {"status": "SUCCESS", "search_results": {c: pre[c] for c in categories}}
+            # 补齐 coord 字段（预置数据只有 lat/lng）
+            results = {}
+            for c in categories:
+                shops = []
+                for s in pre[c]:
+                    s = dict(s)
+                    if "coord" not in s:
+                        s["coord"] = f"{s.get('lat', 0)},{s.get('lng', 0)}"
+                    shops.append(s)
+                results[c] = shops
+            return {"status": "SUCCESS", "search_results": results}
         # 部分命中 → 只搜未命中的品类
         if pre_hits:
             print(f"[pre-cached] ⚡ 命中 {pre_hits}，剩余 {[c for c in categories if c not in pre]} 走API", flush=True)
@@ -572,9 +582,15 @@ def search_poi_matrix(
 
     client = _get_client()
     result_map: dict = {cat: [] for cat in categories}
-    # 合并预置数据到结果
+    # 合并预置数据到结果（补齐 coord 字段）
     for cat in pre_hits:
-        result_map[cat] = pre[cat]
+        shops = []
+        for s in pre[cat]:
+            s = dict(s)
+            if "coord" not in s:
+                s["coord"] = f"{s.get('lat', 0)},{s.get('lng', 0)}"
+            shops.append(s)
+        result_map[cat] = shops
 
     # ── 并行搜索：多个品类同时调高德 API，不等上一个返回 ──
     def _search_one_cat(cat: str):

@@ -1,7 +1,7 @@
 """Demo 预置商户数据 —— 高德 API 真实结果快照，demo 时 0 网络延迟"""
 # 生成时间: 2026-06-26
-# 搜索中心: 三里屯太古里 (39.932, 116.455), 半径 3000m
-# 已修复 category 字段
+# 搜索中心: 三里屯 (39.93, 116.45), 半径 3000m
+# 距离已修正为 Haversine from (39.93, 116.45)
 
 PRE_CACHED_SHOPS = {
   "hair": [
@@ -24,7 +24,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 80,
+      "distance": 400,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -42,7 +42,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://store.is.autonavi.com/showpic/b223a92c5c7ab7dc0000002952068399?type=pic"
         }
-      ]
+      ],
+      "coord": "39.93162,116.454193"
     },
     {
       "shop_id": "B0FFJ6U12W",
@@ -63,7 +64,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 80,
+      "distance": 511,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -81,7 +82,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0FFJ6U12W/comment/%5B2025-10-23-14-14-06%5DFCD60283-D80D-46A5-B758-2B12F288853_1761200047607_19149761.jpg"
         }
-      ]
+      ],
+      "coord": "39.931489,116.455675"
     },
     {
       "shop_id": "B0K3O7WI5N",
@@ -102,7 +104,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 80,
+      "distance": 400,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -120,7 +122,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0K3O7WI5N/comment/content_media_external_file_514448_ss__1762146103301_17868447.jpg"
         }
-      ]
+      ],
+      "coord": "39.931618,116.454199"
     },
     {
       "shop_id": "B0FFIXDE7Z",
@@ -141,7 +144,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 44,
+      "distance": 448,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -151,7 +154,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "http://store.is.autonavi.com/showpic/00ad67e2b08c5755436897d956d81dbb"
         }
-      ]
+      ],
+      "coord": "39.932098,116.454491"
     },
     {
       "shop_id": "B0GKBKCVE1",
@@ -172,7 +176,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 64,
+      "distance": 421,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -186,7 +190,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "http://store.is.autonavi.com/showpic/3eae57661d966a8f4be07e2941a6eae1"
         }
-      ]
+      ],
+      "coord": "39.931948,116.454243"
     },
     {
       "shop_id": "B0HAVU8RFG",
@@ -207,7 +212,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 72,
+      "distance": 408,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -225,7 +230,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://store.is.autonavi.com/showpic/1bfd652831c3741c42ad6a8fd9e224ee"
         }
-      ]
+      ],
+      "coord": "39.931718,116.45423"
     },
     {
       "shop_id": "B0J0OC5U1V",
@@ -246,7 +252,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 74,
+      "distance": 409,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -264,7 +270,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0J0OC5U1V/comment/2277F56D_A2FF_437B_9538_B3AEE459761C_L0_001_1500_200_1759138066944_27240198.jpg"
         }
-      ]
+      ],
+      "coord": "39.931554,116.454356"
     },
     {
       "shop_id": "B0LRJUHMZX",
@@ -285,7 +292,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 80,
+      "distance": 400,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -303,7 +310,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0LRJUHMZX/comment/416C1C47_F8F0_4406_876B_A61CB553D049_L0_001_1500_200_1763797954013_17484139.jpg"
         }
-      ]
+      ],
+      "coord": "39.93162,116.454193"
     }
   ],
   "pet": [
@@ -320,7 +328,7 @@ PRE_CACHED_SHOPS = {
       "address": "北京城区新中西里13号1层商业6",
       "signature_dishes": [],
       "top_comments": [],
-      "distance": 1320,
+      "distance": 985,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "东城区",
@@ -338,7 +346,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0LBNDB1A5/comment/2196BA61_615E_4F31_95FE_9898C76432B2_L0_001_1440_108_1756017838637_18288257.jpg"
         }
-      ]
+      ],
+      "coord": "39.934172,116.439796"
     },
     {
       "shop_id": "B0J3TAIG63",
@@ -353,7 +362,7 @@ PRE_CACHED_SHOPS = {
       "address": "天福园8号楼1层底商9",
       "signature_dishes": [],
       "top_comments": [],
-      "distance": 1569,
+      "distance": 1158,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -371,7 +380,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://store.is.autonavi.com/showpic/3cbc4669ef242ac064f97e073249ea45"
         }
-      ]
+      ],
+      "coord": "39.920553,116.444275"
     },
     {
       "shop_id": "B0I25ZED8Q",
@@ -386,7 +396,7 @@ PRE_CACHED_SHOPS = {
       "address": "水碓子东里24号楼元顺旅馆内一层101、102、二层208",
       "signature_dishes": [],
       "top_comments": [],
-      "distance": 1905,
+      "distance": 2199,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -404,7 +414,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0I25ZED8Q/comment/content_media_external_file_1000016158_ss__1752476880012_18685557.jpg"
         }
-      ]
+      ],
+      "coord": "39.923475,116.474353"
     },
     {
       "shop_id": "B0J1B7O5LL",
@@ -419,7 +430,7 @@ PRE_CACHED_SHOPS = {
       "address": "北京城区呼家楼南里30号楼一层30-1内107室(德邦物流旁)",
       "signature_dishes": [],
       "top_comments": [],
-      "distance": 1924,
+      "distance": 2029,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -437,7 +448,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0J1B7O5LL/comment/IMG_20241105_160436_tem_1730793889199_22822183.jpg"
         }
-      ]
+      ],
+      "coord": "39.917574,116.467432"
     },
     {
       "shop_id": "B0LG7DV2D9",
@@ -452,7 +464,7 @@ PRE_CACHED_SHOPS = {
       "address": "北京城区工人体育场北路8号院2号楼1层2103",
       "signature_dishes": [],
       "top_comments": [],
-      "distance": 144,
+      "distance": 505,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -470,7 +482,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0LG7DV2D9/comment/C1F9C5C4_C563_477B_AAEC_1407AA32630B_L0_001_1500_2000_1743514044082_42918313.jpg"
         }
-      ]
+      ],
+      "coord": "39.933167,116.45425"
     },
     {
       "shop_id": "B0FFM9ZXIT",
@@ -485,7 +498,7 @@ PRE_CACHED_SHOPS = {
       "address": "北京城区工人体育场西路18号底商1至2层05内S105A室、S205室",
       "signature_dishes": [],
       "top_comments": [],
-      "distance": 1031,
+      "distance": 550,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -503,7 +516,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "http://store.is.autonavi.com/showpic/bbe38553fd91097a8187208ade03663a"
         }
-      ]
+      ],
+      "coord": "39.927285,116.444597"
     },
     {
       "shop_id": "B0HDTSLZ7T",
@@ -518,7 +532,7 @@ PRE_CACHED_SHOPS = {
       "address": "甜水园东里12号楼底商",
       "signature_dishes": [],
       "top_comments": [],
-      "distance": 2603,
+      "distance": 2974,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -536,7 +550,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://store.is.autonavi.com/showpic/df343bf1bbb9c1a27bc0f2af04e7cdf7"
         }
-      ]
+      ],
+      "coord": "39.926064,116.4845"
     },
     {
       "shop_id": "B0LG39DN66",
@@ -551,7 +566,7 @@ PRE_CACHED_SHOPS = {
       "address": "水碓子中街15号院",
       "signature_dishes": [],
       "top_comments": [],
-      "distance": 2197,
+      "distance": 2604,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -565,7 +580,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0LG39DN66/comment/b82d1a60-f85f-4fd3-ba9b-6c1baed86193.png"
         }
-      ]
+      ],
+      "coord": "39.929535,116.480537"
     }
   ],
   "hotpot": [
@@ -588,7 +604,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 161,
+      "distance": 533,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -606,7 +622,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0HU7KWCH4/comment/content_media_external_file_1648_1767683152896_88233104.jpg"
         }
-      ]
+      ],
+      "coord": "39.930854,116.456159"
     },
     {
       "shop_id": "B0JKJSJ447",
@@ -627,7 +644,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 171,
+      "distance": 439,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -645,7 +662,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/comment/content_service__1769305813739_60864217_1769305839189_07396173.jpg"
         }
-      ]
+      ],
+      "coord": "39.932954,116.45342"
     },
     {
       "shop_id": "B0FFJOUJQH",
@@ -666,7 +684,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 143,
+      "distance": 339,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -684,7 +702,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0FFJOUJQH/comment/a88734f123175f9cad30b0ced349d9b7_2048_2048_80.jpg"
         }
-      ]
+      ],
+      "coord": "39.931238,116.453645"
     },
     {
       "shop_id": "B0FFLKID1S",
@@ -705,7 +724,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 192,
+      "distance": 636,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -723,7 +742,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0FFLKID1S/comment/content_media_external_images_media_1000019615_ss__1735109550193_28209285.jpg"
         }
-      ]
+      ],
+      "coord": "39.931547,116.457182"
     },
     {
       "shop_id": "B0JAAXLSOM",
@@ -744,7 +764,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 345,
+      "distance": 281,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -762,7 +782,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://store.is.autonavi.com/showpic/786bae5dc98beda244aababf5e31acd4"
         }
-      ]
+      ],
+      "coord": "39.932412,116.450987"
     },
     {
       "shop_id": "B0KKJKSKZC",
@@ -783,7 +804,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 368,
+      "distance": 160,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -801,7 +822,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0KKJKSKZC/comment/2FABA6D8_5C09_4128_ACE0_C91B02ECE4A1_L0_001_2004_1504_1736420667010_77501401.jpg"
         }
-      ]
+      ],
+      "coord": "39.931313,116.450773"
     },
     {
       "shop_id": "B0K22LBFDZ",
@@ -822,7 +844,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 371,
+      "distance": 341,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -840,7 +862,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0K22LBFDZ/comment/content_media_external_file_100001237_1751460521101_83106398.jpg"
         }
-      ]
+      ],
+      "coord": "39.933004,116.450845"
     },
     {
       "shop_id": "B0L69ZGYRY",
@@ -861,7 +884,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 401,
+      "distance": 687,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -879,7 +902,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://store.is.autonavi.com/showpic/83e8e949300b0ce50000002559788339?type=pic"
         }
-      ]
+      ],
+      "coord": "39.935474,116.45374"
     }
   ],
   "japanese": [
@@ -902,7 +926,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 340,
+      "distance": 154,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -920,7 +944,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B000A9DK2J/comment/20260316-b3e805de8302bf9769d995c2-8kF0MlqS3CrAKKPfSYUmNo.jpg"
         }
-      ]
+      ],
+      "coord": "39.931038,116.451211"
     },
     {
       "shop_id": "B0KR46YAW9",
@@ -941,7 +966,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 549,
+      "distance": 867,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -959,7 +984,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0KR46YAW9/comment/e9ec6e2090b2d86e8c72915997bb389a_2048_2048_80.jpg"
         }
-      ]
+      ],
+      "coord": "39.936934,116.454674"
     },
     {
       "shop_id": "B0KRN7HPIS",
@@ -980,7 +1006,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 1728,
+      "distance": 1266,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -998,7 +1024,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0KRN7HPIS/comment/9C64B8BA_1E79_45A3_941B_222B367B4952_L0_001_2016_151_1772723676280_69972913.jpg"
         }
-      ]
+      ],
+      "coord": "39.921629,116.439926"
     },
     {
       "shop_id": "B0FFHNYLFP",
@@ -1019,7 +1046,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 2011,
+      "distance": 2424,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -1037,7 +1064,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://img.alicdn.com/imgextra/i2/3695320962/O1CN011IydftPaUSlme8G_!!3695320962-0-kbcontentapng.jpg"
         }
-      ]
+      ],
+      "coord": "39.947802,116.466428"
     },
     {
       "shop_id": "B0JBCKHUFH",
@@ -1058,7 +1086,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 2027,
+      "distance": 2337,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -1076,7 +1104,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0JBCKHUFH/comment/7b21f545c3b52b85075466c18e4226e0_2048_2048_80.jpg"
         }
-      ]
+      ],
+      "coord": "39.950034,116.458294"
     },
     {
       "shop_id": "B0G0BL4Q2W",
@@ -1097,7 +1126,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 2009,
+      "distance": 2429,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -1115,7 +1144,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0G0BL4Q2W/comment/f7a255f54f98b4fefca22d75436e83e1_2048_2048_80.jpg"
         }
-      ]
+      ],
+      "coord": "39.947491,116.467081"
     },
     {
       "shop_id": "B0L3J5DTZE",
@@ -1136,7 +1166,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 20,
+      "distance": 484,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -1154,7 +1184,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0L3J5DTZE/comment/EC976321_9291_4104_9AA3_0A90D0776B31_L0_001_2000_150_1770126313974_38148222.jpg"
         }
-      ]
+      ],
+      "coord": "39.932175,116.454925"
     },
     {
       "shop_id": "B0G3V5FOFR",
@@ -1175,7 +1206,7 @@ PRE_CACHED_SHOPS = {
         }
       ],
       "top_comments": [],
-      "distance": 33,
+      "distance": 463,
       "pname": "北京市",
       "cityname": "北京市",
       "adname": "朝阳区",
@@ -1193,7 +1224,8 @@ PRE_CACHED_SHOPS = {
           "title": [],
           "url": "https://aos-comment.amap.com/B0G3V5FOFR/comment/content_media_external_images_media_100015432_1734529250022_57766021.jpg"
         }
-      ]
+      ],
+      "coord": "39.931697,116.454961"
     }
   ]
 }

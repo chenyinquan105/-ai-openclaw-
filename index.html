@@ -914,8 +914,18 @@ async function doSearch() {
        _ensureAiBubble();
        var trEmoji = toolEmojiMap[data.name] || '✅';
        var resultText = '';
-       if (data.result && data.result.message) {
+
+       // ★ 搜索商户 → 渲染交互式店铺选择面板（复用按钮流程的 renderCategorySelection）
+       if (data.name === 'search_poi' && data.result && data.result.data && data.result.data.categories) {
+        var categories = data.result.data.categories;
+        resultText = data.result.message || ('为你找到店铺，请在下方面板中选择～');
+        aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText) + '</span>';
+        // 清除旧面板，渲染新面板
+        if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
+        renderCategorySelection(categories);
+       } else if (data.result && data.result.message) {
         resultText = data.result.message;
+        aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText).replace(/\n/g, '<br>') + '</span>';
        } else if (data.result && data.result.data && data.result.data.shops) {
         var shops = data.result.data.shops;
         resultText = '为您找到 ' + shops.length + ' 家店铺：\n';
@@ -923,12 +933,14 @@ async function doSearch() {
          resultText += '• ' + shops[si].name + ' ★' + shops[si].rating + ' | ' + (shops[si].distance || '?') + 'm\n';
         }
         if (shops.length > 5) resultText += '...等' + shops.length + '家';
+        aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText).replace(/\n/g, '<br>') + '</span>';
        } else if (data.status === 'failed') {
         resultText = '操作未能完成：' + ((data.result && data.result.message) || '未知错误');
+        aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText).replace(/\n/g, '<br>') + '</span>';
        } else {
         resultText = '操作已完成';
+        aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText) + '</span>';
        }
-       aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText).replace(/\n/g, '<br>') + '</span>';
        scrollToBottom();
        // 如果后续没有LLM文本流，保留此工具结果
        fullResponse = resultText;
