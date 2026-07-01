@@ -3525,6 +3525,8 @@ document.addEventListener('DOMContentLoaded', function() {
   if (d.restored > 0) console.log('✅ 已恢复 ' + d.restored + ' 个自定义提醒');
  }).catch(function(){});
  initOnboarding();
+ // 初始化真实天气
+ fetchRealWeather();
 });
 
 // ===== 吃药提醒弹窗：虚拟时间驱动倒计时 + 三级催促 + 紧急联络 =====

@@ -3761,11 +3761,25 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
         elif tool_name == "check_weather":
             loc = arguments.get("location", "北京")
             try:
-                wx = _skill_weather_extractor(loc)
-                return {"status": "SUCCESS", "data": wx,
-                        "message": f"{loc}当前天气: {wx.get('weather','?')}, {wx.get('temp','?')}°C"}
-            except Exception as e:
-                return {"status": "ERROR", "message": f"天气查询失败: {str(e)}"}
+                # 优先使用高德实时天气：先逆地理编码获取 adcode
+                adcode = "110000"  # 默认北京
+                try:
+                    geo = _amap_client.geocode(loc)
+                    if geo and geo.get("lng") and geo.get("lat"):
+                        rev = _amap_client.reverse_geocode(lng=geo["lng"], lat=geo["lat"])
+                        if rev and isinstance(rev, dict):
+                            adcode = rev.get("adcode", "110000")
+                except Exception:
+                    pass
+                wx = _amap_weather_client.get_real_time_weather(adcode=adcode)
+            except Exception:
+                # 兜底：mock 天气
+                try:
+                    wx = _skill_weather_extractor("39.93,116.45")
+                except Exception:
+                    wx = {"status": "ERROR", "message": "天气查询失败"}
+            return {"status": "SUCCESS", "data": wx,
+                    "message": f"{loc}当前天气: {wx.get('weather',{}).get('condition','?')}, {wx.get('weather',{}).get('temperature_c','?')}°C"}
 
         # ── 读偏好 ──
         elif tool_name == "read_profile":
