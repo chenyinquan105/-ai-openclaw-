@@ -1764,74 +1764,102 @@ def api_get_swap_candidates():
 @app.route("/api/get_nearby_cafes", methods=["POST"])
 def api_get_nearby_cafes():
     """
-    返回 poi_cache 中所有 category 为 "cafe" 的店铺列表，按评分降序，最多5个。
-    若 cache 中没有 cafe，则自动触发一次独立搜索补充到 cache。
+    实时高德API查询最近饮品店（咖啡/奶茶）。
+    接受可选 lat/lng 坐标；优先请求body → session_state → 北京中心兜底。
+    直调 AmapPOIClient.search_nearby() 绕过 poi_cache 预缓存；
+    若API不可用或无结果，降级使用 poi_cache 并标记 source。
     """
-    if not agent or not agent.poi_cache:
-        return jsonify({"error": "无店铺缓存"}), 400
-
     import math
 
-    # 先检查 cache 里有没有 cafe
-    has_cafe_in_cache = any(s.get("category") == "cafe" for s in agent.poi_cache.values())
+    data = request.get_json(silent=True) or {}
+    lat = data.get("lat")
+    lng = data.get("lng")
 
-    if not has_cafe_in_cache:
-        # 自动触发 cafe 品类搜索，补充到 poi_cache
-        try:
-            extra = backend.skill_poi.search_poi_matrix(
-                center_coord="39.93,116.45",
-                categories=["cafe"],
-                radius_meters=5000,
-                min_rating=3.5
-            )
-            if extra.get("status") == "SUCCESS":
-                cafes = extra.get("search_results", {}).get("cafe", [])
-                for s in cafes:
-                    sid = s.get("shop_id")
-                    if sid and sid not in agent.poi_cache:
-                        agent.poi_cache[sid] = s
-        except Exception as e:
-            pass  # 搜索失败则继续用 cache 中已有的（可能为空）
+    # 确定查询中心坐标
+    center_lat = 39.93
+    center_lng = 116.45
 
+    if lat is not None and lng is not None:
+        center_lat = float(lat)
+        center_lng = float(lng)
+    else:
+        sm = session_state.get("spatial_matrix", {})
+        locs = sm.get("locations", {})
+        if locs:
+            first_loc = next(iter(locs.values()))
+            coord_str = first_loc.get("coord", "")
+            if coord_str and "," in coord_str:
+                try:
+                    parts = coord_str.split(",")
+                    center_lat = float(parts[0].strip())
+                    center_lng = float(parts[1].strip())
+                except (ValueError, IndexError):
+                    pass
+
+    shops = []
+    source = "cache_fallback"
+
+    # 优先直调高德 API 实时搜索，绕过预缓存
+    try:
+        result = search_nearby(
+            lng=center_lng,
+            lat=center_lat,
+            radius=3000,
+            keywords="咖啡|奶茶|茶饮",
+            category="cafe",
+        )
+        if result and result.get("shops"):
+            shops = result["shops"]
+            source = "amap_realtime"
+    except Exception:
+        pass
+
+    # 降级：使用 poi_cache
+    if not shops and agent and agent.poi_cache:
+        for sid, shop in agent.poi_cache.items():
+            if shop.get("category") == "cafe":
+                shops.append(shop)
+
+    # 按评分降序
+    shops.sort(key=lambda s: s.get("rating", 0), reverse=True)
+
+    # 计算距离并格式化
     shops_data = []
     all_out_of_1km = True
-    for sid, shop in agent.poi_cache.items():
-        if shop.get("category") != "cafe":
-            continue
-        # 计算距离（haversine，中心坐标 39.93, 116.45）
+    for shop in shops:
         dist_m = 0
-        raw_coord = shop.get("coord", "")
-        if raw_coord and "," in raw_coord:
+        coord = shop.get("coord", "")
+        if coord and "," in coord:
             try:
-                slat, slng = float(raw_coord.split(",")[0].strip()), float(raw_coord.split(",")[1].strip())
+                slat = float(coord.split(",")[0].strip())
+                slng = float(coord.split(",")[1].strip())
                 R = 6371000
-                dlat = math.radians(slat - 39.93)
-                dlng = math.radians(slng - 116.45)
-                a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(39.93)) * math.cos(math.radians(slat)) * math.sin(dlng / 2) ** 2
+                dlat = math.radians(slat - center_lat)
+                dlng = math.radians(slng - center_lng)
+                a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(center_lat)) * math.cos(math.radians(slat)) * math.sin(dlng / 2) ** 2
                 c = 2 * math.asin(math.sqrt(a))
                 dist_m = int(R * c)
-            except:
+            except Exception:
                 pass
         if dist_m <= 1000:
             all_out_of_1km = False
         dist_str = f"{dist_m}m" if dist_m < 1000 else f"{dist_m / 1000:.1f}km"
         dist_km = round(dist_m / 1000, 1)
         shops_data.append({
-            "shop_id": shop["shop_id"],
-            "name": shop["name"],
+            "shop_id": shop.get("shop_id", shop.get("id", "")),
+            "name": shop.get("name", ""),
             "rating": shop.get("rating", 0),
             "distance": dist_str,
             "distance_meters": dist_m,
             "distance_km": dist_km,
+            "coord": coord,
         })
-
-    # 按评分降序
-    shops_data.sort(key=lambda s: s["rating"], reverse=True)
 
     return jsonify({
         "shops": shops_data[:5],
         "all_out_of_1km": all_out_of_1km and len(shops_data) > 0,
         "total_found": len(shops_data),
+        "source": source,
     })
 
 
@@ -1943,9 +1971,10 @@ def api_swap_shop():
                         break
             cleaned.append({
                 "time": item["time"],
-                "memo": memo,
                 "action": item["action"],
-                "sub_task": sub,
+                "header": memo,
+                "detail": sub["action"] + "（预计 " + str(sub["duration_minutes"]) + " 分钟）" if sub else "",
+                "end_time": "",
                 "task_id": item.get("task_id", ""),
             })
         return jsonify({
@@ -3283,6 +3312,7 @@ def api_weather_realtime():
 # 高德 POI API（真实数据检索 + 地理编码）
 # ======================================================================
 from skills.amap_poi.amap_poi import AmapPOIClient
+from skills.amap_poi.amap_poi import search_nearby
 _amap_client = AmapPOIClient()
 
 from skills.amap_weather.amap_weather import AmapWeatherClient

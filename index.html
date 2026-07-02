@@ -264,16 +264,16 @@
  <div class="space-y-2">
  <label class="block text-xs font-bold text-gray-400 tracking-wider">🚨 注入异常状态</label>
  <div class="grid grid-cols-2 gap-2">
- <button onclick="triggerDemoException('下暴雨', '🌧️ 外部突降暴雨，路面严重积水，预计全部步行节点的转场移动速度将大幅减慢。')" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition flex flex-col items-center justify-center gap-1 text-center">
+ <button id="anomaly-btn-暴雨" onclick="triggerDemoException('下暴雨', '🌧️ 外部突降暴雨，路面严重积水，预计全部步行节点的转场移动速度将大幅减慢。')" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition flex flex-col items-center justify-center gap-1 text-center">
  <span class="text-xl">🌧️</span>下暴雨
  </button>
- <button onclick="triggerDemoException('餐厅停电', '🔌 目标餐饮商户内部突发电路故障导致停电，厨房设备停摆，预计出餐将严重滞后。')" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition flex flex-col items-center justify-center gap-1 text-center">
+ <button id="anomaly-btn-停电" onclick="triggerDemoException('餐厅停电', '🔌 目标餐饮商户内部突发电路故障导致停电，厨房设备停摆，预计出餐将严重滞后。')" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition flex flex-col items-center justify-center gap-1 text-center">
  <span class="text-xl">🔌</span>餐厅停电
  </button>
- <button onclick="triggerDemoException('排号异常', '🎫 现场排队叫号系统积压，前方突增大量离线等位订单，商家告知预计等待时间翻倍。')" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition flex flex-col items-center justify-center gap-1 text-center">
+ <button id="anomaly-btn-排号" onclick="triggerDemoException('排号异常', '🎫 现场排队叫号系统积压，前方突增大量离线等位订单，商家告知预计等待时间翻倍。')" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition flex flex-col items-center justify-center gap-1 text-center">
  <span class="text-xl">🎫</span>排号异常
  </button>
- <button onclick="triggerDemoException('堵车', '🚗 核心商圈周边干道发生严重交通事故，路段陷入大面积瘫痪，行车接驳耗时将显著拉长。')" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition flex flex-col items-center justify-center gap-1 text-center">
+ <button id="anomaly-btn-堵车" onclick="triggerDemoException('堵车', '🚗 核心商圈周边干道发生严重交通事故，路段陷入大面积瘫痪，行车接驳耗时将显著拉长。')" class="bg-gray-800 hover:bg-gray-700 text-xs font-bold py-3 px-2 rounded-xl border border-gray-700 transition flex flex-col items-center justify-center gap-1 text-center">
  <span class="text-xl">🚗</span>堵车
  </button>
  </div>
@@ -380,6 +380,13 @@
  <div id="clock-event-log" class="space-y-1 max-h-40 overflow-y-auto scrollbar-hide text-[11px]">
  <p class="text-gray-500 italic py-2 text-center">等待时间推进...</p>
  </div>
+ </div>
+
+
+ <!-- 激活的异常chip列表 -->
+ <div class="space-y-2 mt-3">
+ <label class="block text-xs font-bold text-gray-400 tracking-wider">⚡ 激活的异常</label>
+ <div id="active-exceptions-list" class="space-y-1 max-h-32 overflow-y-auto"></div>
  </div>
 
 
@@ -2008,15 +2015,16 @@ function renderMetroTimelineForMainFace(data) {
 
   for (var i = 0; i < nodes.length; i++) {
     var nd = nodes[i];
+    var nodeType = nd.type || nd.action || '';
     var dotColor = '#fbbf24'; // yellow=DEPART
-    if (nd.type === 'WAIT' || nd.type === 'DROP_TASK') dotColor = '#3b82f6';
-    else if (nd.type === 'MOVE_AND_EXEC' || nd.type === 'EXEC') dotColor = '#6366f1';
-    else if (nd.type === 'PICK_TASK') dotColor = '#10b981';
+    if (nodeType === 'WAIT' || nodeType === 'DROP_TASK') dotColor = '#3b82f6';
+    else if (nodeType === 'MOVE_AND_EXEC' || nodeType === 'EXEC' || nodeType === 'EXEC_AND_RETURN') dotColor = '#6366f1';
+    else if (nodeType === 'PICK_TASK') dotColor = '#10b981';
 
     html += '<div class="timeline-node" onclick="openMapPanel(' + i + ')" style="width:' + nodeMinWidth + 'px;">';
     html += '<span class="timeline-node-time">' + _escHtml(nd.time || '') + '</span>';
     html += '<span class="timeline-node-dot" style="background:' + dotColor + '; color:' + dotColor + ';"></span>';
-    html += '<span class="timeline-node-name" title="' + _escHtml(nd.header || '') + '">' + _escHtml(nd.header || '') + '</span>';
+    html += '<span class="timeline-node-name" title="' + _escHtml(nd.header || nd.memo || '') + '">' + _escHtml(nd.header || nd.memo || '') + '</span>';
     html += '</div>';
   }
 
@@ -2782,7 +2790,40 @@ function getPlanBOptions(type) {
 
 let selectedPlanBOption = null;
 
+// ---- 异常按钮激活态管理 ----
+var _anomalyButtonMap = {
+  '下暴雨': 'anomaly-btn-暴雨',
+  '餐厅停电': 'anomaly-btn-停电',
+  '排号异常': 'anomaly-btn-排号',
+  '堵车': 'anomaly-btn-堵车'
+};
+
+function updateAnomalyButtonState(type, isActive) {
+  var btnId = _anomalyButtonMap[type];
+  if (!btnId) return;
+  var btn = document.getElementById(btnId);
+  if (!btn) return;
+  if (isActive) {
+    btn.classList.add('border-red-500', 'bg-red-900/30');
+    btn.classList.remove('border-gray-700');
+  } else {
+    btn.classList.remove('border-red-500', 'bg-red-900/30');
+    btn.classList.add('border-gray-700');
+  }
+}
+
 function triggerDemoException(type, description) {
+ // Toggle: 若该异常已激活，则取消激活（红框→灰色，移除异常，关闭弹窗）
+ for (var i = 0; i < activeExceptions.length; i++) {
+   if (activeExceptions[i].type === type) {
+     var excId = activeExceptions[i].id;
+     removeActiveException(excId);
+     updateAnomalyButtonState(type, false);
+     var dem = document.getElementById('demo-exception-modal');
+     if (dem) dem.classList.add('hidden');
+     return;
+   }
+ }
  // 只有计划正在执行时才能触发异常控制器
  if (!lastScheduleData || !lastScheduleData.timeline || lastScheduleData.timeline.length === 0) {
    _showToast('⚠️ 无法触发异常状态<br><span style="font-size:12px;opacity:0.8">当前没有正在执行的计划，请先创建并执行一个出行计划后再试。</span>');
@@ -2825,6 +2866,11 @@ function triggerDemoException(type, description) {
 
  executeBtn.disabled = true;
  modal.classList.remove('hidden');
+ _playNotificationSound();  // 异常PlanB弹窗伴随响铃一声
+ // 按钮立即变红，表示异常已激活
+ activeExceptions.push({ ...pendingDemoException });
+ updateAnomalyButtonState(type, true);
+ renderActiveExceptions();
 }
 
 function selectPlanBOption(el, optionId) {
@@ -2883,6 +2929,81 @@ function appendExecChatMessage(text) {
     execContentCache = null;
     openExecCover();
   }
+}
+
+/**
+ * 向行程聊天区（trip-chat-area）追加通知消息。
+ * 与 appendExecChatMessage 不同，此函数写入真实存在的 DOM 元素。
+ */
+function appendTripNotification(text) {
+  var chatArea = document.getElementById('trip-chat-area');
+  if (!chatArea) {
+    if (lastScheduleData && lastScheduleData.timeline) {
+      _refreshTripView();
+      chatArea = document.getElementById('trip-chat-area');
+    }
+    if (!chatArea) return;
+  }
+  var msg = document.createElement('div');
+  msg.className = 'bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8';
+  msg.innerHTML = '<p class="text-sm text-gray-800 leading-relaxed">' + text + '</p>';
+  chatArea.appendChild(msg);
+  requestAnimationFrame(function() {
+    chatArea.scrollTop = chatArea.scrollHeight;
+  });
+}
+
+/**
+ * 向行程聊天区追加带确认/取消按钮的询问消息。
+ * 用户必须点击确认才会执行操作，不可擅自修改目的地。
+ *
+ * @param {string} text - 确认消息HTML内容
+ * @param {function} onConfirm - 确认回调，接收 done() 函数用于移除消息
+ * @param {function} onCancel - 取消回调
+ */
+function appendTripConfirm(text, onConfirm, onCancel) {
+  var chatArea = document.getElementById('trip-chat-area');
+  if (!chatArea) {
+    if (lastScheduleData && lastScheduleData.timeline) {
+      _refreshTripView();
+      chatArea = document.getElementById('trip-chat-area');
+    }
+    if (!chatArea) return;
+  }
+  var msg = document.createElement('div');
+  msg.className = 'bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 mb-2 mr-8';
+  msg.innerHTML = '<p class="text-sm text-gray-800 leading-relaxed mb-3">' + text + '</p>' +
+    '<div class="flex gap-2">' +
+    '<button class="trip-confirm-yes flex-1 bg-green-500 text-white font-bold py-2 rounded-xl text-sm hover:bg-green-600 transition">✅ 确认更换</button>' +
+    '<button class="trip-confirm-no flex-1 bg-gray-300 text-gray-700 font-bold py-2 rounded-xl text-sm hover:bg-gray-400 transition">❌ 取消</button>' +
+    '</div>';
+  chatArea.appendChild(msg);
+  requestAnimationFrame(function() {
+    chatArea.scrollTop = chatArea.scrollHeight;
+  });
+
+  var yesBtn = msg.querySelector('.trip-confirm-yes');
+  var noBtn = msg.querySelector('.trip-confirm-no');
+  var resolved = false;
+  yesBtn.addEventListener('click', function() {
+    if (resolved) return;
+    resolved = true;
+    yesBtn.disabled = true;
+    noBtn.disabled = true;
+    yesBtn.textContent = '执行中...';
+    noBtn.textContent = '已确认';
+    if (onConfirm) onConfirm(function() { msg.remove(); });
+  });
+  noBtn.addEventListener('click', function() {
+    if (resolved) return;
+    resolved = true;
+    yesBtn.disabled = true;
+    noBtn.disabled = true;
+    noBtn.textContent = '已取消';
+    msg.style.opacity = '0.5';
+    if (onCancel) onCancel();
+    setTimeout(function() { msg.remove(); }, 1500);
+  });
 }
 
 /**
@@ -3256,7 +3377,6 @@ function executePlanB() {
 
   // ---- 1. 打车类：先确认再执行 ----
   if (optId === 'switch_to_taxi') {
-    activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
     _confirmThenCallTaxi('暴雨天气，建议打车出行');
@@ -3265,89 +3385,76 @@ function executePlanB() {
 
   // ---- 2. 避雨：告知最近饮品店 + 询问三选一（去避雨 / 打车 / 取消）----
   if (optId === 'find_shelter') {
-    activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
+
+    // 提取当前行程第一个节点的坐标，传给后端以精准搜索
+    var shelterPayload = {};
+    if (lastScheduleData && lastScheduleData.timeline && lastScheduleData.timeline.length > 0) {
+      var firstNode = lastScheduleData.timeline[0];
+      if (firstNode && shopCoordMap) {
+        var coordKey = firstNode.task_id || firstNode.shop_id;
+        if (coordKey && shopCoordMap[coordKey] && shopCoordMap[coordKey].coord) {
+          var parts = shopCoordMap[coordKey].coord.split(',');
+          if (parts.length === 2) {
+            shelterPayload.lat = parseFloat(parts[0].trim());
+            shelterPayload.lng = parseFloat(parts[1].trim());
+          }
+        }
+      }
+    }
     fetch(API_BASE + '/api/get_nearby_cafes', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'}
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(shelterPayload)
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var allShops = (data.shops && data.shops.length) ? data.shops : [];
+      var isCacheFallback = (data.source === 'cache_fallback');
+      var fallbackNote = isCacheFallback ? '（数据来自本地缓存，可能不是最新的）' : '';
 
-      // 辅助函数：插入避雨店
-      function _doInsertShelter(shopId, shopName) {
-        fetch(API_BASE + '/api/insert_shelter', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ shop_id: shopId })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(insRes) {
-          var name = insRes.shelter_name || shopName || '附近饮品店';
-          appendExecChatMessage('已为您更换行程，前往 <b>' + name + '</b> ☕ 避雨。雨停后可通过聊天框说「雨停了继续行程」恢复计划。');
-          if (insRes.timeline) { renderSchedule(insRes); _planbFlushExecCover(); }
-        })
-        .catch(function() {
-          appendExecChatMessage('已为您更换行程前往避雨点 ☕。雨停后可通过聊天框说「雨停了继续行程」恢复计划。');
-        });
-      }
-
-      // 无店铺：告知 + 二选一（打车 / 取消），打车需确认
+      // 无店铺：通知并自动打车
       if (data.error || allShops.length === 0) {
-        appendExecChatMessage('⚠️ 附近暂无可避雨的饮品店。');
-        showSecondModal(
-          '☔ 附近无饮品店',
-          '附近未找到饮品店，请选择替代方案：',
-          [
-            { value: 'taxi', emoji: '🚕', title: '打车离开', subtitle: '切换为打车接驳' },
-            { value: 'cancel', emoji: '❌', title: '取消', subtitle: '关闭不做更改' }
-          ],
-          function(val) {
-            if (val === 'taxi') {
-              _confirmThenCallTaxi('暴雨天气，附近无避雨饮品店，建议打车');
-            }
-          }
-        );
+        appendTripNotification('⚠️ 附近暂无可避雨的饮品店，已为您切换为打车。');
+        _confirmThenCallTaxi('暴雨天气，附近无避雨饮品店，建议打车');
         return;
       }
 
-      // 有店铺：取最近的一家，展示店名+距离+三选一
+      // 自动选最近店铺，不弹二级弹窗，不二次确认
       var nearest = allShops[0];
-      var distText = nearest.distance || (nearest.distance_km ? nearest.distance_km + 'km' : '未知');
       var shopName = nearest.name;
       var shopId = nearest.shop_id;
 
-      showSecondModal(
-        '☔ 突发暴雨，就近避雨',
-        '最近饮品店：<b>' + shopName + '</b>，距离 <b>' + distText + '</b>',
-        [
-          { value: 'shelter', emoji: '☕', title: '去 ' + shopName + ' 避雨', subtitle: '距离 ' + distText + '，前往暂避' },
-          { value: 'taxi', emoji: '🚕', title: '打车离开', subtitle: '切换为打车接驳离开' },
-          { value: 'cancel', emoji: '❌', title: '取消', subtitle: '关闭不做更改' }
-        ],
-        function(chosenVal) {
-          if (chosenVal === 'shelter') {
-            _doInsertShelter(shopId, shopName);
-          } else if (chosenVal === 'taxi') {
-            _confirmThenCallTaxi('暴雨天气，打车离开');
-          }
+      fetch(API_BASE + '/api/insert_shelter', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ shop_id: shopId })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(insRes) {
+        var name = insRes.shelter_name || shopName || '附近饮品店';
+        if (insRes.timeline) {
+          lastScheduleData = insRes;
+          _refreshTripView();
         }
-      );
+        appendTripNotification('检测到<b>暴雨</b>，已为您添加避雨点 <b>' + name + '</b> ☕' + fallbackNote + '。雨停后可通过聊天框说「雨停了继续行程」恢复计划。');
+      })
+      .catch(function() {
+        appendTripNotification('避雨店插入失败，请稍后重试。');
+      });
     })
     .catch(function() {
-      appendExecChatMessage('获取附近饮品店失败，请稍后重试。');
+      appendTripNotification('获取附近饮品店失败，请稍后重试。');
     });
     return;
   }
 
   // ---- 3. 取消节点 / 取消计划 ----
   if (optId === 'cancel_node' || optId === 'cancel_trip') {
-    activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     if (optId === 'cancel_node') {
-      appendExecChatMessage('已将异常节点 <b>从行程中移除</b> ❌，请确认剩余行程是否满足需求。');
+      appendTripNotification('已将异常节点 <b>从行程中移除</b> ❌，请确认剩余行程是否满足需求。');
       closeDemoExceptionModal();
       var cancelPayload = { action: 'BYPASS_NODE', corrupted_node_id: pendingDemoException.corrupted_node_id || '' };
       fetch(API_BASE + '/api/pipeline/mutate', {
@@ -3373,7 +3480,7 @@ function executePlanB() {
       lastScheduleData = null;
       var execCover = document.getElementById('exec-cover');
       if (execCover) { execCover.classList.add('hidden'); }
-      appendExecChatMessage('已为您 <b>取消本次行程计划</b>，如需重新规划请随时告诉我。');
+      appendTripNotification('已为您 <b>取消本次行程计划</b>，如需重新规划请随时告诉我。');
       closeDemoExceptionModal();
       // 通知服务端清理
       fetch(API_BASE + '/api/cancel_trip', { method: 'POST' }).catch(function(){});
@@ -3396,7 +3503,6 @@ function executePlanB() {
           { value: 'custom', emoji: '✏️', title: '自定义', subtitle: '输入具体分钟数' }
         ],
         function(delayVal) {
-          activeExceptions.push({ ...pendingDemoException });
           renderActiveExceptions();
           closeDemoExceptionModal();
           fetch(API_BASE + '/api/replan', {
@@ -3406,12 +3512,12 @@ function executePlanB() {
           })
           .then(function(r) { return r.json(); })
           .then(function(data) {
-            appendExecChatMessage('已延后出发时间 ⏳，已重新排程。（延后 ' + delayVal + ' 分钟）');
+            appendTripNotification('已延后出发时间 ⏳，已重新排程。（延后 ' + delayVal + ' 分钟）');
             if (data.timeline) { renderSchedule(data); }
             _planbFlushExecCover();
           })
           .catch(function() {
-            appendExecChatMessage('已延后出发时间 ⏳。（延后 ' + delayVal + ' 分钟）');
+            appendTripNotification('已延后出发时间 ⏳。（延后 ' + delayVal + ' 分钟）');
           });
         }
       );
@@ -3427,7 +3533,6 @@ function executePlanB() {
           { value: 'custom', emoji: '✏️', title: '自定义', subtitle: '输入具体分钟数' }
         ],
         function(delayVal) {
-          activeExceptions.push({ ...pendingDemoException });
           renderActiveExceptions();
           closeDemoExceptionModal();
           fetch(API_BASE + '/api/pipeline/mutate', {
@@ -3437,12 +3542,12 @@ function executePlanB() {
           })
           .then(function(r) { return r.json(); })
           .then(function(data) {
-            appendExecChatMessage('已将该节点延后 ⏳，行程已更新。（延后 ' + delayVal + ' 分钟）');
+            appendTripNotification('已将该节点延后 ⏳，行程已更新。（延后 ' + delayVal + ' 分钟）');
             if (data.timeline) { renderSchedule(data); }
             _planbFlushExecCover();
           })
           .catch(function() {
-            appendExecChatMessage('已延后相关任务 ⏳。（延后 ' + delayVal + ' 分钟）');
+            appendTripNotification('已延后相关任务 ⏳。（延后 ' + delayVal + ' 分钟）');
           });
         }
       );
@@ -3472,7 +3577,6 @@ function executePlanB() {
         var transportMap = { walk: '步行', metro: '地铁', walk_bus: '步行+公交' };
         var tLabel = transportMap[secondVal] || '步行';
         selectedTransport = tLabel;
-        activeExceptions.push({ ...pendingDemoException });
         renderActiveExceptions();
         closeDemoExceptionModal();
         fetch(API_BASE + '/api/replan', {
@@ -3482,12 +3586,12 @@ function executePlanB() {
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。待拥堵解除后会自动提醒您恢复原出行方式。');
+          appendTripNotification('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。待拥堵解除后会自动提醒您恢复原出行方式。');
           if (data.timeline) { renderSchedule(data); }
           _planbFlushExecCover();
         })
         .catch(function() {
-          appendExecChatMessage('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。待拥堵解除后会自动提醒您恢复原出行方式。');
+          appendTripNotification('📢 堵车预警·已为您切换为 <b>' + tLabel + '</b> 接驳方式，避开拥堵路段。待拥堵解除后会自动提醒您恢复原出行方式。');
           if (lastScheduleData) { renderSchedule(lastScheduleData); }
           _planbFlushExecCover();
         });
@@ -3499,7 +3603,6 @@ function executePlanB() {
   // ---- 6. 排号异常→换店+排号（swap_shop_and_queue）or 停电→换店（swap_shop）----
   if (optId === 'swap_shop_and_queue' || optId === 'swap_shop') {
     var isQueue = (optId === 'swap_shop_and_queue');
-    closeDemoExceptionModal();
     fetch(API_BASE + '/api/get_swap_candidates', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -3508,9 +3611,10 @@ function executePlanB() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.error || !data.shops || data.shops.length === 0) {
-        appendExecChatMessage('抱歉，附近未找到可替换的同品类店铺。建议取消该节点或延后处理。');
+        appendTripNotification('抱歉，附近未找到可替换的同品类店铺。建议取消该节点或延后处理。');
         return;
       }
+      // 弹二级弹窗让用户选择店铺
       var shopOpts = data.shops.map(function(s, i) {
         return {
           value: s.shop_id,
@@ -3524,8 +3628,14 @@ function executePlanB() {
         '已排除异常店，请从同品类中选择替代：',
         shopOpts,
         function(swapShopId, swapShopName) {
-          activeExceptions.push({ ...pendingDemoException });
+          closeDemoExceptionModal();
           renderActiveExceptions();
+
+          var reason = isQueue ? '排号异常' : '餐厅停电';
+          var action = isQueue ? '排号' : '就餐';
+          var extraMsg = isQueue ? '，已自动为您<b>一键排号</b> 🎫' : '';
+
+          // 用户选店后直接执行，不再二次确认
           fetch(API_BASE + '/api/swap_shop', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -3533,43 +3643,40 @@ function executePlanB() {
           })
           .then(function(r) { return r.json(); })
           .then(function(swapRes) {
-            var extraMsg = isQueue ? '，已自动为您 <b>一键排号</b> 🎫' : '';
-            appendExecChatMessage('已为您更换行程，前往 <b>' + (swapShopName || '新店铺') + '</b>' + extraMsg + '，已更新行程。待原店铺恢复正常后会自动提醒您。');
             if (swapRes.timeline) {
-              renderSchedule(swapRes);
-              _planbFlushExecCover();
+              lastScheduleData = swapRes;
+              _refreshTripView();
             }
+            appendTripNotification('检测到<b>' + reason + '</b>，已为您将' + action + '地点更换为<b>' + swapShopName + '</b>' + extraMsg + '。');
           })
           .catch(function() {
-            appendExecChatMessage('替换店铺失败，请稍后重试。');
+            appendTripNotification('替换店铺失败，请稍后重试。');
           });
         }
       );
     })
     .catch(function() {
-      appendExecChatMessage('获取可替换店铺列表失败，请稍后重试。');
+      appendTripNotification('获取可替换店铺列表失败，请稍后重试。');
     });
     return;
   }
 
   // ---- 7. 重新规划路线绕行 ----
   if (optId === 'reroute') {
-    activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
     fetch(API_BASE + '/api/replan', {
-      method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ reroute: true, delay_minutes: 5 })
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      appendExecChatMessage('📢 已为您重新规划绕行路线，避开拥堵路段 🗺️，行程已更新。');
+      appendTripNotification('📢 已为您重新规划绕行路线，避开拥堵路段 🗺️，行程已更新。');
       if (data.timeline) { renderSchedule(data); }
       _planbFlushExecCover();
     })
     .catch(function() {
-      appendExecChatMessage('📢 正在为您重新规划绕行路线，避开拥堵路段 🗺️，请稍候。');
+      appendTripNotification('📢 正在为您重新规划绕行路线，避开拥堵路段 🗺️，请稍候。');
       if (lastScheduleData) { renderSchedule(lastScheduleData); }
       _planbFlushExecCover();
     });
@@ -3578,10 +3685,9 @@ function executePlanB() {
 
   // ---- 8. 默认兜底：LLM AI 自动决策 ----
   if (optId === 'default_b') {
-    activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
-    appendExecChatMessage('🤖 AI 正在评估最优变轨方案...');
+    appendTripNotification('🤖 AI 正在评估最优变轨方案...');
     fetch(API_BASE + '/api/planb_default', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -3593,19 +3699,19 @@ function executePlanB() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.error) {
-        appendExecChatMessage('❌ AI 决策失败: ' + data.error);
+        appendTripNotification('❌ AI 决策失败: ' + data.error);
       } else {
         if (data.action_taken === 'TRANSPORT') {
           _simulateTaxiCall();
         } else {
-          appendExecChatMessage('🤖 AI 已自动决策: <b>' + (data.action_desc || '已执行最优方案') + '</b> ✅');
+          appendTripNotification('🤖 AI 已自动决策: <b>' + (data.action_desc || '已执行最优方案') + '</b> ✅');
         }
         if (data.timeline) { renderSchedule(data); }
         _planbFlushExecCover();
       }
     })
     .catch(function() {
-      appendExecChatMessage('❌ AI 决策服务异常，请手动选择其他 Plan B 方案');
+      appendTripNotification('❌ AI 决策服务异常，请手动选择其他 Plan B 方案');
       if (lastScheduleData) { renderSchedule(lastScheduleData); }
       _planbFlushExecCover();
     });
@@ -3613,9 +3719,8 @@ function executePlanB() {
   }
 
   // ---- 未知 option 兜底 ----
-  activeExceptions.push({ ...pendingDemoException });
   renderActiveExceptions();
-  appendExecChatMessage('已执行操作: ' + label);
+  appendTripNotification('已执行操作: ' + label);
   if (lastScheduleData) { renderSchedule(lastScheduleData); }
   _planbFlushExecCover();
   closeDemoExceptionModal();
@@ -3653,24 +3758,25 @@ function renderActiveExceptions() {
 function removeActiveException(id) {
  var removedExc = activeExceptions.find(function(exc) { return exc.id === id; });
  activeExceptions = activeExceptions.filter(function(exc) { return exc.id !== id; });
+ updateAnomalyButtonState(removedExc ? removedExc.type : '', false);
  renderActiveExceptions();
 
  // 异常关闭钩子：按类型在聊天面板自动生成恢复消息
  if (removedExc) {
    var excType = removedExc.type || '';
    if (excType.indexOf('暴雨') !== -1) {
-     appendExecChatMessage('🌤️ <b>暴雨已解除</b>，天气转好，雨停了，继续您的行程吧！');
+     appendTripNotification('🌤️ <b>暴雨已解除</b>，天气转好，雨停了，继续您的行程吧！');
    } else if (excType.indexOf('堵车') !== -1 || excType.indexOf('拥堵') !== -1) {
-     appendExecChatMessage('🚗 <b>拥堵已缓解</b>，道路恢复畅通，可恢复正常出行。');
+     appendTripNotification('🚗 <b>拥堵已缓解</b>，道路恢复畅通，可恢复正常出行。');
    } else if (excType.indexOf('停电') !== -1) {
-     appendExecChatMessage('💡 <b>餐厅供电已恢复</b>，该店铺已正常营业，可前往用餐。');
+     appendTripNotification('💡 <b>餐厅供电已恢复</b>，该店铺已正常营业，可前往用餐。');
    } else if (excType.indexOf('排号') !== -1) {
-     appendExecChatMessage('📋 <b>排号已恢复</b>，当前排队人数恢复正常，可继续前去。');
+     appendTripNotification('📋 <b>排号已恢复</b>，当前排队人数恢复正常，可继续前去。');
    } else {
-     appendExecChatMessage('✅ <b>' + excType + '已解除</b>，环境恢复正常。');
+     appendTripNotification('✅ <b>' + excType + '已解除</b>，环境恢复正常。');
    }
  } else {
-   appendExecChatMessage('✅ 异常环境干扰已清除，行程重新对齐美团原生规划航线。');
+   appendTripNotification('✅ 异常环境干扰已清除，行程重新对齐美团原生规划航线。');
  }
 }
 

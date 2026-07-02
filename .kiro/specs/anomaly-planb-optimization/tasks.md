@@ -1,0 +1,106 @@
+# Implementation Plan
+
+- [ ] 1. Foundation: 新增三个共享工具函数
+- [ ] 1.1 新增异常按钮状态切换函数
+  - 定义 `_anomalyButtonMap` 将4种异常type映射到按钮DOM id，id值使用：`anomaly-btn-暴雨`、`anomaly-btn-停电`、`anomaly-btn-排号`、`anomaly-btn-堵车`
+  - 实现 `updateAnomalyButtonState(type, isActive)`：激活时添加 `border-red-500 bg-red-900/30` 并移除 `border-gray-700`，取消时反向操作
+  - 对未映射的异常类型静默忽略
+  - 函数插入位置在 `triggerDemoException` 之前，确保后续任务可直接调用
+  - _Requirements: 1.1, 1.2, 1.3, 1.4_
+- [ ] 1.2 新增行程通知消息函数
+  - 实现 `appendTripNotification(text)`：在 `#trip-chat-area` 中渲染蓝色通知气泡（`bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8`）
+  - 若 `#trip-chat-area` 不存在且 `lastScheduleData` 有效，自动调用 `_refreshTripView()` 创建容器后再追加消息
+  - 消息追加后通过 `requestAnimationFrame` 自动滚动到底部
+  - 调用该函数后，蓝色气泡成功出现在行程聊天区域底部
+  - _Requirements: 3.2, 3.3, 3.5_
+- [ ] 1.3 新增行程确认消息函数
+  - 实现 `appendTripConfirm(text, onConfirm, onCancel)`：渲染橙色确认气泡（`bg-orange-50 border-2 border-orange-300`），含"✅ 确认更换"和"❌ 取消"按钮
+  - `onConfirm` 回调接收 `done` 参数（调用 `done()` 移除消息元素）；确认按钮点击后变为"执行中..."并禁用，使用闭包 `resolved` 标志防止重复触发
+  - 取消按钮点击后消息半透明（`opacity: 0.5`）并在1.5s后自动移除
+  - 调用该函数后，橙色确认气泡出现在行程聊天区域，两按钮可独立点击且互斥
+  - _Requirements: 2.5, 3.1_
+
+- [ ] 2. 异常按钮激活态切换与UI
+- [ ] 2.1 给异常按钮添加id并实现toggle与响铃
+  - 为4个异常按钮的 `<button>` 元素添加id：`anomaly-btn-暴雨`、`anomaly-btn-停电`、`anomaly-btn-排号`、`anomaly-btn-堵车`（与Task 1.1的_anomalyButtonMap一致）
+  - 在 `triggerDemoException` 开头增加toggle检查：遍历 `activeExceptions`，若已存在同type则调用 `removeActiveException(exc.id)` + `updateAnomalyButtonState(type, false)` 并return
+  - 在弹窗显示（`modal.classList.remove('hidden')`）之后调用 `_playNotificationSound()` 触发响铃一声
+  - 点击未激活异常按钮→红框出现+弹窗打开+响铃一声；再次点击同一按钮→红框消失+异常取消
+  - _Requirements: 1.1, 1.2, 4.1, 4.2, 4.3_
+- [ ] 2.2 在executePlanB和removeActiveException中同步按钮状态
+  - 在 `executePlanB` 中所有 `activeExceptions.push(...)` 语句后添加 `updateAnomalyButtonState(type, true)` 调用（约10处，分布在各个PlanB分支中）
+  - 在 `removeActiveException` 中，在 `removedExc` 确定后、`renderActiveExceptions()` 之前调用 `updateAnomalyButtonState(removedExc.type, false)`
+  - 注意：Task 4.1和4.2会重写swap和find_shelter分支，本任务在这些分支中的push+update调用将由4.1/4.2一并处理，本任务只负责其他分支（switch_to_taxi、cancel_node、postpone、reroute、default_b等）
+  - 执行PlanB后对应按钮保持红框；通过chip移除异常后红框同步消失
+  - _Requirements: 1.3, 1.4_
+- [ ] 2.3 创建激活异常chip列表容器
+  - 在左侧面板（约第384行附近，clock controls区域下方）插入 `#active-exceptions-list` 容器DOM，包含"⚡ 激活的异常"标签和 `max-h-32 overflow-y-auto` 滚动区
+  - `renderActiveExceptions()` 找到目标容器并正确渲染异常chip
+  - 激活异常后，左侧面板对应chip出现；点击chip可移除异常
+  - _Requirements: 1.5_
+
+- [ ] 3. (P) 重写服务端饮品店查询API
+  - _Boundary: Backend API_
+- [ ] 3.1 (P) 重写 `/api/get_nearby_cafes` 接入高德实时搜索
+  - 接收请求body中的可选 `lat`、`lng` 坐标参数
+  - 坐标优先级：请求body → `session_state.spatial_matrix.locations` 第一项 → 北京中心 (39.93, 116.45)
+  - 直接调用 `AmapPOIClient.search_nearby(lng, lat, radius=3000, keywords="咖啡|奶茶|茶饮", category="cafe")` 绕过预缓存拦截
+  - 使用haversine公式计算每个返回店铺到查询中心的距离（`distance` 展示字符串如"800m"/"1.2km"，`distance_meters` 数值）
+  - 外层try/except包裹：若高德API异常或无结果，降级使用 `agent.poi_cache` 中 category 为 "cafe" 的店铺
+  - 响应包含 `shops` 数组（含 shop_id/name/rating/distance/distance_meters/coord）、`source` 字段（"amap_realtime"/"cache_fallback"）、`total_found`
+  - API返回实时饮品店数据，Network面板可确认source字段为 "amap_realtime"
+  - _Requirements: 2.1, 2.2, 2.4_
+
+- [ ] 4. 换店确认流程与通知消息
+  - _Depends: 1.2, 1.3, 2.2_ — 依赖Foundation函数，且本任务重写的swap/find_shelter分支需保留2.2的updateAnomalyButtonState调用
+- [ ] 4.1 重写换店/排号异常的确认流程
+  - 在 `executePlanB` 的 `swap_shop_and_queue` / `swap_shop` 分支中：二级弹窗用户选店并点击确认后，不直接调 `/api/swap_shop`
+  - 改为调用 `appendTripConfirm` 展示橙色确认消息，消息内容包含：异常原因、替代店名、评分、距离、"是否确认将[事项]地点更换为此店？"
+  - 确认按钮回调中执行 `/api/swap_shop` API调用
+  - API成功时：更新 `lastScheduleData = swapRes`，调用 `_refreshTripView()` 更新顶部时间轴，调用 `appendTripNotification` 发送成功通知（含店名和一键排号文案）
+  - API失败时（catch）：调用 `appendTripNotification` 发送错误通知"替换店铺失败，请稍后重试"，不更新时间轴
+  - 移除原有的 `renderSchedule(swapRes)` 调用（不再弹出深色行程卡片）
+  - 取消按钮回调中调用 `appendTripNotification` 发送"已取消更换，原[事项]计划保持不变"
+  - 保留 `updateAnomalyButtonState(exType, true)` 和 `activeExceptions.push` 调用（与Task 2.2协调）
+  - 先取消（不执行API+通知），再确认更换（执行API+时间轴更新+成功通知），深色卡片不出现，API失败有错误通知
+  - _Requirements: 3.1, 3.2, 3.3, 3.4_
+- [ ] 4.2 改造暴雨避雨的确认流程并传递坐标与降级提示
+  - 在 `find_shelter` 分支中：从 `lastScheduleData` 提取第一个节点的坐标放入 `/api/get_nearby_cafes` 请求body（lat/lng字段）
+  - 二级弹窗用户选"去[店名]避雨"后，改为调用 `appendTripConfirm` 展示确认消息
+  - 当API返回 `source === "cache_fallback"` 时，在二级弹窗或确认消息中展示提示文字"（数据来自本地缓存，可能不是最新的）"
+  - 确认回调中执行 `/api/insert_shelter`；API失败时调用 `appendTripNotification` 发送错误通知
+  - 取消回调中调用 `appendTripNotification` 发送"已取消，将继续原行程"
+  - 保留 `updateAnomalyButtonState(exType, true)` 和 `activeExceptions.push` 调用
+  - 请求带坐标参数，避雨操作需用户确认后才执行，缓存降级时有提示
+  - _Requirements: 2.3, 2.5_
+- [ ] 4.3 更新异常解除恢复通知
+  - 将 `removeActiveException` 中所有的 `appendExecChatMessage(...)` 调用替换为 `appendTripNotification(...)`
+  - 保留原有的恢复消息文案（暴雨解除"天气转好，雨停了"、停电恢复"餐厅供电已恢复"、排号恢复"排号已恢复"、拥堵缓解"拥堵已缓解"等）
+  - 确保 `updateAnomalyButtonState` 调用（Task 2.2）仍在合适位置且不被覆盖
+  - 手动移除异常chip后，行程聊天区出现对应的蓝色恢复通知
+  - _Requirements: 3.5_
+  - _Depends: 2.2_ — 确保2.2的按钮状态还原调用在重写后保留
+
+- [ ] 5. 集成验证
+- [ ] 5.1 验证按钮toggle、响铃与chip列表
+  - 启动行程后依次点击4个异常按钮激活，验证4个红框同时独立显示
+  - 每次点击验证弹窗伴随响铃一声（听到叮咚提示音）
+  - 点击已激活按钮验证红框消失和异常取消
+  - 验证左侧面板chip列表渲染（异常激活后出现对应chip）
+  - 点击chip验证异常移除+红框同步消失+恢复通知出现
+  - 4个红框独立toggle、响铃正常、chip列表可交互、恢复通知出现
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.2, 4.3_
+- [ ] 5.2 验证高德API实时搜索与降级
+  - 触发暴雨PlanB→选"就近找饮品店"→验证弹窗展示的店铺来自高德实时API（Network面板确认 `/api/get_nearby_cafes` 响应 `source: "amap_realtime"`）
+  - 断网环境下触发→验证降级到缓存（`source: "cache_fallback"`）且前端展示降级提示文字
+  - 坐标参数传递验证：确认请求body包含lat/lng字段
+  - API实时/降级切换正常，降级时用户可见提示
+  - _Requirements: 2.1, 2.2, 2.3, 2.4_
+- [ ] 5.3 验证换店确认流程完整路径
+  - 触发餐厅停电→选PlanB→选店铺→验证橙色确认消息出现（含店名/评分/距离）→点击取消→验证无API调用+蓝色取消通知
+  - 重新触发→选店铺→点击确认更换→验证API调用+顶部时间轴（`trip-timeline-bar`）更新+蓝色成功通知+无深色行程卡片
+  - 触发排号异常→重复确认流程→验证"一键排号 🎫"文案出现
+  - 点击chip移除异常→验证恢复通知出现（停电恢复/排号恢复）
+  - API模拟失败→验证错误通知"替换店铺失败，请稍后重试"
+  - 确认/取消双路径正常，时间轴更新正确，通知消息完整，API失败有兜底
+  - _Requirements: 2.5, 3.1, 3.2, 3.3, 3.4, 3.5_
