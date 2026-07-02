@@ -1930,3 +1930,183 @@ ValueError: too many values to unpack (expected 2, got 3)
 [2026-06-26 14:30:27 +0800] [93671] [INFO] Handling signal: term
 [2026-06-26 14:30:57 +0800] [93679] [INFO] Worker exiting (pid: 93679)
 [2026-06-26 14:30:57 +0800] [93671] [INFO] Shutting down: Master
+[2026-07-01 16:59:38 +0800] [3906] [INFO] Starting gunicorn 26.0.0
+[2026-07-01 16:59:38 +0800] [3906] [INFO] Listening at: http://0.0.0.0:5000 (3906)
+[2026-07-01 16:59:38 +0800] [3906] [INFO] Using worker: gthread
+[2026-07-01 16:59:38 +0800] [3912] [INFO] Booting worker with pid: 3912
+[2026-07-01 16:59:38 +0800] [3906] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[DEBUG search_poi] LLM args: {"categories": ["hotpot"], "min_rating": 4.5}, keywords='huoguo'
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[DEBUG search_poi] cat=hotpot got 8 shops
+[调度] task_list 共 1 个任务:
+  - 海底捞火锅(三里屯SOHO夜宵主题店) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 海底捞火锅(三里屯SOHO夜宵主题店) (human_needed=True)
+[调度器] Phase B EXEC: ['海底捞火锅(三里屯SOHO夜宵主题店)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=51min
+[2026-07-01 18:10:05 +0800] [6061] [INFO] Starting gunicorn 26.0.0
+[2026-07-01 18:10:05 +0800] [6061] [INFO] Listening at: http://0.0.0.0:5000 (6061)
+[2026-07-01 18:10:05 +0800] [6061] [INFO] Using worker: gthread
+[2026-07-01 18:10:05 +0800] [6067] [INFO] Booting worker with pid: 6067
+[2026-07-01 18:10:05 +0800] [6061] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[2026-07-01 19:32:49 +0800] [6667] [INFO] Starting gunicorn 26.0.0
+[2026-07-01 19:32:49 +0800] [6667] [INFO] Listening at: http://0.0.0.0:5000 (6667)
+[2026-07-01 19:32:49 +0800] [6667] [INFO] Using worker: gthread
+[2026-07-01 19:32:49 +0800] [6673] [INFO] Booting worker with pid: 6673
+[2026-07-01 19:32:49 +0800] [6667] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[fast-path] 「理发」→ ['hair']
+[chat-fast-path] 命中品类: ['hair']，直接搜索
+[fast-path] 「理发」→ ['hair']
+[fast-path] 命中品类关键词: ['hair']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hair']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - YOLO HAIR SALON(三里屯店) | human_needed=True | fixed=None | cat=hair
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: YOLO HAIR SALON(三里屯店) (human_needed=True)
+[调度器] Phase B EXEC: ['YOLO HAIR SALON(三里屯店)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=66min
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[2026-07-01 19:54:23 +0800] [7126] [INFO] Starting gunicorn 26.0.0
+[2026-07-01 19:54:23 +0800] [7126] [INFO] Listening at: http://0.0.0.0:5000 (7126)
+[2026-07-01 19:54:23 +0800] [7126] [INFO] Using worker: gthread
+[2026-07-01 19:54:23 +0800] [7132] [INFO] Booting worker with pid: 7132
+[2026-07-01 19:54:23 +0800] [7126] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[2026-07-02 10:11:19 +0800] [8411] [INFO] Starting gunicorn 26.0.0
+[2026-07-02 10:11:19 +0800] [8411] [INFO] Listening at: http://0.0.0.0:5000 (8411)
+[2026-07-02 10:11:19 +0800] [8411] [INFO] Using worker: gthread
+[2026-07-02 10:11:19 +0800] [8414] [INFO] Booting worker with pid: 8414
+[2026-07-02 10:11:19 +0800] [8411] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[2026-07-02 10:16:46 +0800] [8532] [INFO] Starting gunicorn 26.0.0
+[2026-07-02 10:16:46 +0800] [8532] [INFO] Listening at: http://0.0.0.0:5000 (8532)
+[2026-07-02 10:16:46 +0800] [8532] [INFO] Using worker: gthread
+[2026-07-02 10:16:46 +0800] [8536] [INFO] Booting worker with pid: 8536
+[2026-07-02 10:16:47 +0800] [8532] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[fast-path] 「火锅」→ ['hotpot']
+[chat-fast-path] 命中品类: ['hotpot']，直接搜索
+[fast-path] 「火锅」→ ['hotpot']
+[fast-path] 命中品类关键词: ['hotpot']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hotpot']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - 一楼一饭店(三里屯) | human_needed=True | fixed=None | cat=hotpot
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: 一楼一饭店(三里屯) (human_needed=True)
+[调度器] Phase B EXEC: ['一楼一饭店(三里屯)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=52min
+[fast-path] 「理发」→ ['hair']
+[chat-fast-path] 命中品类: ['hair']，直接搜索
+[fast-path] 「理发」→ ['hair']
+[fast-path] 命中品类关键词: ['hair']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hair']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - YOLO HAIR SALON(三里屯店) | human_needed=True | fixed=None | cat=hair
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: YOLO HAIR SALON(三里屯店) (human_needed=True)
+[调度器] Phase B EXEC: ['YOLO HAIR SALON(三里屯店)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=66min
+[fast-path] 「理发」→ ['hair']
+[chat-fast-path] 命中品类: ['hair']，直接搜索
+[fast-path] 「理发」→ ['hair']
+[fast-path] 命中品类关键词: ['hair']，跳过 LLM
+[pre-cached] ✅ 全部命中 ['hair']，0 网络延迟
+[调度] task_list 共 1 个任务:
+  - YOLO HAIR SALON(三里屯店) | human_needed=True | fixed=None | cat=hair
+[调度器] 分类: FIXED=0 DROP=0 EXEC=1
+  EXEC: YOLO HAIR SALON(三里屯店) (human_needed=True)
+[调度器] Phase B EXEC: ['YOLO HAIR SALON(三里屯店)']
+[调度] ✅ SUCCESS | DROP=0 EXEC=1 PICK=0 总耗时=66min
+[2026-07-02 10:52:46 +0800] [8532] [INFO] Handling signal: term
+[2026-07-02 10:53:16 +0800] [8536] [INFO] Worker exiting (pid: 8536)
+[2026-07-02 10:53:16 +0800] [8532] [INFO] Shutting down: Master

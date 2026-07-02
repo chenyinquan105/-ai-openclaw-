@@ -772,6 +772,7 @@ def _build_categories_for_frontend(agent_instance, profile: dict = None) -> list
                 "address": s.get("address", ""),
                 "signature_dishes": s.get("signature_dishes", []),
                 "top_comments": s.get("top_comments", []),
+                "coord": raw_coord if (raw_coord and "," in raw_coord) else "",
             })
         result.append({
             "category": cat,

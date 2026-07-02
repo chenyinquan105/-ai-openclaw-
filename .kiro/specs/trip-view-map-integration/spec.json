@@ -1,0 +1,22 @@
+{
+  "feature_name": "trip-view-map-integration",
+  "created_at": "2026-07-01T17:00:00+08:00",
+  "updated_at": "2026-07-01T17:00:00+08:00",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

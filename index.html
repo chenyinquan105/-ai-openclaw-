@@ -5,6 +5,7 @@
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>美团智能助手 - 极简排程（Demo 演示版）</title>
  <script src="https://cdn.tailwindcss.com"></script>
+ <script src="https://webapi.amap.com/v2/maps?v=2.0&key=f24e3c6371ef8e5760ffbea569987fee"></script>
  <style>
  .meituan-shadow { box-shadow: 0 10px 30px -10px rgba(255, 208, 0, 0.3); }
  .scrollbar-hide::-webkit-scrollbar { display: none; }
@@ -204,6 +205,47 @@
   15%  { box-shadow:0 0 0 rgba(255,255,255,0); }
   100% { box-shadow:0 0 0 rgba(255,255,255,0); }
 }
+
+/* 地图面板动画 */
+#map-panel { will-change: transform, opacity; }
+
+/* 行程视图淡入 */
+@keyframes trip-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-trip-in { animation: trip-fade-in 0.3s ease-out; }
+
+/* 行程时间轴固定栏 — 横线 + 圆点 */
+#trip-timeline-bar { position: relative; z-index: 5; }
+#trip-timeline-scroll::-webkit-scrollbar { display: none; }
+.timeline-horizontal-track {
+  display: flex; align-items: center; position: relative;
+  padding: 8px 0; /* 紧凑 */
+}
+.timeline-horizontal-track::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  height: 2px; background: #d1d5db; transform: translateY(-50%); z-index: 0;
+}
+.timeline-node {
+  display: flex; flex-direction: column; align-items: center;
+  flex-shrink: 0; position: relative; z-index: 1;
+  cursor: pointer; transition: transform 0.15s ease;
+}
+.timeline-node:hover { transform: scale(1.05); }
+.timeline-node:active { transform: scale(0.95); }
+.timeline-node-time { font-size: 10px; color: #6b7280; margin-bottom: 2px; white-space: nowrap; line-height: 1.2; }
+.timeline-node-dot {
+  width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
+  position: relative; z-index: 2;
+}
+.timeline-node-name {
+  font-size: 11px; font-weight: 600; color: #374151;
+  margin-top: 2px; white-space: nowrap; line-height: 1.2;
+  max-width: 100px; overflow: hidden; text-overflow: ellipsis;
+}
+/* 行程方案→顶部时间轴 morph 动画 */
+#morph-clone { box-shadow: 0 8px 32px rgba(251,191,36,0.35), 0 2px 8px rgba(0,0,0,0.15); }
  </style>
 </head>
 <body class="bg-gray-100 text-gray-900 font-sans p-4 md:p-8">
@@ -354,8 +396,8 @@
    <!-- ===== 正面 ===== -->
    <div class="absolute inset-0 flex flex-col bg-white rounded-[40px] overflow-hidden" id="main-face-front" style="-webkit-backface-visibility: hidden; backface-visibility: hidden; pointer-events: auto;">
     <!-- 顶部固定：搜索区 -->
-    <header class="flex-shrink-0 p-6 bg-white rounded-b-[40px] shadow-sm z-10">
-     <div class="flex items-center justify-between mb-4">
+    <header class="flex-shrink-0 px-4 py-4 bg-white rounded-b-[40px] shadow-sm z-10">
+     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
       <div class="flex items-center gap-2">
        <div id="weather-dynamic-logo" class="weather-icon weather-sunny" title="当前天气">
@@ -397,6 +439,12 @@
       </div>
      </div>
     </header>
+    <!-- 行程时间轴固定栏 -->
+    <div id="trip-timeline-bar" class="flex-shrink-0 hidden bg-gray-100 border-b border-gray-200 py-4 px-4">
+     <div id="trip-timeline-scroll" class="overflow-x-auto" style="scrollbar-width: none; -ms-overflow-style: none;">
+      <!-- 时间轴节点动态填充 -->
+     </div>
+    </div>
     <!-- 内容区 -->
     <main class="flex-1 overflow-y-auto p-6 space-y-8">
      <div id="dynamic-content"></div>
@@ -420,9 +468,10 @@
 
     <!-- 底部搜索栏（原顶部搜索框移至此） -->
     <div class="flex-shrink-0 px-6 pb-6 pt-2 bg-white">
+     <div id="bottom-bar-mode-hint" class="text-[10px] text-gray-400 mb-1 hidden">行程中 · 输入消息调整计划</div>
      <div class="flex items-center bg-gray-100 rounded-full px-5 py-3 border-2 border-transparent focus-within:border-yellow-400 transition-all">
-      <input type="text" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
-      <div class="bg-yellow-400 p-2 rounded-full shadow-lg cursor-pointer">
+      <input type="text" id="bottom-search-input" placeholder="输入您的需求" class="bg-transparent border-none outline-none flex-1 text-sm font-medium">
+      <div id="bottom-send-btn" class="bg-yellow-400 p-2 rounded-full shadow-lg cursor-pointer">
        <svg class="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
       </div>
      </div>
@@ -476,34 +525,18 @@
 
   </div>
 
- <!-- 执行计划面板（在手机容器内部） -->
- <div id="exec-cover" class="hidden z-40 absolute inset-0 rounded-[40px] overflow-hidden">
- <div id="exec-card" class="w-full h-full bg-white flex flex-col">
- <!-- 顶部固定：返回+结束行程 -->
- <div class="flex-shrink-0 flex items-center justify-between px-4 pt-5 pb-2 bg-white">
- <div class="flex items-center">
- <button onclick="closeExecCover()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
- <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
- </button>
- <span class="ml-3 text-gray-500 text-sm font-medium">执行计划中...</span>
- </div>
- <button onclick="endTrip()" class="bg-red-500 text-white font-bold text-sm px-4 py-2 rounded-lg hover:bg-red-600 transition">
- 结束行程
- </button>
- </div>
- <!-- 中间滚动区：聊天记录+行程安排 -->
- <div class="flex-1 overflow-y-auto px-4 py-6" id="exec-plan-content"></div>
- <!-- 底部固定：输入框+语音 -->
- <div class="flex-shrink-0 bg-white border-t border-gray-200 px-3 py-3 flex items-center space-x-3">
- <div class="flex-1 flex items-center bg-gray-100 rounded-full px-4 py-2.5 border border-gray-200">
- <input type="text" id="exec-chat-input" placeholder="输入消息..." class="flex-1 bg-transparent border-none outline-none text-gray-900 text-sm placeholder-gray-400" onkeydown="if(event.key==='Enter')sendExecMessage()">
- <button onclick="sendExecMessage()" class="ml-2 text-yellow-500 font-bold text-sm hover:text-yellow-400 transition">发送</button>
- </div>
- <button onclick="alert('语音输入')" class="w-10 h-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition">
- <svg class="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M9 22h6"></path></svg>
- </button>
- </div>
- </div>
+ <!-- 地图面板（手机容器内部） -->
+ <div id="map-panel" class="hidden z-40 absolute inset-0 rounded-[40px] overflow-hidden bg-white flex flex-col">
+  <div class="flex-shrink-0 flex items-center justify-between px-4 pt-5 pb-2 bg-white z-10">
+   <div class="flex items-center">
+    <button onclick="closeMapPanel()" class="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full hover:bg-gray-200 transition">
+     <svg class="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+    </button>
+    <span class="ml-3 text-gray-700 text-sm font-bold" id="map-panel-title">路线地图</span>
+   </div>
+   <button onclick="endTrip()" class="bg-red-500 text-white font-bold text-sm px-4 py-2 rounded-lg hover:bg-red-600 transition">结束行程</button>
+  </div>
+  <div id="map-container" class="flex-1 w-full"></div>
  </div>
 
 </div>
@@ -799,6 +832,103 @@ if (scrollContainer) {
 // --- 状态 ---
 let currentPhase = 'init';
 let selectedTransport = '步行';
+// 地图与行程追踪全局状态
+let isInTripMode = false;
+let shopCoordMap = {};
+let waypointCoords = [];
+
+// 消息队列系统
+let messageQueue = [];
+let isProcessingQueue = false;
+let pendingSearchCategories = null;
+let activeTransportTriggerRow = null;
+
+let mapPanelInstance = null;
+let mapMarkers = [];
+let mapPolyline = null;
+let timePositionTracker = null;
+
+
+// --- 消息队列系统 ---
+async function processMessageQueue() {
+  if (isProcessingQueue) return;
+  if (!messageQueue.length) return;
+  isProcessingQueue = true;
+
+  // 首条消息前显示短暂思考状态
+  var firstThinking = _addLoadingBubble();
+  await new Promise(function(resolve) { setTimeout(resolve, 500); });
+  if (firstThinking && firstThinking.parentNode) {
+    firstThinking.remove();
+  }
+
+  while (messageQueue.length > 0) {
+    var item = messageQueue.shift();
+
+    switch (item.type) {
+      case 'text':
+        _addChatBubble('ai', '<span>' + item.content + '</span>');
+        break;
+      case 'loading':
+        _addLoadingBubble();
+        break;
+      case 'panel':
+        if (typeof item.content === 'function') { item.content(); }
+        break;
+      case 'transport_trigger':
+        _addTransportTriggerMessage(item.content.transport, item.content.message, item.content.btnLabel, item.content.btnAction);
+        break;
+      case 'trip_card':
+        if (typeof item.content === 'function') { item.content(); }
+        break;
+      case 'custom':
+        if (typeof item.content === 'function') { item.content(); }
+        break;
+    }
+
+    if (item.callback && typeof item.callback === 'function') {
+      item.callback();
+    }
+
+    if (item.delay > 0) {
+      await new Promise(function(resolve) { setTimeout(resolve, item.delay); });
+    }
+
+    // 消息间插入思考指示器（0.5s-1s间隔）
+    if (messageQueue.length > 0) {
+      var thinkingBubble = _addLoadingBubble();
+      await new Promise(function(resolve) { setTimeout(resolve, 600); });
+      if (thinkingBubble && thinkingBubble.parentNode) {
+        thinkingBubble.remove();
+      }
+    }
+  }
+
+  _removeLoadingBubble();
+  isProcessingQueue = false;
+}
+
+function enqueueMessage(item) {
+  messageQueue.push(item);
+  if (!isProcessingQueue) {
+    processMessageQueue();
+  }
+}
+
+function flushMessageQueue() {
+  while (messageQueue.length > 0) {
+    var item = messageQueue.shift();
+    if (item.type === 'text') {
+      _addChatBubble('ai', '<span>' + item.content + '</span>');
+    } else if (typeof item.content === 'function') {
+      item.content();
+    }
+  }
+  messageQueue = [];
+  isProcessingQueue = false;
+  _removeLoadingBubble();
+}
+
 
 // --- 品类 emoji 映射 ---
 const CATEGORY_EMOJI = {
@@ -952,9 +1082,33 @@ function _removeLoadingBubble() {
  if (lb) lb.remove();
 }
 
+function _addBrandedLoadingBubble() {
+ var row = document.createElement('div');
+ row.id = 'branded-loading-row';
+ row.className = 'chat-row flex items-start mb-3 animate-fade-in';
+ var bubble = document.createElement('div');
+ bubble.className = 'chat-bubble-ai max-w-[75%] px-4 py-3';
+ bubble.style.cssText = 'background:#facc15;border:1px solid #eab308;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);';
+ bubble.innerHTML = '<div class="flex items-center gap-2">' +
+   '<span class="text-sm font-black text-yellow-800">小美AI</span>' +
+   '<span class="typing-dots-inline"><span></span><span></span><span></span></span>' +
+   '</div>' +
+   '<p class="text-xs text-gray-600 mt-1">正在为你生成行程指引...</p>';
+ row.appendChild(bubble);
+ mainEl.appendChild(row);
+ scrollToBottom();
+ return row;
+}
+
 async function doSearch() {
  const text = searchInput ? searchInput.value.trim() : '';
  if (!text) return;
+
+ // ★ 打断正在进行的消息队列和缓冲
+ messageQueue = [];
+ isProcessingQueue = false;
+ pendingSearchCategories = null;
+ _removeLoadingBubble();
 
  // 清空输入框
  if (searchInput) { searchInput.value = ''; }
@@ -1031,9 +1185,12 @@ async function doSearch() {
       if (currentEvent === 'message') {
        if (data.role === 'assistant' && data.content) {
         fullResponse += data.content;
-        _ensureAiBubble();
-        aiBubble.innerHTML = '<span>' + _escHtml(fullResponse).replace(/\n/g, '<br>') + '</span>';
-        scrollToBottom();
+        // 如果有待展示的品类面板，跳过文字展示（由消息队列统一处理）
+        if (!pendingSearchCategories) {
+         _ensureAiBubble();
+         aiBubble.innerHTML = '<span>' + _escHtml(fullResponse).replace(/\n/g, '<br>') + '</span>';
+         scrollToBottom();
+        }
        }
       } else if (currentEvent === 'tool_call') {
        _ensureAiBubble();
@@ -1047,14 +1204,14 @@ async function doSearch() {
        var trEmoji = toolEmojiMap[data.name] || '✅';
        var resultText = '';
 
-       // ★ 搜索商户 → 渲染交互式店铺选择面板（复用按钮流程的 renderCategorySelection）
+       // ★ 搜索商户 → 静默缓冲，不展示文字（由消息队列统一处理）
        if (data.name === 'search_poi' && data.result && data.result.data && data.result.data.categories) {
         var categories = data.result.data.categories;
-        resultText = data.result.message || ('为你找到店铺，请在下方面板中选择～');
-        aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText) + '</span>';
-        // 清除旧面板，渲染新面板
+        // 静默缓冲品类数据，SSE流结束后通过消息队列延迟展示
+        pendingSearchCategories = categories;
         if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
-        renderCategorySelection(categories);
+        // 移除 tool_call 阶段创建的 AI 气泡（避免残留"正在为您..."）
+        if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
        } else if (data.result && data.result.message) {
         resultText = data.result.message;
         aiBubble.innerHTML = '<span>' + trEmoji + ' ' + _escHtml(resultText).replace(/\n/g, '<br>') + '</span>';
@@ -1109,6 +1266,17 @@ async function doSearch() {
  if (!aiBubbleRow && !fullResponse) {
   _addChatBubble('ai', '<span>抱歉，我暂时无法回复，请稍后再试~</span>');
  }
+
+ // ★ 缓冲的品类面板 → 延迟展示
+ if (pendingSearchCategories) {
+  var cats = pendingSearchCategories;
+  pendingSearchCategories = null;
+  // 使用消息队列实现延时展示：第二句文字 → 加载 → 面板
+  enqueueMessage({ type: 'text', content: '帮你找到了几家，在下方面板里挑挑看～', delay: 0 });
+  enqueueMessage({ type: 'panel', content: function() {
+    renderCategorySelection(cats);
+  }, delay: 800 });
+ }
 }
 
 // ======================================================================
@@ -1148,7 +1316,7 @@ function renderCategorySelection(categories) {
 
  html += `
  <div class="flex-shrink-0 w-44 bg-white p-4 rounded-3xl border-4 ${borderClass} ${opacityClass} shop-card relative cursor-pointer transition-all"
- data-shop-id="${shop.shop_id}" data-category="${cat.category}" onclick="toggleShopCard(this)">
+ data-shop-id="${shop.shop_id}" data-category="${cat.category}" data-coord="${shop.coord || ''}" onclick="toggleShopCard(this)">
  ${selected ? '<div class="absolute top-3 right-3 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center"><svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg></div>' : ''}
  <h3 class="font-bold text-sm">${shop.name}</h3>
  <div class="flex items-center mt-2">
@@ -1211,6 +1379,54 @@ function renderCategorySelection(categories) {
 }
 
 // 点击切换卡片选中状态
+function _addTransportTriggerMessage(transport, message, btnLabel, btnAction) {
+  // 移除旧的追问气泡
+  if (activeTransportTriggerRow && activeTransportTriggerRow.parentNode) {
+    activeTransportTriggerRow.remove();
+    activeTransportTriggerRow = null;
+  }
+
+  var row = document.createElement('div');
+  row.className = 'chat-row flex items-start mb-3 animate-fade-in';
+  row.setAttribute('data-transport-trigger', transport);
+
+  var bubble = document.createElement('div');
+  bubble.className = 'chat-bubble-ai max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed';
+  bubble.style.cssText = 'background:#facc15;border:1px solid #eab308;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);';
+
+  var actionHandler = (btnAction === 'hail_taxi')
+    ? 'onTransportTriggerConfirmHail()'
+    : 'onTransportTriggerConfirmNavigate()';
+
+  bubble.innerHTML = '<p class="mb-2">' + _escHtml(message) + '</p>' +
+    '<div class="flex space-x-2">' +
+    '<button onclick="' + actionHandler + '" class="bg-yellow-500 text-white text-xs font-bold px-3 py-1.5 rounded-full hover:bg-yellow-600 transition">' + _escHtml(btnLabel) + '</button>' +
+    '<button onclick="dismissTransportTrigger()" class="bg-gray-100 text-gray-500 text-xs font-bold px-3 py-1.5 rounded-full hover:bg-gray-200 transition">不需要</button>' +
+    '</div>';
+
+  row.appendChild(bubble);
+  mainEl.appendChild(row);
+  activeTransportTriggerRow = row;
+  scrollToBottom();
+}
+
+function onTransportTriggerConfirmHail() {
+  dismissTransportTrigger();
+  _addChatBubble('ai', '<span>已为你打开打车服务，请确认出发地和目的地～</span>');
+}
+
+function onTransportTriggerConfirmNavigate() {
+  dismissTransportTrigger();
+  _addChatBubble('ai', '<span>已为你准备好' + _escHtml(selectedTransport) + '导航，请查看路线～</span>');
+}
+
+function dismissTransportTrigger() {
+  if (activeTransportTriggerRow && activeTransportTriggerRow.parentNode) {
+    activeTransportTriggerRow.remove();
+    activeTransportTriggerRow = null;
+  }
+}
+
 function selectTransport(el) {
   var card = activeChatCard;
   if (!card) return;
@@ -1219,6 +1435,13 @@ function selectTransport(el) {
   });
   el.className = 'transport-option selected bg-yellow-400 text-black font-bold py-3 rounded-2xl text-center text-sm cursor-pointer hover:scale-95 transition-transform flex flex-col items-center';
   selectedTransport = el.dataset.transport;
+
+  // ★ 显示上下文追问消息
+  if (selectedTransport === '打车') {
+    _addTransportTriggerMessage('打车', '是否需要一键打车？', '确认打车', 'hail_taxi');
+  } else {
+    _addTransportTriggerMessage(selectedTransport, '是否需要一键' + selectedTransport + '导航？', '确认导航', 'navigate');
+  }
 }
 
 function toggleShopCard(el) {
@@ -1288,6 +1511,15 @@ async function confirmShopSelectionSubmit() {
  category: c.dataset.category,
  shop_id: c.dataset.shopId
  });
+ });
+ // 收集选中店铺的坐标供地图使用
+ shopCoordMap = {};
+ cards.forEach(function(c) {
+   var sid = c.dataset.shopId;
+   var coord = c.dataset.coord || '';
+   var nameEl = c.querySelector('h3');
+   var name = nameEl ? nameEl.textContent.trim() : '';
+   if (sid && coord) shopCoordMap[sid] = { name: name, coord: coord };
  });
 
  try {
@@ -1542,21 +1774,555 @@ async function resetAll() {
 }
 
 // ======================================================================
-// 执行计划全屏覆盖
+// 执行计划 → 行程视图（融入主界面，不再跳转）
 // ======================================================================
-let execTimelineData = null;
-
-function handleNavigation() {
- // 从当前已渲染的 schedule 中获取数据
- var scheduleSection = activeChatCard ? activeChatCard.querySelector('.schedule-section') : null;
- if (!scheduleSection) return;
- // 数据已经在 renderSchedule 时存到 window
- openExecCover();
-}
 
 let lastScheduleData = null;
 
-// 缓存执行计划内容，避免重复构建
+function handleNavigation() {
+  var scheduleCard = activeChatCard;
+  var targetBar = document.getElementById('trip-timeline-bar');
+
+  // 找不到源或目标，直接执行原逻辑
+  if (!scheduleCard || !targetBar) { startTripFlow(); return; }
+
+  // 防止重复点击
+  var execBtn = scheduleCard.querySelector('button');
+  if (execBtn) execBtn.disabled = true;
+
+  // 记录源位置（整个面板）
+  var srcRect = scheduleCard.getBoundingClientRect();
+
+  // 临时显示目标栏以获取位置
+  targetBar.classList.remove('hidden');
+  targetBar.style.visibility = 'hidden';
+  var tgtRect = targetBar.getBoundingClientRect();
+  targetBar.classList.add('hidden');
+  targetBar.style.visibility = '';
+
+  // 创建 clone 元素（匹配白色卡片外观）
+  var clone = document.createElement('div');
+  clone.id = 'morph-clone';
+  clone.style.cssText =
+    'position:fixed; z-index:200; background:#ffffff; border-radius:32px;' +
+    'left:' + srcRect.left + 'px; top:' + srcRect.top + 'px;' +
+    'width:' + srcRect.width + 'px; height:' + srcRect.height + 'px;' +
+    'pointer-events:none; will-change:width,height,border-radius,top,left,background;';
+  document.body.appendChild(clone);
+
+  // 隐藏原始卡片（整个 activeChatCard）
+  if (scheduleCard) scheduleCard.style.opacity = '0';
+
+  var circleSize = 44;
+  // 屏幕中心点（收缩目标）
+  var screenCx = window.innerWidth / 2;
+  var screenCy = window.innerHeight / 2;
+  // 目标栏中心点（展开位置）
+  var tgtCx = tgtRect.left + tgtRect.width / 2;
+  var tgtCy = tgtRect.top + tgtRect.height / 2;
+
+  // === Phase 1: 收缩成黄色圆点，飞向屏幕中央 (0→350ms, ease-out 由快到慢) ===
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      clone.style.transition =
+        'width 0.35s cubic-bezier(0.22,0.61,0.36,1),' +
+        'height 0.35s cubic-bezier(0.22,0.61,0.36,1),' +
+        'border-radius 0.35s cubic-bezier(0.22,0.61,0.36,1),' +
+        'background 0.3s ease,' +
+        'left 0.35s cubic-bezier(0.22,0.61,0.36,1),' +
+        'top 0.35s cubic-bezier(0.22,0.61,0.36,1)';
+      clone.style.width = circleSize + 'px';
+      clone.style.height = circleSize + 'px';
+      clone.style.borderRadius = '50%';
+      clone.style.background = '#fbbf24';
+      clone.style.left = (screenCx - circleSize / 2) + 'px';
+      clone.style.top = (screenCy - circleSize / 2) + 'px';
+    });
+  });
+
+  // === Phase 2: 飞向顶部同时渐变扩展为横条 (350→700ms, 一气呵成) ===
+  setTimeout(function() {
+    clone.style.transition =
+      'width 0.35s cubic-bezier(0.22,0.61,0.36,1),' +
+      'height 0.35s cubic-bezier(0.22,0.61,0.36,1),' +
+      'border-radius 0.35s cubic-bezier(0.22,0.61,0.36,1),' +
+      'background 0.35s ease,' +
+      'left 0.35s cubic-bezier(0.22,0.61,0.36,1),' +
+      'top 0.35s cubic-bezier(0.55,0.06,0.68,0.19)';
+    clone.style.width = tgtRect.width + 'px';
+    clone.style.height = tgtRect.height + 'px';
+    clone.style.borderRadius = '12px';
+    clone.style.background = '#f3f4f6';
+    clone.style.left = tgtRect.left + 'px';
+    clone.style.top = tgtRect.top + 'px';
+  }, 350);
+
+  // === 动画结束：清理 clone，执行实际逻辑 ===
+  setTimeout(function() {
+    clone.remove();
+    startTripFlow();
+  }, 750);
+}
+function startTripFlow() {
+  if (!lastScheduleData || !lastScheduleData.timeline) return;
+
+  // 1. 选择性清除：只删除 AI 消息，保留用户消息和历史聊天
+  var allChatRows = mainEl.querySelectorAll('.chat-row');
+  for (var i = allChatRows.length - 1; i >= 0; i--) {
+    var row = allChatRows[i];
+    // 只删除 AI 消息（含 .chat-bubble-ai），保留用户消息（.chat-bubble-user）
+    if (row.querySelector('.chat-bubble-ai')) {
+      row.remove();
+    }
+  }
+
+  // 2. 移除店铺推荐卡片
+  if (activeChatCard) {
+    activeChatCard.remove();
+    activeChatCard = null;
+  }
+
+  // 3. 关闭交通追问气泡
+  dismissTransportTrigger();
+
+  // 4. 进入行程模式
+  isInTripMode = true;
+
+  // 5. 切换底部栏
+  switchBottomBarToTripMode();
+
+  // 6. 构建地图坐标（不依赖视图）
+  buildWaypointCoords(lastScheduleData);
+
+  // ★ 7. 立即显示时间轴栏（不等防坑指南，morph 动画结束即展开）
+  renderMetroTimelineForMainFace(lastScheduleData);
+
+  // 8. 显示品牌化加载指示器
+  var loadingBubble = _addBrandedLoadingBubble();
+
+  // 8. ~1s 后直接渲染行程视图（防坑指南 + 提醒卡片）
+  setTimeout(function() {
+    if (loadingBubble && loadingBubble.parentNode) {
+      loadingBubble.remove();
+    }
+    renderTripView(lastScheduleData);
+    currentPhase = 'trip_active';
+    scrollToBottom();
+  }, 1000);
+}
+
+function _revealTripContentProgressively(data) {
+  // 清空可能的旧队列
+  messageQueue = [];
+  isProcessingQueue = false;
+
+  // 防坑指南作为聊天气泡逐条输出
+  if (data.pitfall_insights && data.pitfall_insights.length > 0) {
+    enqueueMessage({ type: 'text', content: '给你整理了一些出行防坑指南，请注意查看～', delay: 500 });
+    for (var i = 0; i < data.pitfall_insights.length; i++) {
+      var ins = data.pitfall_insights[i];
+      enqueueMessage({
+        type: 'text',
+        content: '<strong>' + _escHtml(ins.title) + '</strong><br><span style="color:#6b7280;">' + _escHtml(ins.content) + '</span>',
+        delay: 800
+      });
+    }
+  }
+
+  // 出行提醒作为聊天气泡逐条输出
+  if (data.pitfall_reminders && data.pitfall_reminders.length > 0) {
+    enqueueMessage({ type: 'text', content: '另外，还有一些出行提醒：', delay: 600 });
+    for (var j = 0; j < data.pitfall_reminders.length; j++) {
+      var rem = data.pitfall_reminders[j];
+      enqueueMessage({
+        type: 'text',
+        content: '<span style="color:#2563eb;">' + _escHtml(rem.display_text) + '</span>',
+        delay: 700
+      });
+    }
+  }
+
+  // 最后渲染行程视图容器（含触发器卡片和聊天区）
+  enqueueMessage({
+    type: 'custom',
+    content: function() {
+      renderTripView(data);
+      currentPhase = 'trip_active';
+      scrollToBottom();
+    },
+    delay: 500
+  });
+}
+
+
+function renderTripView(data) {
+  var dc = document.getElementById('dynamic-content');
+  if (!dc) return;
+  var html = '<div id="trip-view-container" class="space-y-4 animate-fade-in">';
+
+  // 出门提醒
+  if (data.pitfall_reminders && data.pitfall_reminders.length > 0) {
+    html += '<div class="bg-blue-50 rounded-[24px] p-4 border border-blue-100">';
+    html += '<h3 class="text-sm font-bold text-blue-700 mb-2">出行提醒</h3>';
+    for (var i = 0; i < data.pitfall_reminders.length; i++) {
+      html += '<p class="text-xs text-blue-600 mb-1">' + _escHtml(data.pitfall_reminders[i].display_text) + '</p>';
+    }
+    html += '</div>';
+  }
+
+  // 防坑指南
+  if (data.pitfall_insights && data.pitfall_insights.length > 0) {
+    for (var j = 0; j < data.pitfall_insights.length; j++) {
+      var ins = data.pitfall_insights[j];
+      html += '<div class="bg-gray-800 rounded-[24px] p-4 text-white">';
+      html += '<h4 class="text-sm font-bold text-yellow-400 mb-1">' + _escHtml(ins.title) + '</h4>';
+      html += '<p class="text-xs text-gray-300">' + _escHtml(ins.content) + '</p>';
+      html += '</div>';
+    }
+  }
+
+  // 地铁式时间轴已移至 #trip-timeline-bar（sticky 定位在 header 下方）
+  // 交互触发器
+  html += renderTriggersForMainFace(data.pitfall_triggers, 'bg-yellow-50');
+  html += renderTriggersForMainFace(data.anomaly_triggers, 'bg-orange-50');
+
+  // 行程聊天区
+  html += '<div id="trip-chat-area" class="space-y-3 mt-4"></div>';
+  html += '</div>';
+
+  dc.insertAdjacentHTML('beforeend', html);
+  scrollToBottom();
+}
+
+function renderMetroTimelineForMainFace(data) {
+  var nodes = data.timeline || [];
+  var bar = document.getElementById('trip-timeline-bar');
+  var scroll = document.getElementById('trip-timeline-scroll');
+  if (!bar || !scroll) return;
+  if (!nodes.length) { bar.classList.add('hidden'); return; }
+
+  bar.classList.remove('hidden');
+
+  var nodeMinWidth = 120; // 每个节点最小宽度，确保不重叠
+  var html = '<div class="timeline-horizontal-track" style="min-width: ' + (nodes.length * nodeMinWidth) + 'px;">';
+
+  for (var i = 0; i < nodes.length; i++) {
+    var nd = nodes[i];
+    var dotColor = '#fbbf24'; // yellow=DEPART
+    if (nd.type === 'WAIT' || nd.type === 'DROP_TASK') dotColor = '#3b82f6';
+    else if (nd.type === 'MOVE_AND_EXEC' || nd.type === 'EXEC') dotColor = '#6366f1';
+    else if (nd.type === 'PICK_TASK') dotColor = '#10b981';
+
+    html += '<div class="timeline-node" onclick="openMapPanel(' + i + ')" style="width:' + nodeMinWidth + 'px;">';
+    html += '<span class="timeline-node-time">' + _escHtml(nd.time || '') + '</span>';
+    html += '<span class="timeline-node-dot" style="background:' + dotColor + '; color:' + dotColor + ';"></span>';
+    html += '<span class="timeline-node-name" title="' + _escHtml(nd.header || '') + '">' + _escHtml(nd.header || '') + '</span>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  scroll.innerHTML = html;
+}
+function renderTriggersForMainFace(triggers, bgColor) {
+  if (!triggers || !triggers.length) return '';
+  var html = '';
+  for (var i = 0; i < triggers.length; i++) {
+    var trig = triggers[i];
+    var mf = trig.ui_manifest;
+    if (!mf) continue;
+    if (mf.component_type === 'standard_button') {
+      html += '<div class="' + bgColor + ' border border-yellow-300 rounded-[24px] p-4">' +
+        '<p class="text-sm text-gray-800 font-medium mb-3">' + _escHtml(mf.prompt_text) + '</p>' +
+        '<div class="flex space-x-3">' +
+        '<button onclick="executeTrigger(\'' + trig.trigger_id + '\')" class="flex-1 bg-yellow-400 text-black font-black py-3 rounded-2xl hover:scale-95 transition-transform">' + _escHtml(mf.confirm_label) + '</button>' +
+        '<button onclick="dismissTriggerMainFace(\'' + trig.trigger_id + '\')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition">' + _escHtml(mf.cancel_label || '不需要') + '</button></div></div>';
+    } else if (mf.component_type === 'dialog') {
+      html += '<div class="bg-orange-50 border-2 border-orange-400 rounded-[24px] p-4 shadow-lg">' +
+        '<p class="text-sm font-black text-orange-700 mb-2">' + _escHtml(mf.prompt_text) + '</p>' +
+        '<div class="flex space-x-3">' +
+        '<button onclick="executeTrigger(\'' + trig.trigger_id + '\')" class="flex-1 bg-orange-500 text-white font-black py-3 rounded-2xl hover:scale-95 transition-transform">' + _escHtml(mf.confirm_label) + '</button>' +
+        '<button onclick="dismissTriggerMainFace(\'' + trig.trigger_id + '\')" class="flex-1 bg-gray-100 text-gray-700 font-bold py-3 rounded-2xl hover:bg-gray-200 transition">忽略</button></div></div>';
+    }
+  }
+  return html;
+}
+
+function dismissTriggerMainFace(triggerId) {
+  var container = document.getElementById('dynamic-content');
+  if (!container) return;
+  var cards = container.querySelectorAll('.bg-yellow-50, .bg-orange-50');
+  cards.forEach(function(card) {
+    var btns = card.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) {
+      if (btns[i].getAttribute('onclick') && btns[i].getAttribute('onclick').indexOf(triggerId) !== -1) {
+        card.remove();
+        break;
+      }
+    }
+  });
+}
+
+function buildWaypointCoords(data) {
+  waypointCoords = [];
+  if (!data || !data.timeline) return;
+  // 起点
+  waypointCoords.push({ lng: 116.45, lat: 39.93, name: '起点', time: data.departure_time || '' });
+  for (var i = 0; i < data.timeline.length; i++) {
+    var item = data.timeline[i];
+    var tid = item.task_id || '';
+    var shop = shopCoordMap[tid];
+    if (shop && shop.coord) {
+      var parts = shop.coord.split(',');
+      if (parts.length === 2) {
+        waypointCoords.push({
+          lng: parseFloat(parts[1].trim()),
+          lat: parseFloat(parts[0].trim()),
+          name: shop.name,
+          time: item.time || ''
+        });
+      }
+    }
+  }
+}
+
+// --- 底部栏模式切换 ---
+
+function switchBottomBarToTripMode() {
+  var input = document.getElementById('bottom-search-input');
+  var hint = document.getElementById('bottom-bar-mode-hint');
+  if (hint) hint.classList.remove('hidden');
+  if (input) {
+    input.placeholder = '输入消息调整行程...';
+    input.onkeydown = function(e) { if (e.key === 'Enter') sendTripMessage(); };
+  }
+  var headerTitle = document.querySelector('#main-face-front header h1');
+  if (headerTitle) headerTitle.innerHTML = 'Meituan <span class="text-yellow-400">AI</span> <span class="text-xs text-gray-400 font-normal">· 行程中</span>';
+}
+
+function switchBottomBarToSearchMode() {
+  var input = document.getElementById('bottom-search-input');
+  var hint = document.getElementById('bottom-bar-mode-hint');
+  isInTripMode = false;
+  if (hint) hint.classList.add('hidden');
+  if (input) {
+    input.placeholder = '输入您的需求';
+    input.onkeydown = function(e) { if (e.key === 'Enter') doSearch(); };
+  }
+  var headerTitle = document.querySelector('#main-face-front header h1');
+  if (headerTitle) headerTitle.innerHTML = 'Meituan <span class="text-yellow-400">AI</span>';
+}
+
+async function sendTripMessage() {
+  var input = document.getElementById('bottom-search-input');
+  if (!input || !input.value.trim()) return;
+  var msg = input.value.trim();
+  input.value = '';
+  input.disabled = true;
+  var chatArea = document.getElementById('trip-chat-area');
+  if (chatArea) {
+    chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 ml-8 text-right">' + _escHtml(msg) + '</div>';
+    chatArea.innerHTML += '<div id="trip-loading-bubble" class="bg-gray-50 rounded-2xl p-3 mb-2 mr-8"><span class="typing-dots-inline"><span></span><span></span><span></span></span></div>';
+    scrollToBottom();
+  }
+  try {
+    var res = await fetch(API_BASE + '/api/edit_trip', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text: msg })
+    });
+    var data = await res.json();
+    var lb = document.getElementById('trip-loading-bubble');
+    if (lb) lb.remove();
+    if (data.error) {
+      if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">' + _escHtml(data.error) + '</p></div>';
+    } else {
+      if (chatArea) chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-gray-800">已按你的要求更新行程</p></div>';
+      if (data.timeline || data.phase === 'done') {
+        lastScheduleData = data.timeline ? data : Object.assign({}, lastScheduleData, data);
+        _refreshTripView();
+      }
+    }
+    scrollToBottom();
+  } catch(e) {
+    var lb2 = document.getElementById('trip-loading-bubble');
+    if (lb2) lb2.remove();
+    if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">网络错误，请重试</p></div>';
+  }
+  input.disabled = false;
+  input.focus();
+}
+
+function _refreshTripView() {
+  var tripView = document.getElementById('trip-view-container');
+  if (tripView) tripView.remove();
+  if (lastScheduleData && lastScheduleData.timeline) {
+    renderTripView(lastScheduleData);
+    renderMetroTimelineForMainFace(lastScheduleData);
+    buildWaypointCoords(lastScheduleData);
+  }
+}
+
+// ======================================================================
+// 地图面板
+// ======================================================================
+
+function openMapPanel(focusNodeIndex) {
+  if (!waypointCoords.length) {
+    buildWaypointCoords(lastScheduleData);
+    if (!waypointCoords.length) return;
+  }
+  var panel = document.getElementById('map-panel');
+  if (!panel) return;
+  if (focusNodeIndex === undefined) focusNodeIndex = 0;
+  panel.classList.remove('hidden');
+  panel.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease-out';
+  panel.style.transformOrigin = 'center center';
+  panel.style.transform = 'scale(0.3)';
+  panel.style.opacity = '0';
+  panel.offsetHeight;
+  panel.style.transform = 'scale(1)';
+  panel.style.opacity = '1';
+  setTimeout(function() { initMapPanel(focusNodeIndex); }, 350);
+}
+
+function initMapPanel(focusNodeIndex) {
+  var container = document.getElementById('map-container');
+  if (!container || !waypointCoords.length) return;
+  if (typeof AMap === 'undefined') {
+    setTimeout(function() { initMapPanel(focusNodeIndex); }, 500);
+    return;
+  }
+  // 销毁旧实例
+  if (mapPanelInstance) { mapPanelInstance.destroy(); mapPanelInstance = null; mapMarkers = []; mapPolyline = null; }
+  var center = waypointCoords[focusNodeIndex] || waypointCoords[0];
+  mapPanelInstance = new AMap.Map('map-container', {
+    zoom: 14, center: [center.lng, center.lat], viewMode: '2D', resizeEnable: true
+  });
+  mapPanelInstance.addControl(new AMap.Scale());
+  mapPanelInstance.addControl(new AMap.ToolBar({ position: 'RT' }));
+  // 折线
+  var path = waypointCoords.map(function(wp) { return [wp.lng, wp.lat]; });
+  mapPolyline = new AMap.Polyline({
+    path: path, strokeColor: '#fbbf24', strokeWeight: 6, strokeOpacity: 0.8,
+    lineJoin: 'round', lineCap: 'round', showDir: true
+  });
+  mapPanelInstance.add(mapPolyline);
+  // 途经点标记
+  waypointCoords.forEach(function(wp, i) {
+    var isFocus = (i === focusNodeIndex);
+    var color = isFocus ? '#fbbf24' : '#3b82f6';
+    var markerEl = document.createElement('div');
+    markerEl.style.cssText = 'background:' + color + ';color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+    markerEl.textContent = (i + 1);
+    var marker = new AMap.Marker({
+      position: [wp.lng, wp.lat], content: markerEl,
+      offset: new AMap.Pixel(-14, -14), zIndex: isFocus ? 200 : 100
+    });
+    marker.on('click', (function(wpCopy) {
+      return function() {
+        var info = new AMap.InfoWindow({
+          content: '<div style="padding:8px 12px;font-size:13px;"><strong>' + wpCopy.name + '</strong><br><span style="color:#6b7280;font-size:11px;">' + (wpCopy.time || '') + '</span></div>',
+          offset: new AMap.Pixel(0, -35)
+        });
+        info.open(mapPanelInstance, marker.getPosition());
+      };
+    })(wp));
+    mapPanelInstance.add(marker);
+    mapMarkers.push(marker);
+  });
+  mapPanelInstance.setFitView(null, false, [60, 60, 60, 60]);
+  initTimePositionTracker(focusNodeIndex);
+}
+
+function closeMapPanel() {
+  var panel = document.getElementById('map-panel');
+  if (!panel) return;
+  panel.style.transition = 'transform 0.25s ease-in, opacity 0.2s ease-in';
+  panel.style.transformOrigin = 'center center';
+  panel.style.transform = 'scale(0.3)';
+  panel.style.opacity = '0';
+  if (timePositionTracker) { timePositionTracker.destroy(); timePositionTracker = null; }
+  setTimeout(function() {
+    panel.classList.add('hidden');
+    panel.style.transition = 'none';
+    panel.style.transform = '';
+    panel.style.opacity = '';
+  }, 280);
+}
+
+// ======================================================================
+// 时间驱动位置追踪器
+// ======================================================================
+
+function TimePositionTracker(waypoints, mapInstance) {
+  this.waypoints = waypoints;
+  this.map = mapInstance;
+  this.positionMarker = null;
+  this.pollInterval = null;
+  var self = this;
+
+  this.init = function(focusIndex) {
+    var startWp = waypoints[focusIndex] || waypoints[0];
+    var el = document.createElement('div');
+    el.style.cssText = 'background:#10b981;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:13px;border:3px solid white;box-shadow:0 3px 12px rgba(16,185,129,0.5);animation:reminder-pulse 1.2s ease-in-out infinite;';
+    el.innerHTML = '▶';
+    this.positionMarker = new AMap.Marker({
+      position: [startWp.lng, startWp.lat], content: el,
+      offset: new AMap.Pixel(-16, -16), zIndex: 300
+    });
+    this.map.add(this.positionMarker);
+    this.pollInterval = setInterval(function() { self.updatePosition(); }, 5000);
+    this.updatePosition();
+  };
+
+  this.updatePosition = function() {
+    clockFetch('GET', '/api/clock/status').then(function(status) {
+      if (!status || !status.virtual_time) return;
+      var pos = self._interpolatePosition(status.virtual_time);
+      if (pos && self.positionMarker) {
+        self.positionMarker.setPosition([pos.lng, pos.lat]);
+        var bounds = self.map.getBounds();
+        if (bounds && !bounds.contains([pos.lng, pos.lat])) {
+          self.map.setCenter([pos.lng, pos.lat]);
+        }
+      }
+    }).catch(function() {});
+  };
+
+  this._interpolatePosition = function(timeStr) {
+    var nowMin = _timeStrToMinutes(timeStr);
+    for (var i = 0; i < this.waypoints.length - 1; i++) {
+      var tA = _timeStrToMinutes(this.waypoints[i].time);
+      var tB = _timeStrToMinutes(this.waypoints[i + 1].time);
+      if (nowMin >= tA && nowMin <= tB) {
+        var ratio = (nowMin - tA) / Math.max(tB - tA, 1);
+        return {
+          lng: this.waypoints[i].lng + (this.waypoints[i + 1].lng - this.waypoints[i].lng) * ratio,
+          lat: this.waypoints[i].lat + (this.waypoints[i + 1].lat - this.waypoints[i].lat) * ratio
+        };
+      }
+    }
+    return this.waypoints[this.waypoints.length - 1];
+  };
+
+  this.destroy = function() {
+    if (this.pollInterval) clearInterval(this.pollInterval);
+    if (this.positionMarker && this.map) this.map.remove(this.positionMarker);
+  };
+}
+
+function _timeStrToMinutes(timeStr) {
+  var parts = String(timeStr).split(':');
+  return parseInt(parts[0]) * 60 + parseInt(parts[1] || '0');
+}
+
+function initTimePositionTracker(focusIndex) {
+  if (timePositionTracker) timePositionTracker.destroy();
+  timePositionTracker = new TimePositionTracker(waypointCoords, mapPanelInstance);
+  timePositionTracker.init(focusIndex);
+}
+
+
+// 缓存执行计划内容，避免重复构建（已废弃，待清理）
 let execContentCache = '';
 
 function renderMetroTimeline(data) {
@@ -1789,15 +2555,7 @@ async function executeTrigger(triggerId) {
  // 如果返回的是排程结果（phase: done），刷新行程 + 重开展示弹窗
  if (data.phase === 'done' || data.timeline) {
  lastScheduleData = data;
- execContentCache = null;
- renderSchedule(data);
- // 关旧弹窗，延迟重开展示新时间线
- const cover = document.getElementById('exec-cover');
- if (cover) cover.classList.add('hidden');
- setTimeout(function() {
- execContentCache = null;
- openExecCover();
- }, 300);
+ _refreshTripView();
  return;
  }
 
@@ -1918,25 +2676,37 @@ async function sendExecMessage() {
 }
 
 function endTrip() {
- closeExecCover();
- // 隐藏"您的计划"挂件
- document.getElementById('plan-widget')?.classList.add('hidden');
- // 清除执行内容缓存，下次新行程重建
+ // 关闭地图（如已打开）
+ closeMapPanel();
+ // 清理地图资源
+ if (timePositionTracker) { timePositionTracker.destroy(); timePositionTracker = null; }
+ if (mapPanelInstance) { mapPanelInstance.destroy(); mapPanelInstance = null; }
+ mapMarkers = [];
+ mapPolyline = null;
+ waypointCoords = [];
+ // 移除行程视图
+ var tripView = document.getElementById('trip-view-container');
+ if (tripView) tripView.remove();
+ // 隐藏时间轴固定栏
+ var tlBar = document.getElementById('trip-timeline-bar');
+ if (tlBar) { tlBar.classList.add('hidden'); document.getElementById('trip-timeline-scroll').innerHTML = ''; }
+ // 恢复底部栏
+ switchBottomBarToSearchMode();
+ // 重置状态
+ isInTripMode = false;
+ lastScheduleData = null;
  execContentCache = '';
- const content = document.getElementById('exec-plan-content');
- if (content) content.innerHTML = '';
- // 创建居中白色弹窗
- const toast = document.createElement('div');
+ shopCoordMap = {};
+ currentPhase = 'init';
+ // 居中白色弹窗
+ var toast = document.createElement('div');
  toast.className = 'fixed inset-0 z-50 flex items-center justify-center pointer-events-none';
  toast.innerHTML = '<div class="bg-white rounded-[32px] shadow-2xl px-10 py-6 text-center"><p class="text-gray-900 font-bold text-lg">行程结束</p></div>';
  document.body.appendChild(toast);
- // 2秒后渐变消失
  setTimeout(function() {
  toast.style.transition = 'opacity 0.6s ease';
  toast.style.opacity = '0';
- setTimeout(function() {
- toast.remove();
- }, 600);
+ setTimeout(function() { toast.remove(); }, 600);
  }, 2000);
 }
 
@@ -2389,14 +3159,8 @@ function closeShopDetail() {
  * PlanB 统一刷新：清执行计划缓存 + 重渲主页面 + 如 exec-cover 打开则关闭后重新打开
  */
 function _planbFlushExecCover() {
-  // Plan B 执行后强制刷新 exec-cover：清缓存 + 从 schedule-section 重建行程方案
-  // 无论 exec-cover 是否打开都强制执行：先关后开，确保展示最新行程
-  execContentCache = null;
-  var execCover = document.getElementById('exec-cover');
-  if (execCover) {
-    execCover.classList.add('hidden');
-    setTimeout(function() { openExecCover(); }, 200);
-  }
+  // Plan B 执行后刷新行程视图
+  _refreshTripView();
 }
 
 /**

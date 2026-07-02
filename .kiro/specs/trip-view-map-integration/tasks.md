@@ -1,0 +1,187 @@
+# Implementation Plan
+
+## Task Format Template
+
+- [ ] 1. 后端坐标字段透传
+- [ ] 1.1 在 `_build_categories_for_frontend()` 返回数据中新增 `coord` 字段
+  - 前端店铺卡片可获取每家店铺的经纬度坐标
+  - 坐标字段格式为 "lat,lng"，无坐标时返回空字符串
+  - _Requirements: 3.3_
+
+- [ ] 2. HTML 结构改动
+- [ ] 2.1 加载高德 JS API SDK 并新增地图面板容器
+  - `<head>` 中新增 Amap JS API 2.0 CDN `<script>` 标签，Key 为 `f24e3c6371ef8e5760ffbea569987fee`
+  - 手机容器内新增 `#map-panel` div（z-40 绝对定位），包含返回按钮 + 标题栏 + `#map-container` 地图容器
+  - 地图面板初始 `hidden`，通过 CSS transition 实现 scale+opacity 动画
+  - _Requirements: 4.1, 4.2_
+- [ ] 2.2 底部搜索栏元素添加 ID 和模式提示
+  - 输入框添加 `id="bottom-search-input"`
+  - 发送按钮添加 `id="bottom-send-btn"`
+  - 新增隐藏的模式提示文字 `#bottom-bar-mode-hint`
+  - _Requirements: 6.1_
+- [ ] 2.3 店铺卡片添加坐标数据属性
+  - `renderCategorySelection()` 中每个 `.shop-card` 添加 `data-coord` 属性
+  - 确认选择时将选中店铺的坐标存入 `shopCoordMap`
+  - _Requirements: 3.3_
+- [ ] 2.4 删除 `#exec-cover` HTML 块
+  - 移除 exec-cover 的完整 HTML（遮罩层 + 顶栏 + 滚动区 + 底部输入栏）
+  - 验证主界面布局不受影响（搜索、选店、时间输入流程正常）
+  - _Requirements: 1.1_
+
+- [ ] 3. 核心流程：执行计划 → 行程视图渲染
+- [ ] 3.1 新增全局状态变量
+  - 声明 `isInTripMode`, `shopCoordMap`, `waypointCoords`, `mapPanelInstance`, `mapMarkers`, `mapPolyline`, `timePositionTracker`
+  - _Requirements: 1.1, 7.4_
+- [ ] 3.2 实现 `startTripFlow()` 函数（替代 `handleNavigation()` 中调用 `openExecCover()`）
+  - 移除 `activeChatCard` DOM 元素
+  - 设置 `isInTripMode = true`
+  - 调用 `renderTripView()` 和 `switchBottomBarToTripMode()`
+  - 调用 `buildWaypointCoords()`
+  - 店铺推荐面板消失，行程内容在主界面渲染
+  - _Requirements: 1.1, 1.2, 1.3_
+- [ ] 3.3 实现 `renderTripView(data)` 函数
+  - 渲染防坑提醒蓝色卡片（`pitfall_reminders`）
+  - 渲染防坑指南深色卡片（`pitfall_insights`）
+  - 渲染交互触发器（`pitfall_triggers` + `anomaly_triggers`）
+  - 渲染 `#trip-chat-area` 行程聊天区容器
+  - 无数据时跳过对应区块，不显示空白卡片
+  - 所有内容包裹在 `#trip-view-container` 中写入 `#dynamic-content`
+  - _Requirements: 2.1, 2.2, 2.3, 2.4_
+- [ ] 3.4 实现 `renderMetroTimelineForMainFace(data)` 函数
+  - 深色卡片内横向可滚动时间轴，每节点固定 156px 宽
+  - 节点颜色：黄色=DEPART，蓝色=WAIT，靛蓝=EXEC，绿色=PICK
+  - 每节点添加 `onclick="openMapPanel(N)"` 和 `cursor:pointer`
+  - 底部显示"左右滑动查看完整行程 · 点击节点查看地图"提示
+  - _Requirements: 3.1, 3.2, 3.3, 3.4_
+- [ ] 3.5 实现 `renderTriggersForMainFace(triggers, bgColor)` 函数
+  - `standard_button` 类型渲染确认/取消按钮
+  - `dialog` 类型渲染橙色警告卡片
+  - 确认按钮调用 `executeTrigger()`，取消按钮移除卡片
+  - _Requirements: 2.3_
+- [ ] 3.6 实现 `buildWaypointCoords(data)` 函数
+  - 从 `shopCoordMap` 和 `timeline` 提取途经点坐标数组
+  - 起点默认三里屯 (39.93, 116.45)
+  - 无坐标节点跳过不报错
+  - _Requirements: 4.3_
+
+- [ ] 4. 底部输入栏模式切换
+- [ ] 4.1 实现 `switchBottomBarToTripMode()`
+  - placeholder 切换为"输入消息调整行程..."
+  - 发送事件绑定到 `sendTripMessage()`
+  - 标题栏显示"· 行程中"标识
+  - 模式提示文字 `#bottom-bar-mode-hint` 取消隐藏
+  - _Requirements: 6.1_
+- [ ] 4.2 实现 `switchBottomBarToSearchMode()`
+  - placeholder 恢复为"输入您的需求"
+  - 发送事件绑定回 `doSearch()`
+  - 标题栏恢复默认
+  - 模式提示文字隐藏
+  - _Requirements: 6.4_
+- [ ] 4.3 实现 `sendTripMessage()` 函数（替代旧 `sendExecMessage()`）
+  - 用户消息气泡写入 `#trip-chat-area`
+  - 加载中显示思考提示
+  - POST `/api/edit_trip` 发送文本
+  - 返回新 timeline 时调用 `_refreshTripView()` 刷新行程
+  - 返回 error 时显示红色错误气泡
+  - _Requirements: 6.2, 6.3_
+
+- [ ] 5. 地图面板实现
+- [ ] 5.1 实现 `openMapPanel(focusNodeIndex)` 函数
+  - 如果 `waypointCoords` 为空则调用 `buildWaypointCoords()` 初始化
+  - Scale-in 动画（0.3→1）显示 `#map-panel`
+  - 延迟 350ms 后调用 `initMapPanel()`（等待容器渲染完成）
+  - _Requirements: 4.1_
+- [ ] 5.2 实现 `initMapPanel(focusNodeIndex)` 函数
+  - 检测 `typeof AMap !== 'undefined'`，未加载时延迟 500ms 重试一次
+  - 创建 `AMap.Map` 实例，中心点聚焦到当前途经点，zoom=14
+  - 添加比例尺和工具条控件
+  - 从 `waypointCoords` 构建 path 数组，绘制黄色 Polyline（`#fbbf24`，宽 6px，显示方向箭头）
+  - 每个途经点放置序号圆形 Marker（当前节点黄色高亮，其余蓝色）
+  - Marker 点击弹出 InfoWindow 显示名称+时间
+  - `setFitView` 确保所有标记在可视范围内
+  - 调用 `initTimePositionTracker(focusNodeIndex)` 初始化位置追踪
+  - 销毁前清理旧 `mapPanelInstance`、`mapMarkers`、`mapPolyline`
+  - _Requirements: 4.2, 4.3, 4.4, 5.1_
+- [ ] 5.3 实现 `closeMapPanel()` 函数
+  - Scale-out 动画（1→0.3 + opacity 0）隐藏面板
+  - 调用 `timePositionTracker.destroy()` 停止轮询
+  - 280ms 后添加 `hidden` class 并重置 transform
+  - _Requirements: 4.5, 5.4_
+
+- [ ] 6. 时间驱动位置追踪器
+- [ ] 6.1 实现 `TimePositionTracker` 类
+  - 构造函数接收 `waypointCoords` 数组和 `AMap.Map` 实例
+  - `init(focusIndex)`: 创建绿色脉冲三角形 Marker，放置在起始途经点坐标
+  - `updatePosition()`: 通过 `clockFetch('GET', '/api/clock/status')` 获取 `virtual_time`，调用 `_interpolatePosition()` 计算坐标，移动 marker
+  - `_interpolatePosition(timeStr)`: 将时间字符串转为分钟数，找到所属时间段，线性插值经纬度，返回 `{lng, lat}`
+  - 当插值坐标超出地图视野时自动 `setCenter`
+  - `destroy()`: `clearInterval` 停止轮询 + `map.remove(marker)` 移除标记
+  - `clockFetch` 失败时静默跳过，不移动标记
+  - _Requirements: 5.1, 5.2, 5.3, 5.4_
+- [ ] 6.2 实现 `initTimePositionTracker(focusNodeIndex)` 辅助函数
+  - 销毁旧的 `timePositionTracker` 实例（如果存在）
+  - 创建新的 `TimePositionTracker` 实例并调用 `init()`
+  - _Requirements: 5.1_
+
+- [ ] 7. 结束行程重写
+- [ ] 7.1 重写 `endTrip()` 函数
+  - 关闭地图面板（如已打开）并销毁地图实例
+  - 销毁 `timePositionTracker`
+  - 移除 `#trip-view-container` DOM 元素
+  - 调用 `switchBottomBarToSearchMode()` 恢复底部栏
+  - 清空所有行程相关全局变量（`isInTripMode`, `lastScheduleData`, `shopCoordMap`, `waypointCoords`, `mapPanelInstance`, `mapMarkers`, `mapPolyline`, `timePositionTracker`）
+  - 显示"行程结束"居中白色 toast，2 秒后淡出
+  - _Requirements: 7.1, 7.2, 7.3, 7.4_
+
+- [ ] 8. 废弃代码清理与引用重构
+- [ ] 8.1 删除 exec-cover 相关函数
+  - 删除 `openExecCover()`, `closeExecCover()`, `sendExecMessage()`, `dismissTrigger()`
+  - 删除全局变量 `execContentCache`, `execTimelineData`
+  - 删除空引用后确认无 JS 报错
+  - _Requirements: 1.1_
+- [ ] 8.2 重构引用 exec-cover 的函数
+  - 所有 `_planbFlushExecCover()` 调用替换为 `_refreshTripView()`
+  - `appendExecChatMessage()` 重定向写入 `#trip-chat-area`
+  - `_simulateTaxiCall()` 重定向写入 `#trip-chat-area`
+  - `executePlanB()` 中 exec-cover 引用全部替换
+  - `executeTrigger()` 中 `_planbFlushExecCover()` 替换为行程视图刷新
+  - _Requirements: 1.1, 2.3_
+- [ ] 8.3 删除旧 `renderMetroTimeline()` 中 exec-cover 专属代码
+  - 保留内部节点构建逻辑作为 `_buildMetroTimelineNodes()` 复用
+  - 移除 exec-cover 底部输入栏和顶栏相关的 HTML 生成
+  - _Requirements: 3.1_
+
+- [ ] 9. CSS 与样式新增
+- [ ] 9.1 新增地图面板和行程视图动画样式
+  - `#map-panel` 入场/退场 will-change 优化
+  - `.animate-trip-in` 行程卡片淡入动画（translateY + opacity）
+  - `.metro-node-clickable` hover 放大 + active 缩小效果
+  - _Requirements: 4.1, 4.5_
+
+- [ ] 10. 端到端验证
+- [ ] 10.1 完整流程测试
+  - 搜索 POI → 选择店铺 → 设置时间 → 点击"执行计划"
+  - 验证：店铺卡片消失，行程内容（防坑指南 + 出门提醒 + 时间轴 + 触发器）在主界面渲染
+  - 验证：底部栏切换为行程聊天模式（placeholder 变化 + 标识显示）
+  - _Requirements: 1.1, 1.2, 1.3, 6.1_
+- [ ] 10.2 地图面板测试
+  - 点击时间轴节点 → 地图面板缩放打开 → 高德地图加载 → 路线折线 + 途经点标记渲染
+  - 点击途经点标记 → InfoWindow 弹出名称+时间
+  - 点击返回按钮 → 地图面板缩放关闭 → 时间追踪停止
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
+- [ ] 10.3 时间追踪测试
+  - 开启虚拟时钟自动走时 → 地图上绿色标记随时间推进而移动
+  - 手动跳转时间 → 标记跳跃到对应插值位置
+  - 标记移出视野 → 地图自动平移
+  - _Requirements: 5.1, 5.2, 5.3, 5.4_
+- [ ] 10.4 行程聊天与结束测试
+  - 底部输入框发送消息 → 消息气泡出现在行程聊天区 → 返回更新后刷新行程视图
+  - 点击"结束行程" → 地图关闭 + 行程视图移除 + 底部栏恢复 + "行程结束" toast
+  - 界面回到初始搜索状态
+  - _Requirements: 6.2, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4_
+- [ ] 10.5 异常路径测试
+  - 无防坑数据时跳过对应区块不显示空卡片
+  - 途经点无坐标时地图仍渲染其余节点
+  - Amap SDK 加载失败时 alert 提示用户
+  - `/api/edit_trip` 返回错误时显示红色气泡
+  - _Requirements: 2.4, 3.3_
