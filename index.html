@@ -400,7 +400,9 @@
      <div class="flex items-center justify-between">
       <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
       <div class="flex items-center gap-2">
-       <div id="weather-dynamic-logo" class="weather-icon weather-sunny" title="当前天气">
+       <span style="position:relative; display:inline-block; flex-shrink:0;">
+        <span id="weather-temp-badge" style="position:absolute; top:-4px; right:-12px; background:#1f2937; color:#fbbf24; font-size:10px; font-weight:700; padding:1px 4px; border-radius:6px; line-height:1.3; z-index:10; white-space:nowrap;">21°</span>
+        <div id="weather-dynamic-logo" class="weather-icon weather-sunny" title="当前天气">
         <div class="sun-core"></div>
         <div class="sun-ray" style="transform:rotate(0deg)"></div>
         <div class="sun-ray" style="transform:rotate(45deg)"></div>
@@ -432,8 +434,8 @@
         <div class="rain-drop" style="left:40px; height:4px; animation-delay:0.15s; --rd:1.4s"></div>
         <div class="rain-drop" style="left:40px; height:3px; animation-delay:0.65s; --rd:1.4s"></div>
         <div class="lightning"></div>
-       </div>
-       <div onclick="openPrefEdit()" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="偏好设置" style="font-size:14px;">⚙️</div>
+       </div></span>
+	       <div onclick="openPrefEdit()" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="偏好设置" style="font-size:14px;">⚙️</div>
        <div onclick="openButlerPanel()" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="管家面板" style="font-size:14px;">⏰</div>
        <div onclick="openHistoryPanel()" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="历史记录" style="font-size:16px;">≡</div>
       </div>
@@ -3729,18 +3731,18 @@ function fetchRealWeather() {
     if (data.status === 'SUCCESS') {
       realWeatherCache = data;
       updateWeatherLogo();
-      _showToast('🌍 真实天气: ' + data.weather.condition + ' ' + data.weather.temperature_c + '°C');
-    } else {
-      _showToast('⚠️ 天气获取失败: ' + (data.message || '未知错误'));
+      // 更新温度 badge
+      var badge = document.getElementById('weather-temp-badge');
+      if (badge) badge.textContent = data.weather.temperature_c + '°';
     }
   })
   .catch(function() {
-    _showToast('⚠️ 天气获取失败，请检查网络');
-    console.log('Real weather fetch failed');
+    // API 失败，兜底 21°C
+    var badge = document.getElementById('weather-temp-badge');
+    if (badge) badge.textContent = '21°';
+    console.log('Real weather fetch failed, using 21°C fallback');
   });
-}
-
-function getCurrentWeatherCondition() {
+}function getCurrentWeatherCondition() {
   if (virtualWeatherEnabled) {
     return virtualWeatherType;
   }
