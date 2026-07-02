@@ -1093,7 +1093,7 @@ function _addBrandedLoadingBubble() {
    '<span class="text-sm font-black text-yellow-800">小美AI</span>' +
    '<span class="typing-dots-inline"><span></span><span></span><span></span></span>' +
    '</div>' +
-   '<p class="text-xs text-gray-600 mt-1">正在为你生成行程指引...</p>';
+   '<p class="text-xs text-gray-600 mt-1">正在帮你调研踩坑可能...</p>';
  row.appendChild(bubble);
  mainEl.appendChild(row);
  scrollToBottom();
@@ -1900,7 +1900,7 @@ function startTripFlow() {
   // 8. 显示品牌化加载指示器
   var loadingBubble = _addBrandedLoadingBubble();
 
-  // 8. ~1s 后直接渲染行程视图（防坑指南 + 提醒卡片）
+  // 8. ~1s 后直接渲染行程视图
   setTimeout(function() {
     if (loadingBubble && loadingBubble.parentNode) {
       loadingBubble.remove();
@@ -1908,7 +1908,7 @@ function startTripFlow() {
     renderTripView(lastScheduleData);
     currentPhase = 'trip_active';
     scrollToBottom();
-  }, 1000);
+  }, 1500);
 }
 
 function _revealTripContentProgressively(data) {
@@ -1916,9 +1916,8 @@ function _revealTripContentProgressively(data) {
   messageQueue = [];
   isProcessingQueue = false;
 
-  // 防坑指南作为聊天气泡逐条输出
+  // 防坑指南逐条推送（每条间隔 0.5s~1s）
   if (data.pitfall_insights && data.pitfall_insights.length > 0) {
-    enqueueMessage({ type: 'text', content: '给你整理了一些出行防坑指南，请注意查看～', delay: 500 });
     for (var i = 0; i < data.pitfall_insights.length; i++) {
       var ins = data.pitfall_insights[i];
       enqueueMessage({
@@ -1929,9 +1928,8 @@ function _revealTripContentProgressively(data) {
     }
   }
 
-  // 出行提醒作为聊天气泡逐条输出
+  // 出行提醒逐条推送（每条间隔 0.5s~1s）
   if (data.pitfall_reminders && data.pitfall_reminders.length > 0) {
-    enqueueMessage({ type: 'text', content: '另外，还有一些出行提醒：', delay: 600 });
     for (var j = 0; j < data.pitfall_reminders.length; j++) {
       var rem = data.pitfall_reminders[j];
       enqueueMessage({
