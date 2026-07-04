@@ -263,9 +263,9 @@ def _cluster_centroid(cluster: list):
 # ======================================================================
 
 def _route_one_day(shops: list, start_lat: float, start_lng: float,
-                   transport: str) -> dict:
+                   transport: str, weather: dict = None) -> dict:
     """
-    为一天规划最优路线。
+    为一天规划最优路线（天气感知）。
     起点/终点 = 酒店坐标（如未指定则用第一个店铺坐标）。
     返回: {timeline: [...], total_travel_minutes, total_duration_minutes, route: [...]}
     """
@@ -278,6 +278,15 @@ def _route_one_day(shops: list, start_lat: float, start_lng: float,
         }
 
     speed = _get_speed(transport)
+    # 天气影响步行速度
+    weather_penalty = 1.0
+    if weather:
+        weather_penalty = weather.get("walking_penalty", 1.0)
+        # 雨天/恶劣天气降低步行和公共交通速度
+        if transport in ("步行优先",):
+            speed *= weather_penalty
+        elif weather_penalty < 0.5:
+            speed *= 0.8  # 极端天气整体放慢
     points = [(start_lat, start_lng)]  # 起点 = 酒店
 
     for s in shops:
@@ -377,77 +386,130 @@ LUNCH_WINDOW = (11 * 60 + 30, 13 * 60 + 30)   # 11:30-13:30
 DINNER_WINDOW = (17 * 60 + 30, 19 * 60 + 30)  # 17:30-19:30
 
 
-def _insert_meals(day_plan: dict, shops: list, start_time_str: str = "09:00") -> list:
+def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
+                    weather: dict = None) -> list:
     """
-    在时间轴上插入用餐时间。
-    返回 timeline: [{time, action, memo, type, ...}]
+    智能时间线构建：就近用餐 + 休息缓冲 + 天气标记。
+    按照 TSP 优化后的路线顺序排列活动，在合适位置插入用餐和休息。
+    返回 timeline: [{time, action, memo, category, ...}]
     """
     start_h, start_m = map(int, start_time_str.split(":"))
     current_minutes = start_h * 60 + start_m
 
-    # 分离餐饮和非餐饮店铺
-    meal_shops = [s for s in shops if s.get("category", "") in MEAL_CATEGORIES]
-    non_meal_shops = [s for s in shops if s.get("category", "") not in MEAL_CATEGORIES]
+    route = day_plan.get("route", [])
+    # 按路线顺序排列 shops（路线[1:-1] 对应 shops）
+    ordered_shops = list(shops)  # 保持原顺序（TSP已优化）
 
     timeline = []
+    MEAL_CATS = MEAL_CATEGORIES
+    # 餐饮类 POI 的索引 {shop_id: shop}
+    meal_map = {s.get("shop_id"): s for s in shops if s.get("category", "") in MEAL_CATS}
 
-    # 如果没有非餐饮店铺，直接排
-    all_ordered = non_meal_shops + meal_shops
+    # 天气信息
+    weather_alert = None
+    if weather:
+        if not weather.get("outdoor_suitable", True):
+            weather_alert = "🌧️ 建议带伞" if weather.get("walking_penalty", 1.0) > 0.5 else "⛈️ 天气影响，注意安全"
+        if weather.get("day_temp", 25) > 35:
+            weather_alert = (weather_alert or "") + " 🔥 高温，注意防暑"
 
-    # 简单时间线：按路由顺序排列所有店铺
-    total_duration = day_plan.get("total_duration_minutes", 0)
-    route = day_plan.get("route", [])
-
-    # 为每个非餐饮店铺安排时间
-    shop_index = 0
-    for i, shop in enumerate(all_ordered):
+    # 按路线顺序遍历
+    last_shop_lat, last_shop_lng = None, None
+    for idx, shop in enumerate(ordered_shops):
         cat = shop.get("category", "")
         dur = _get_duration(cat)
+        s_lat = shop.get("lat", 0)
+        s_lng = shop.get("lng", 0)
 
-        # 如果是餐饮类，优先放到用餐窗口
-        if cat in MEAL_CATEGORIES:
-            # 找到最近的用餐窗口
-            target_window = None
-            if _is_breakfast(shop):
-                target_window = (7 * 60, 9 * 60)  # 早餐窗口 7:00-9:00
-            elif LUNCH_WINDOW[0] <= current_minutes <= LUNCH_WINDOW[1] + 60:
-                target_window = LUNCH_WINDOW
-            elif current_minutes < LUNCH_WINDOW[1]:
-                target_window = LUNCH_WINDOW
+        # ── 午餐插入（11:30-13:30）──
+        lunch_time = 11 * 60 + 30
+        if current_minutes < lunch_time and idx > 0:
+            # 检查是否有餐厅需要安排在午餐时段
+            remaining_meals = [m for mid, m in meal_map.items()
+                              if mid not in {t.get("shop_id") for t in timeline}]
+            if remaining_meals and current_minutes + _get_duration(ordered_shops[idx].get("category", "")) > lunch_time - 30:
+                # 在当前位置之前插入最近的餐厅作为午餐
+                nearest_meal = min(remaining_meals, key=lambda m:
+                    _haversine_m(s_lat, s_lng, m.get("lat", s_lat), m.get("lng", s_lng)))
+                if current_minutes < lunch_time:
+                    current_minutes = lunch_time
+                meal_dur = _get_duration(nearest_meal.get("category", ""))
+                time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+                timeline.append({
+                    "time": time_str, "action": "LUNCH",
+                    "memo": f"🍽️ {nearest_meal.get('name', '')}",
+                    "category": nearest_meal.get("category", ""),
+                    "shop_id": nearest_meal.get("shop_id", ""),
+                    "duration_minutes": meal_dur,
+                })
+                current_minutes += meal_dur
+                # 午餐后休息
+                current_minutes += 30
+                timeline.append({
+                    "time": f"{current_minutes // 60:02d}:{current_minutes % 60:02d}",
+                    "action": "REST", "memo": "☕ 午休片刻", "category": "rest",
+                    "shop_id": "", "duration_minutes": 0,
+                })
+
+        # ── 活动间缓冲（非第一个活动）──
+        if len(timeline) > 0:
+            # 计算到下一个地点的交通时间
+            if last_shop_lat and last_shop_lng:
+                travel_m = _haversine_m(last_shop_lat, last_shop_lng, s_lat, s_lng)
+                travel_min = max(5, round(travel_m / _get_speed("步行优先")))
+                current_minutes += travel_min
             else:
-                target_window = DINNER_WINDOW
+                current_minutes += 15  # 默认15分钟缓冲
 
-            # 调整时间到窗口
-            if current_minutes < target_window[0]:
-                current_minutes = target_window[0]
-        else:
-            # 非餐饮：直接排（跳过夜间时段）
-            if current_minutes > 21 * 60:  # 晚上9点后
-                current_minutes = 21 * 60
+        # ── 跳过夜间 ──
+        if current_minutes >= 21 * 60:
+            continue
 
         time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+
+        # ── 天气标记 ──
+        memo = shop.get("name", "")
+        if weather_alert and cat == "scenic":
+            memo = f"{memo} {weather_alert}"
 
         timeline.append({
             "time": time_str,
             "action": "VISIT",
-            "memo": shop.get("name", ""),
+            "memo": memo,
             "category": cat,
             "shop_id": shop.get("shop_id", ""),
             "duration_minutes": dur,
         })
+        current_minutes += dur + 10  # 活动后缓冲
+        last_shop_lat, last_shop_lng = s_lat, s_lng
 
-        current_minutes += dur + 10  # 10 分钟缓冲
+    # ── 晚餐插入（17:30-19:30）──
+    # 找到尚未安排的餐厅，放在最后
+    used_ids = {t.get("shop_id") for t in timeline}
+    remaining_meals = [m for mid, m in meal_map.items() if mid not in used_ids]
+    if remaining_meals and current_minutes < 20 * 60:
+        dinner_time = max(17 * 60 + 30, current_minutes)
+        current_minutes = dinner_time
+        for meal in remaining_meals:
+            time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+            timeline.append({
+                "time": time_str, "action": "DINNER",
+                "memo": f"🍽️ {meal.get('name', '')}",
+                "category": meal.get("category", ""),
+                "shop_id": meal.get("shop_id", ""),
+                "duration_minutes": _get_duration(meal.get("category", "")),
+            })
+            current_minutes += _get_duration(meal.get("category", "")) + 10
 
+    # ── 收尾：保证至少有一个结果 ──
     if not timeline:
-        # 兜底：简单按顺序排
         current_minutes = start_h * 60 + start_m
-        for shop in all_ordered:
+        for shop in ordered_shops:
             cat = shop.get("category", "")
             dur = _get_duration(cat)
             time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
             timeline.append({
-                "time": time_str,
-                "action": "VISIT",
+                "time": time_str, "action": "VISIT",
                 "memo": shop.get("name", ""),
                 "category": cat,
                 "shop_id": shop.get("shop_id", ""),
@@ -455,7 +517,6 @@ def _insert_meals(day_plan: dict, shops: list, start_time_str: str = "09:00") ->
             })
             current_minutes += dur + 10
 
-    total_minutes = current_minutes - start_h * 60 - start_m
     return timeline
 
 
@@ -550,6 +611,8 @@ def solve_multi_day(
     transport_preference: str = "步行优先",
     start_time_str: str = "09:00",
     max_hours_per_day: float = 8.0,
+    weather_data: dict = None,
+    preferences: dict = None,
 ) -> dict:
     """
     多日行程智能排程主入口。
@@ -561,6 +624,8 @@ def solve_multi_day(
         transport_preference: 交通方式
         start_time_str: 每天开始时间 "09:00"
         max_hours_per_day: 每天最大活动小时数
+        weather_data: {"2026-07-15": {day_weather, day_temp, walking_penalty, outdoor_suitable}, ...}
+        preferences: {"commute": {walking_tolerance_meters, transport_priority}, "taste": {cuisine_preference}, ...}
 
     返回:
         {
@@ -616,13 +681,26 @@ def solve_multi_day(
     # ── 阶段 2: 负载均衡 ──
     clusters = _balance_clusters(clusters, max_hours_per_day)
 
-    # ── 阶段 3: 每日 TSP 排程 ──
+    # 准备天气和偏好数据
+    wdata = weather_data or {}
+    prefs = preferences or {}
+    walking_tolerance = prefs.get("commute", {}).get("walking_tolerance_meters", 3000)
+    cuisine_prefs = prefs.get("taste", {}).get("cuisine_preference", [])
+
+    # ── 阶段 3: 每日 TSP + 天气感知 ──
     day_results = []
     for i, cluster in enumerate(clusters):
-        route_result = _route_one_day(cluster, checkin_lat, checkin_lng, transport_preference)
+        # 获取当天天气
+        day_weather = None
+        if wdata:
+            sorted_keys = sorted(wdata.keys())
+            if i < len(sorted_keys):
+                day_weather = wdata[sorted_keys[i]]
 
-        # ── 阶段 4: 用餐插入 ──
-        timeline = _insert_meals(route_result, cluster, start_time_str)
+        route_result = _route_one_day(cluster, checkin_lat, checkin_lng, transport_preference, day_weather)
+
+        # ── 阶段 4: 智能时间线构建（就近用餐 + 休息缓冲 + 天气标记）──
+        timeline = _build_timeline(route_result, cluster, start_time_str, day_weather)
 
         # 构建 selected_pairs 格式
         pairs = []
@@ -657,7 +735,6 @@ def solve_multi_day(
             })
         for loc in all_locs:
             spatial_matrix["locations"][loc["loc_id"]] = loc
-        # 计算距离矩阵（简化版：仅相邻点之间）
         for a_idx, a in enumerate(all_locs):
             for b_idx, b in enumerate(all_locs):
                 if a_idx < b_idx:
@@ -715,10 +792,12 @@ def solve_multi_day(
 # ======================================================================
 
 def solve(candidate_shops, num_days, checkin_lat, checkin_lng,
-          transport="步行优先", start_time="09:00", max_hours=8.0):
+          transport="步行优先", start_time="09:00", max_hours=8.0,
+          weather_data=None, preferences=None):
     """与 server.py 桥接的简化入口"""
     return solve_multi_day(
         candidate_shops, num_days,
         float(checkin_lat), float(checkin_lng),
-        transport, start_time, max_hours
+        transport, start_time, max_hours,
+        weather_data, preferences
     )

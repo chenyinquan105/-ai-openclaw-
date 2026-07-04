@@ -239,6 +239,79 @@ class AmapWeatherClient:
             "source": "amap_realtime",
         }
 
+    def get_weather_forecast(self, adcode: str = "110000") -> dict:
+        """获取未来4天天气预报（extensions=all）。
+        返回: {forecasts: [{"date": "2026-07-04", "day_weather": "晴", "night_weather": "多云",
+                "day_temp": 35, "night_temp": 22, "day_wind": "南风", "night_wind": "无风",
+                "walking_penalty": 1.0, "outdoor_suitable": true, "condition_en": "sunny"}, ...],
+               confidence: "high"|"low"}
+        """
+        api_key = self.api_key
+        url = "https://restapi.amap.com/v3/weather/weatherInfo"
+        params = {"key": api_key, "city": adcode, "extensions": "all", "output": "JSON"}
+
+        try:
+            resp = requests.get(url, params=params, timeout=8)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("status") != "1" or data.get("info") != "OK":
+                print(f"[amap_weather] 预报API失败: {data.get('info', 'unknown')}", flush=True)
+                return {"forecasts": [], "confidence": "low", "error": data.get("info", "")}
+
+            forecasts_raw = data.get("forecasts", [])
+            if not forecasts_raw:
+                return {"forecasts": [], "confidence": "low"}
+
+            casts = forecasts_raw[0].get("casts", [])
+            result = []
+            for cast in casts:
+                day_weather = cast.get("dayweather", "晴")
+                night_weather = cast.get("nightweather", "多云")
+                day_meta = _WEATHER_TEXT_MAP.get(day_weather, _DEFAULT_WEATHER_META)
+                night_meta = _WEATHER_TEXT_MAP.get(night_weather, _DEFAULT_WEATHER_META)
+                # 取白天和夜间中较差的 penalty（保守估计）
+                walking_penalty = min(day_meta["walking_penalty"], night_meta["walking_penalty"])
+                # 只要白天是户外友好的就认为当天适合户外
+                outdoor_suitable = day_meta["outdoor"]
+
+                result.append({
+                    "date": cast.get("date", ""),
+                    "day_weather": day_weather,
+                    "night_weather": night_weather,
+                    "day_temp": int(cast.get("daytemp", 25)),
+                    "night_temp": int(cast.get("nighttemp", 15)),
+                    "day_wind": cast.get("daywind", "无风"),
+                    "night_wind": cast.get("nightwind", "无风"),
+                    "condition_en": day_meta["en"],
+                    "walking_penalty": walking_penalty,
+                    "outdoor_suitable": outdoor_suitable,
+                    "alert": day_meta.get("alert"),
+                })
+
+            # 判断置信度：未来2天高，3-4天中
+            from datetime import datetime, timedelta
+            today = datetime.now().date()
+            for fc in result:
+                try:
+                    fc_date = datetime.strptime(fc["date"], "%Y-%m-%d").date()
+                    delta_days = (fc_date - today).days
+                    if delta_days <= 1:
+                        fc["confidence"] = "high"
+                    elif delta_days <= 3:
+                        fc["confidence"] = "medium"
+                    else:
+                        fc["confidence"] = "low"
+                except (ValueError, TypeError):
+                    fc["confidence"] = "medium"
+
+            return {"forecasts": result, "confidence": "high" if result else "low",
+                    "report_time": data.get("reporttime", ""),
+                    "city": forecasts_raw[0].get("city", "")}
+
+        except Exception as e:
+            print(f"[amap_weather] 预报API异常: {e}", flush=True)
+            return {"forecasts": [], "confidence": "low", "error": str(e)}
+
     @staticmethod
     def _estimate_wind(windpower: str) -> int:
         """高德风力文字 -> 风速 km/h 估算"""
@@ -268,3 +341,8 @@ def _get_client() -> AmapWeatherClient:
 def get_real_time_weather(adcode: str = "110000") -> dict:
     """模块级便捷函数: 获取指定城市实时天气"""
     return _get_client().get_real_time_weather(adcode=adcode)
+
+
+def get_weather_forecast(adcode: str = "110000") -> dict:
+    """模块级便捷函数: 获取指定城市未来4天天气预报"""
+    return _get_client().get_weather_forecast(adcode=adcode)

@@ -441,11 +441,114 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
             shop["lng"] = float(shop.get("lng", checkin_lng))
         shops.append(shop)
 
+    # 获取天气数据和用户偏好
+    weather_data = session_state.get("trip_weather", {})
+    try:
+        preferences = _read_profile()
+    except Exception:
+        preferences = {}
+
     return _skill_multi_day_schedule(
         shops, trip_days,
         float(checkin_lat), float(checkin_lng),
-        transport, start_time
+        transport, start_time,
+        weather_data=weather_data,
+        preferences=preferences,
     )
+
+
+def _llm_review_schedule(schedule_result: dict, weather_data: dict) -> dict:
+    """LLM 审查排程结果，返回 {phase, auto_fixes, questions, risk_flags}。
+    如果 LLM 调用失败，返回空审查（不阻塞用户）。
+    """
+    try:
+        # 构建审查 prompt
+        days_text = ""
+        for day in schedule_result.get("days", []):
+            days_text += f"\n### {day.get('label', '')}\n"
+            for node in day.get("timeline", []):
+                days_text += f"  {node.get('time', '')} {node.get('memo', '')} ({node.get('category', '')})\n"
+
+        weather_text = ""
+        for date_key, w in sorted((weather_data or {}).items()):
+            weather_text += f"  {date_key}: {w.get('day_weather', '?')} {w.get('day_temp', '?')}°C 户外={'适宜' if w.get('outdoor_suitable') else '不宜'}\n"
+
+        system_prompt = """你是一个专业旅行规划审查专家。审查用户的多日行程排程，只输出 JSON。
+
+检查维度：
+1. 路线合理：同一天 POI 距离是否合理？有没有跨城的情况？
+2. 用餐安排：午餐(11:30-13:30)/晚餐(17:30-19:30)是否在合理位置？是否就近？
+3. 天气影响：雨天户外景点是否需要提醒或调整？
+4. 体力消耗：每天时长是否超过 10 小时？是否连续高强度活动？
+5. 偏好匹配：餐厅类型是否符合用户口味？
+6. 时间冲突：POI 时间是否合理？
+
+对于可以确定的问题，直接给出 auto_fixes。
+对于需要用户决定的问题，给出 questions（每个问题带 options 选项数组）。
+没有问题时返回空数组。
+
+严格按以下 JSON 格式输出（不要包含其他文字）：
+{"auto_fixes":[{"day_index":0,"detail":"建议将故宫安排在上午，避开下午高温"}],"questions":[{"question_id":"q1","question_text":"明天有雷阵雨，是否把长城改到后天？","options":["改到后天","坚持明天去，带雨具","换成室内活动"]}],"risk_flags":["第2天体力消耗较大"]}"""
+
+        user_prompt = f"""请审查以下多日行程：
+
+## 天气
+{weather_text}
+
+## 排程结果
+{days_text}
+
+## 用户偏好
+目的地: {session_state.get('trip_destination', '')}
+出行方式: {session_state.get('trip_transport', '')}
+"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        review_resp = agent._call_llm(messages, max_tokens=800)
+        content = ""
+        if hasattr(review_resp, "content"):
+            content = review_resp.content or ""
+        elif hasattr(review_resp, "choices") and review_resp.choices:
+            content = review_resp.choices[0].message.content or ""
+        elif isinstance(review_resp, str):
+            content = review_resp
+
+        # 提取 JSON
+        import re as _re
+        json_match = _re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            parsed = _json.loads(json_match.group())
+            auto_fixes = parsed.get("auto_fixes", [])
+            questions = parsed.get("questions", [])
+            risk_flags = parsed.get("risk_flags", [])
+
+            # 如果有问题，标记为审查交互模式
+            phase = "schedule_review" if questions else "done"
+
+            # 缓存审查状态用于后续问答
+            session_state["_review_state"] = {
+                "auto_fixes": auto_fixes,
+                "questions": questions,
+                "risk_flags": risk_flags,
+                "schedule_snapshot": schedule_result,
+            }
+
+            return {
+                "phase": phase,
+                "auto_fixes": auto_fixes,
+                "questions": questions,
+                "risk_flags": risk_flags,
+            }
+
+        return {"phase": "done", "auto_fixes": [], "questions": [], "risk_flags": []}
+
+    except Exception as e:
+        print(f"[LLM审查] 失败，退回纯算法结果: {e}", flush=True)
+        return {"phase": "done", "auto_fixes": [], "questions": [], "risk_flags": []}
 
 
 def _duration(cat: str) -> int:
@@ -3931,6 +4034,30 @@ def api_weather_realtime():
         return jsonify({"status": "ERROR", "message": f"天气查询失败: {str(e)}"})
 
 
+@app.route("/api/weather/forecast", methods=["POST"])
+def api_weather_forecast():
+    """
+    多日天气预报 API：调用高德预报 API 获取未来4天天气。
+    请求: {city: "北京"} 或 {adcode: "110000"}
+    响应: {forecasts: [{date, day_weather, day_temp, walking_penalty, outdoor_suitable, confidence}, ...]}
+    """
+    data = request.get_json(silent=True) or {}
+    city = data.get("city", "").strip()
+    adcode = data.get("adcode", "").strip()
+
+    if not adcode and city:
+        adcode = _CITY_ADCODE.get(city, "")
+    if not adcode:
+        # 尝试逆地理编码或兜底
+        adcode = "110000"
+
+    try:
+        result = _amap_weather_client.get_weather_forecast(adcode=adcode)
+        return jsonify({"status": "SUCCESS", **result})
+    except Exception as e:
+        return jsonify({"status": "ERROR", "message": f"天气预报查询失败: {str(e)}"})
+
+
 # ======================================================================
 # 高德 POI API（真实数据检索 + 地理编码）
 # ======================================================================
@@ -5233,6 +5360,15 @@ _CITY_COORDS = {
     "大连": (38.91, 121.61), "昆明": (25.04, 102.71),
 }
 
+# 城市名 -> 高德 adcode（用于天气 API）
+_CITY_ADCODE = {
+    "北京": "110000", "上海": "310000", "广州": "440100", "深圳": "440300",
+    "成都": "510100", "杭州": "330100", "西安": "610100", "重庆": "500000",
+    "南京": "320100", "武汉": "420100", "长沙": "430100", "厦门": "350200",
+    "三亚": "460200", "丽江": "530700", "大理": "532900", "桂林": "450300",
+    "苏州": "320500", "青岛": "370200", "大连": "210200", "昆明": "530100",
+}
+
 # 加载预缓存
 import json as _json
 _top20_cache = {}
@@ -5409,8 +5545,8 @@ def search_attraction():
 
 @app.route("/api/set_trip_config", methods=["POST"])
 def set_trip_config():
-    """设置多日行程配置：天数 + 目的地 + 交通方式，返回 Top20 热门。
-    请求: {days: 2, destination: "北京", transport: "地铁优先",
+    """设置多日行程配置：天数 + 目的地 + 交通方式，返回 Top20 热门 + 天气预调研。
+    请求: {days: 2, destination: "北京", transport: "地铁优先", start_date: "2026-07-15",
            checkin_lat: 39.93, checkin_lng: 116.45}
     """
     data = request.get_json(silent=True) or {}
@@ -5423,6 +5559,7 @@ def set_trip_config():
 
     destination = data.get("destination", "北京")
     transport = data.get("transport", "步行优先")
+    start_date = data.get("start_date", "")
     checkin_lat = data.get("checkin_lat")
     checkin_lng = data.get("checkin_lng")
 
@@ -5431,15 +5568,32 @@ def set_trip_config():
     session_state["trip_days"] = days
     session_state["trip_destination"] = destination
     session_state["trip_transport"] = transport
+    session_state["trip_start_date"] = start_date
     session_state["trip_checkin_lat"] = checkin_lat
     session_state["trip_checkin_lng"] = checkin_lng
+
+    # 生成带日期的 day label
+    from datetime import datetime as _dt, timedelta as _td
+    _weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    day_labels = []
+    if start_date:
+        try:
+            sd = _dt.strptime(start_date, "%Y-%m-%d")
+            for i in range(days):
+                d = sd + _td(days=i)
+                label = f"{d.month}/{d.day} {_weekdays[d.weekday()]} · 第{i+1}天"
+                day_labels.append(label)
+        except (ValueError, TypeError):
+            day_labels = [f"第{i+1}天" for i in range(days)]
+    else:
+        day_labels = [f"第{i+1}天" for i in range(days)]
 
     # 初始化每天的容器
     session_state["days"] = []
     for i in range(days):
         session_state["days"].append({
             "day_index": i,
-            "label": f"第{i+1}天",
+            "label": day_labels[i],
             "selected_pairs": [],
             "task_list": [],
             "spatial_matrix": {},
@@ -5453,15 +5607,49 @@ def set_trip_config():
     # 获取热门推荐（缓存优先）
     result = _get_top20_attractions(destination, checkin_lat, checkin_lng)
 
+    # 天气预调研
+    trip_weather = {}
+    try:
+        adcode = _CITY_ADCODE.get(destination, "110000")
+        fc_res = _amap_weather_client.get_weather_forecast(adcode=adcode)
+        forecasts = fc_res.get("forecasts", [])
+        # 匹配到每一天
+        for i in range(days):
+            if start_date:
+                try:
+                    sd = _dt.strptime(start_date, "%Y-%m-%d")
+                    target_date = (sd + _td(days=i)).strftime("%Y-%m-%d")
+                    matched = None
+                    for fc in forecasts:
+                        if fc.get("date") == target_date:
+                            matched = fc
+                            break
+                    if matched:
+                        trip_weather[target_date] = matched
+                    else:
+                        trip_weather[target_date] = {"confidence": "low", "note": "暂无该日预报数据"}
+                except (ValueError, TypeError):
+                    pass
+        # 如果没有日期，取前N天的预报
+        if not trip_weather and forecasts:
+            for i in range(min(days, len(forecasts))):
+                fc = forecasts[i]
+                trip_weather[fc.get("date", f"day{i}")] = fc
+    except Exception as e:
+        print(f"[set_trip_config] 天气预调研失败: {e}", flush=True)
+    session_state["trip_weather"] = trip_weather
+
     return jsonify({
         "status": "SUCCESS",
         "trip_mode": "multi",
         "trip_days": days,
         "trip_destination": destination,
         "trip_transport": transport,
+        "start_date": start_date,
         "attractions": result["attractions"],
         "attractions_source": result.get("source", "unknown"),
         "candidate_pool_size": len(session_state.get("candidate_pool", [])),
+        "weather": trip_weather,
     })
 
 
@@ -5511,7 +5699,7 @@ def smart_schedule():
         traceback.print_exc()
         return jsonify({"status": "ERROR", "message": f"排程失败: {str(e)}"}), 500
 
-    # 将结果写入 session_state.days
+    # 将结果写入 session_state.days，保留已配置的 label
     days = session_state.get("days", [])
     for i, day_result in enumerate(result.get("days", [])):
         if i < len(days):
@@ -5519,17 +5707,118 @@ def smart_schedule():
             days[i]["task_list"] = day_result.get("task_list", [])
             days[i]["spatial_matrix"] = day_result.get("spatial_matrix", {})
             days[i]["schedule_result"] = day_result
+            # 用 session 中的 label（含日期）覆盖 scheduler 生成的
+            day_result["label"] = days[i].get("label", day_result.get("label", f"第{i+1}天"))
 
     session_state["days"] = days
     session_state["phase"] = "done"
     session_state["active_day_index"] = 0
+
+    # 附带天气数据
+    trip_weather = session_state.get("trip_weather", {})
+
+    # ── LLM 审查（阶段 2）──
+    review_result = _llm_review_schedule(result, trip_weather)
 
     return jsonify({
         "status": "SUCCESS",
         "days": result.get("days", []),
         "unassigned": result.get("unassigned", []),
         "algorithm_metadata": result.get("algorithm_metadata", {}),
+        "weather": trip_weather,
+        "review": review_result,  # {phase, auto_fixes, questions, risk_flags}
     })
+
+
+@app.route("/api/schedule_review_answer", methods=["POST"])
+def schedule_review_answer():
+    """LLM 审查问答交互：用户回答审查问题后，LLM 应用到排程。
+    请求: {question_id: "q1", answer: "改到后天", answers: {"q1":"...","q2":"..."}}
+    """
+    data = request.get_json(silent=True) or {}
+    question_id = data.get("question_id", "")
+    answer = data.get("answer", "")
+    all_answers = data.get("answers", {})
+
+    if not all_answers and question_id:
+        all_answers = {question_id: answer}
+
+    review_state = session_state.get("_review_state", {})
+    questions = review_state.get("questions", [])
+    schedule = review_state.get("schedule_snapshot", {})
+
+    if not all_answers:
+        return jsonify({"phase": "done", "message": "无需回答"})
+
+    # 让 LLM 基于用户回答调整排程
+    try:
+        days_text = ""
+        for day in schedule.get("days", []):
+            days_text += f"\n### {day.get('label', '')}\n"
+            for node in day.get("timeline", []):
+                days_text += f"  {node.get('time', '')} {node.get('memo', '')}\n"
+
+        qa_text = "\n".join([f"Q: {qid} A: {ans}" for qid, ans in all_answers.items()])
+
+        system_prompt = """你是旅行规划专家。用户回答了你的问题，请根据回答修改排程。
+只输出 JSON 格式：
+{"updated_days":[{"day_index":0,"changes":"修改说明","timeline_updates":[{"time":"09:00","action":"VISIT","memo":"故宫","category":"scenic"}]}],"follow_up_questions":[]}
+如果无需进一步问题，follow_up_questions 为空数组。最多再提 1 个跟进问题。"""
+
+        user_prompt = f"""## 当前排程
+{days_text}
+
+## 用户回答
+{qa_text}
+
+请根据用户回答调整排程。"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        resp = agent._call_llm(messages, max_tokens=800)
+        content = ""
+        if hasattr(resp, "content"):
+            content = resp.content or ""
+        elif hasattr(resp, "choices") and resp.choices:
+            content = resp.choices[0].message.content or ""
+        elif isinstance(resp, str):
+            content = resp
+
+        import re as _re
+        json_match = _re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            parsed = _json.loads(json_match.group())
+            updated = parsed.get("updated_days", [])
+            follow_up = parsed.get("follow_up_questions", [])
+
+            # 应用 LLM 的修改到 schedule
+            sched_days = schedule.get("days", [])
+            for upd in updated:
+                di = upd.get("day_index", -1)
+                if 0 <= di < len(sched_days):
+                    t_updates = upd.get("timeline_updates")
+                    if t_updates:
+                        sched_days[di]["timeline"] = t_updates
+
+            # 更新缓存
+            session_state["_review_state"]["schedule_snapshot"] = schedule
+
+            phase = "schedule_review" if follow_up else "done"
+            return jsonify({
+                "phase": phase,
+                "days": schedule.get("days", []),
+                "questions": follow_up,
+                "changes": [u.get("changes", "") for u in updated],
+            })
+
+        return jsonify({"phase": "done", "days": schedule.get("days", [])})
+
+    except Exception as e:
+        print(f"[审查问答] LLM 调用失败: {e}", flush=True)
+        return jsonify({"phase": "done", "days": schedule.get("days", []), "fallback": True})
 
 
 @app.route("/api/switch_day", methods=["POST"])

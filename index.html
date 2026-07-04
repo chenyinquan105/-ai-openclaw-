@@ -495,6 +495,28 @@
                 <button onclick="changeTripDays(1)" class="w-10 h-10 rounded-full bg-gray-100 text-xl font-bold hover:bg-gray-200 transition">+</button>
               </div>
             </div>
+            <!-- 📅 出行日期选择 -->
+            <div class="mb-4">
+              <label class="text-sm font-bold text-gray-600 mb-2 block">📅 什么时候出发？</label>
+              <div id="multi-date-display" onclick="openDatePicker()" class="bg-gray-100 rounded-2xl px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-200 transition">
+                <span id="multi-date-text" class="text-sm font-bold text-gray-900">7月4日 周六 → 7月5日 周日</span>
+                <span class="text-gray-400 text-xs">📅</span>
+              </div>
+              <!-- 日历选择器弹窗 -->
+              <div id="multi-date-picker" class="hidden mt-2 bg-white rounded-2xl border border-gray-200 shadow-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <button onclick="changePickerMonth(-1)" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-sm font-bold transition">◀</button>
+                  <span id="multi-picker-month-label" class="text-sm font-black text-gray-900">2026年7月</span>
+                  <button onclick="changePickerMonth(1)" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-sm font-bold transition">▶</button>
+                </div>
+                <p id="multi-picker-hint" class="text-[10px] text-yellow-600 text-center mb-2 font-medium">请点击选择出发日期</p>
+                <div class="grid grid-cols-7 gap-1 text-center mb-2">
+                  <span class="text-[10px] text-gray-400 font-medium">日</span><span class="text-[10px] text-gray-400 font-medium">一</span><span class="text-[10px] text-gray-400 font-medium">二</span><span class="text-[10px] text-gray-400 font-medium">三</span><span class="text-[10px] text-gray-400 font-medium">四</span><span class="text-[10px] text-gray-400 font-medium">五</span><span class="text-[10px] text-gray-400 font-medium">六</span>
+                </div>
+                <div id="multi-picker-days-grid" class="grid grid-cols-7 gap-1 text-center"></div>
+                <button onclick="closeDatePicker()" class="w-full mt-3 text-xs text-gray-400 font-medium py-2 hover:text-gray-600 transition">关闭</button>
+              </div>
+            </div>
             <div class="mb-4">
               <label class="text-sm font-bold text-gray-600 mb-2 block">📍 去哪里旅游？</label>
               <input type="text" id="multi-destination-input" value="北京" placeholder="输入城市名" class="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-yellow-400 transition">
@@ -516,6 +538,10 @@
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-lg font-black text-gray-900">🔥 <span id="multi-dest-label">北京</span>热门 Top 20</h3>
               <button onclick="closeMultiDaySetup()" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <!-- 每日天气概览 -->
+            <div id="multi-weather-summary" class="hidden bg-blue-50 rounded-2xl p-3 mb-3 overflow-x-auto" style="scrollbar-width:none">
+              <div id="multi-weather-days" class="flex gap-2" style="width:max-content"></div>
             </div>
             <!-- 搜索添加栏 -->
             <div class="flex items-center gap-2 mb-3">
@@ -941,6 +967,12 @@ let multiDayDestination = '北京';
 let multiCandidatePool = [];       // [{shop_id, name, category, lat, lng, coord, rating, ...}]
 let multiDayScheduleResult = null; // 排程结果缓存
 let multiActiveDayIndex = 0;
+// --- 日期选择状态 ---
+let multiStartDate = null;   // 出发日期（null=未选，显示时兜底今天）
+let multiEndDate = null;     // 结束日期（null=未选）
+let multiPickerYear = new Date().getFullYear();
+let multiPickerMonth = new Date().getMonth();
+let _multiDatePickerOpen = false;
 
 // --- 消息队列系统 ---
 async function processMessageQueue() {
@@ -7418,6 +7450,10 @@ function toggleMultiDayMode() {
 function openMultiDaySetup() {
   console.log('[MultiDay] openMultiDaySetup');
   multiDayCount = 2; multiDayTransport = '步行优先'; multiDayDestination = '北京'; multiCandidatePool = [];
+  // 初始化日期为空（用户自行选择）
+  multiStartDate = null; multiEndDate = null;
+  multiPickerYear = new Date().getFullYear(); multiPickerMonth = new Date().getMonth();
+  updateDateDisplay();
   var elDayCount = document.getElementById('multi-day-count');
   var elDest = document.getElementById('multi-destination-input');
   var elStep1 = document.getElementById('multi-setup-step1');
@@ -7445,6 +7481,161 @@ function changeTripDays(delta) {
   multiDayCount = Math.max(1, Math.min(7, multiDayCount + delta));
   var el = document.getElementById('multi-day-count');
   if (el) el.textContent = multiDayCount;
+  updateDateDisplay();
+}
+
+// ---- 日历日期选择器 ----
+
+var _WEEKDAYS_CN = ['周日','周一','周二','周三','周四','周五','周六'];
+
+function updateDateDisplay() {
+  var fmt = function(d) { return (d.getMonth()+1) + '月' + d.getDate() + '日 ' + _WEEKDAYS_CN[d.getDay()]; };
+  var el = document.getElementById('multi-date-text');
+  if (!el) return;
+  // 都没选：显示今天
+  if (!multiStartDate && !multiEndDate) {
+    var today = new Date();
+    el.textContent = fmt(today) + '（点击选择）';
+    multiDayCount = 2;
+    var elCount = document.getElementById('multi-day-count');
+    if (elCount) elCount.textContent = multiDayCount;
+    return;
+  }
+  // 只选了 start
+  if (multiStartDate && !multiEndDate) {
+    el.textContent = fmt(multiStartDate) + ' → ？';
+    multiDayCount = 2;
+  } else if (!multiStartDate && multiEndDate) {
+    el.textContent = '？ → ' + fmt(multiEndDate);
+    multiDayCount = 2;
+  } else if (multiStartDate.getTime() === multiEndDate.getTime()) {
+    el.textContent = fmt(multiStartDate);
+    multiDayCount = 1;
+  } else {
+    var s = multiStartDate < multiEndDate ? multiStartDate : multiEndDate;
+    var e = multiStartDate < multiEndDate ? multiEndDate : multiStartDate;
+    el.textContent = fmt(s) + ' → ' + fmt(e);
+    multiDayCount = Math.round((e - s) / 86400000) + 1;
+    multiDayCount = Math.max(1, Math.min(7, multiDayCount));
+  }
+  var elCount = document.getElementById('multi-day-count');
+  if (elCount) elCount.textContent = multiDayCount;
+  if (multiStartDate) {
+    multiPickerYear = multiStartDate.getFullYear();
+    multiPickerMonth = multiStartDate.getMonth();
+  }
+  if (_multiDatePickerOpen) renderPickerGrid();
+}
+
+function openDatePicker() {
+  _multiDatePickerOpen = true;
+  var ref = multiStartDate || new Date();
+  multiPickerYear = ref.getFullYear();
+  multiPickerMonth = ref.getMonth();
+  var el = document.getElementById('multi-date-picker');
+  if (el) el.classList.remove('hidden');
+  var hint = document.getElementById('multi-picker-hint');
+  if (hint) hint.textContent = multiStartDate ? (multiEndDate ? '点击调整范围，点已选日期取消' : '请点击选择结束日期') : '请点击选择出发日期';
+  renderPickerGrid();
+}
+
+function closeDatePicker() {
+  _multiDatePickerOpen = false;
+  var el = document.getElementById('multi-date-picker');
+  if (el) el.classList.add('hidden');
+}
+
+function changePickerMonth(delta) {
+  multiPickerMonth += delta;
+  if (multiPickerMonth < 0) { multiPickerMonth = 11; multiPickerYear--; }
+  if (multiPickerMonth > 11) { multiPickerMonth = 0; multiPickerYear++; }
+  renderPickerGrid();
+}
+
+function selectPickerDate(day) {
+  var clicked = new Date(multiPickerYear, multiPickerMonth, day);
+  clicked.setHours(0,0,0,0);
+
+  // 点击已选中的 start → 取消 start，end 变为新 start
+  if (multiStartDate && multiStartDate.getTime() === clicked.getTime()) {
+    multiStartDate = multiEndDate ? new Date(multiEndDate) : null;
+    multiEndDate = null;
+    var h1 = document.getElementById('multi-picker-hint');
+    if (h1) h1.textContent = multiStartDate ? '请点击选择结束日期' : '请点击选择出发日期';
+    updateDateDisplay();
+    renderPickerGrid();
+    return;
+  }
+  // 点击已选中的 end → 取消 end
+  if (multiEndDate && multiEndDate.getTime() === clicked.getTime()) {
+    multiEndDate = null;
+    var h2 = document.getElementById('multi-picker-hint');
+    if (h2) h2.textContent = '请点击选择结束日期';
+    updateDateDisplay();
+    renderPickerGrid();
+    return;
+  }
+
+  // 没有 start 或已有完整选择 → 重新选 start
+  if (!multiStartDate || (multiStartDate && multiEndDate)) {
+    multiStartDate = clicked;
+    multiEndDate = null;
+    var h3 = document.getElementById('multi-picker-hint');
+    if (h3) h3.textContent = '请点击选择结束日期';
+    updateDateDisplay();
+    renderPickerGrid();
+    return;
+  }
+
+  // 只有 start，选 end
+  multiEndDate = clicked;
+  var h4 = document.getElementById('multi-picker-hint');
+  if (h4) h4.textContent = '已选范围！点击可调整或关闭';
+  updateDateDisplay();
+  renderPickerGrid();
+}
+
+function renderPickerGrid() {
+  var label = document.getElementById('multi-picker-month-label');
+  if (label) label.textContent = multiPickerYear + '年' + (multiPickerMonth+1) + '月';
+  var grid = document.getElementById('multi-picker-days-grid');
+  if (!grid) return;
+  var today = new Date(); today.setHours(0,0,0,0);
+
+  var selStart = multiStartDate ? new Date(multiStartDate) : null;
+  if (selStart) selStart.setHours(0,0,0,0);
+  var selEnd = multiEndDate ? new Date(multiEndDate) : null;
+  if (selEnd) selEnd.setHours(0,0,0,0);
+  // 确保 start <= end
+  if (selStart && selEnd && selStart > selEnd) {
+    var tmp = selStart; selStart = selEnd; selEnd = tmp;
+  }
+
+  var firstDay = new Date(multiPickerYear, multiPickerMonth, 1);
+  var startDow = firstDay.getDay();
+  var lastDay = new Date(multiPickerYear, multiPickerMonth+1, 0);
+  var html = '';
+  for (var i = 0; i < startDow; i++) { html += '<div></div>'; }
+  for (var d = 1; d <= lastDay.getDate(); d++) {
+    var cur = new Date(multiPickerYear, multiPickerMonth, d); cur.setHours(0,0,0,0);
+    var cls = 'w-8 h-8 rounded-full text-xs font-medium flex items-center justify-center transition';
+    var isStart = selStart && cur.getTime() === selStart.getTime();
+    var isEnd = selEnd && cur.getTime() === selEnd.getTime();
+    var inRange = selStart && selEnd && cur > selStart && cur < selEnd;
+
+    if (cur < today) {
+      cls += ' text-gray-300 cursor-default';
+    } else if (isStart || isEnd) {
+      cls += ' bg-yellow-400 text-black font-bold cursor-pointer hover:bg-yellow-500';
+    } else if (inRange) {
+      cls += ' bg-yellow-100 text-yellow-700 cursor-pointer hover:bg-yellow-200';
+    } else {
+      cls += ' text-gray-700 cursor-pointer hover:bg-gray-100';
+    }
+    var onclick = cur < today ? '' : 'onclick="selectPickerDate(' + d + ')"';
+    html += '<div class="' + cls + '" ' + onclick + '>' + d + '</div>';
+  }
+  grid.innerHTML = html;
 }
 
 function selectMultiTransport(mode, btn) {
@@ -7480,6 +7671,26 @@ function goBackToMultiSetupStep1() {
   if (searchResults) { searchResults.classList.add('hidden'); searchResults.innerHTML = ''; }
 }
 
+// ---- 天气概览渲染 ----
+
+function renderWeatherSummary(weather) {
+  var container = document.getElementById('multi-weather-summary');
+  var daysEl = document.getElementById('multi-weather-days');
+  if (!container || !daysEl) return;
+  container.classList.remove('hidden');
+  var _WEATHER_ICON = {'晴':'☀️','少云':'🌤️','多云':'⛅','阴':'☁️','小雨':'🌧️','阵雨':'🌦️','雷阵雨':'⛈️','中雨':'🌧️','大雨':'🌧️','暴雨':'⛈️','小雪':'🌨️','中雪':'❄️','大雪':'❄️','雾':'🌫️','霾':'🌫️'};
+  var html = '';
+  var keys = Object.keys(weather).sort();
+  for (var i = 0; i < keys.length; i++) {
+    var w = weather[keys[i]];
+    if (!w || w.confidence === 'low' && !w.day_weather) { html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-lg">❓</div><div class="text-[10px] text-gray-400">暂无</div></div>'; continue; }
+    var icon = _WEATHER_ICON[w.day_weather] || '🌤️';
+    var conf = w.confidence === 'low' ? ' ⚠️' : '';
+    html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-lg">' + icon + '</div><div class="text-[10px] text-gray-500">' + w.day_weather + ' ' + w.day_temp + '°C</div><div class="text-[9px] ' + (w.outdoor_suitable ? 'text-green-500' : 'text-orange-500') + '">' + (w.outdoor_suitable ? '宜户外' : '宜室内') + conf + '</div></div>';
+  }
+  daysEl.innerHTML = html;
+}
+
 // ---- 热门推荐 ----
 
 async function fetchPopularAttractions() {
@@ -7495,10 +7706,13 @@ async function fetchPopularAttractions() {
 
   try {
     console.log('[MultiDay] calling /api/set_trip_config...');
+    var actualStart = multiStartDate || new Date();
+    if (multiEndDate && multiStartDate && multiEndDate < multiStartDate) actualStart = multiEndDate;
+    var startDateStr = actualStart.getFullYear() + '-' + String(actualStart.getMonth()+1).padStart(2,'0') + '-' + String(actualStart.getDate()).padStart(2,'0');
     var res = await fetch(API_BASE + '/api/set_trip_config', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({days: multiDayCount, destination: multiDayDestination, transport: multiDayTransport})
+      body: JSON.stringify({days: multiDayCount, destination: multiDayDestination, transport: multiDayTransport, start_date: startDateStr})
     });
     console.log('[MultiDay] API response status:', res.status);
     var data = await res.json();
@@ -7509,6 +7723,10 @@ async function fetchPopularAttractions() {
     if (data.status === 'SUCCESS' && data.attractions && data.attractions.length > 0) {
       _multiCachedAttractions = data.attractions;
       renderAttractionsList(data.attractions);
+      // 渲染天气概览
+      if (data.weather && Object.keys(data.weather).length > 0) {
+        renderWeatherSummary(data.weather);
+      }
       multiDayMode = true;
       updateTripModeBtnUI();
       showCandidateBar();
@@ -7715,12 +7933,113 @@ async function executeSmartSchedule() {
       if (typeof switchBottomBarToTripMode === 'function') switchBottomBarToTripMode();
       hideCandidateBar();
       currentPhase = 'trip_active';
+
+      // LLM 审查：如果有问题需要用户回答
+      var review = data.review;
+      if (review && review.phase === 'schedule_review' && review.questions && review.questions.length > 0) {
+        _showScheduleReviewQuestion(data, review, 0);
+      }
     } else if (dc) {
       dc.innerHTML = '<div class="bg-red-50 rounded-3xl p-6 text-center"><p class="text-red-500 font-bold">排程失败</p><p class="text-sm">' + (data.message || '') + '</p></div>';
     }
   } catch (e) {
     console.error('[MultiDay] executeSmartSchedule ERROR:', e);
     if (dc) dc.innerHTML = '<div class="bg-red-50 rounded-3xl p-6 text-center"><p class="text-red-500 font-bold">请求失败</p></div>';
+  }
+}
+
+// ---- LLM 审查问答卡片 ----
+
+var _reviewQAIndex = 0;
+var _reviewAnswers = {};
+
+function _showScheduleReviewQuestion(scheduleData, review, qIndex) {
+  var questions = review.questions || [];
+  if (qIndex >= questions.length) {
+    // 所有问题回答完毕，提交
+    _submitReviewAnswers(scheduleData);
+    return;
+  }
+  _reviewQAIndex = qIndex;
+  var q = questions[qIndex];
+  var dc = document.getElementById('dynamic-content');
+  if (!dc) return;
+
+  // 在日卡片下方追加问答卡片
+  var qaHTML = '<div id="review-qa-card" class="bg-yellow-50 rounded-3xl border-2 border-yellow-300 p-5 mt-4 animate-fade-in">';
+  qaHTML += '<div class="flex items-center gap-2 mb-3"><span class="text-lg">🤔</span><span class="text-xs text-yellow-600 font-bold">智能审查 · ' + (qIndex+1) + '/' + questions.length + '</span></div>';
+  qaHTML += '<p class="text-sm font-bold text-gray-900 mb-3">' + q.question_text + '</p>';
+  qaHTML += '<div class="space-y-2">';
+  if (q.options && q.options.length > 0) {
+    for (var oi = 0; oi < q.options.length; oi++) {
+      qaHTML += '<button onclick="_answerReviewQuestion(\'' + q.question_id + '\', \'' + q.options[oi].replace(/'/g, "\\'") + '\')" class="w-full bg-white rounded-2xl px-4 py-3 text-sm font-medium text-gray-700 hover:bg-yellow-100 transition text-left border border-gray-100">' + q.options[oi] + '</button>';
+    }
+  }
+  // 自定义输入
+  qaHTML += '<div class="flex gap-2 mt-2"><input id="review-custom-answer" type="text" placeholder="或输入自定义回答..." class="flex-1 bg-white rounded-2xl px-3 py-2 text-sm border border-gray-200 outline-none focus:ring-2 focus:ring-yellow-400"><button onclick="_answerReviewCustom(\'' + q.question_id + '\')" class="bg-yellow-400 text-black font-bold text-sm px-4 py-2 rounded-2xl">发送</button></div>';
+  qaHTML += '</div></div>';
+
+  // 插入到日卡片后面
+  var container = document.getElementById('multi-day-container');
+  if (container) {
+    var existingQA = document.getElementById('review-qa-card');
+    if (existingQA) existingQA.remove();
+    container.insertAdjacentHTML('afterend', qaHTML);
+  } else {
+    dc.insertAdjacentHTML('beforeend', qaHTML);
+  }
+  if (typeof scrollToBottom === 'function') scrollToBottom();
+}
+
+function _answerReviewQuestion(qid, answer) {
+  _reviewAnswers[qid] = answer;
+  _showScheduleReviewQuestion(multiDayScheduleResult, multiDayScheduleResult.review, _reviewQAIndex + 1);
+}
+
+function _answerReviewCustom(qid) {
+  var input = document.getElementById('review-custom-answer');
+  var answer = input ? input.value.trim() : '';
+  if (!answer) return;
+  _reviewAnswers[qid] = answer;
+  _showScheduleReviewQuestion(multiDayScheduleResult, multiDayScheduleResult.review, _reviewQAIndex + 1);
+}
+
+async function _submitReviewAnswers(scheduleData) {
+  var dc = document.getElementById('dynamic-content');
+  var qaCard = document.getElementById('review-qa-card');
+  if (qaCard) qaCard.innerHTML = '<div class="text-center py-4"><p class="text-sm text-gray-500">🪄 正在应用你的选择...</p></div>';
+
+  try {
+    var res = await fetch(API_BASE + '/api/schedule_review_answer', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({answers: _reviewAnswers})
+    });
+    var data = await res.json();
+
+    if (qaCard) qaCard.remove();
+
+    if (data.phase === 'schedule_review' && data.questions && data.questions.length > 0) {
+      // 还有跟进问题
+      multiDayScheduleResult.days = data.days;
+      multiDayScheduleResult.review = {phase: 'schedule_review', questions: data.questions};
+      _reviewAnswers = {}; _reviewQAIndex = 0;
+      renderMultiDayCards(multiDayScheduleResult);
+      _showScheduleReviewQuestion(multiDayScheduleResult, multiDayScheduleResult.review, 0);
+    } else {
+      // 完成
+      multiDayScheduleResult.days = data.days;
+      renderMultiDayCards(multiDayScheduleResult);
+      var changes = data.changes || [];
+      if (changes.length > 0 && dc) {
+        var changeHTML = '<div class="bg-green-50 rounded-2xl p-3 mt-3 text-xs text-green-700">✅ 已优化：' + changes.join('；') + '</div>';
+        dc.insertAdjacentHTML('beforeend', changeHTML);
+      }
+      if (typeof scrollToBottom === 'function') scrollToBottom();
+    }
+  } catch (e) {
+    console.error('[ReviewQA] submit error:', e);
+    if (qaCard) qaCard.remove();
   }
 }
 
