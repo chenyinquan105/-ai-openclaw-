@@ -27,6 +27,11 @@ CATEGORY_MAP = {
     "餐饮": "restaurant", "餐厅": "restaurant", "吃饭": "restaurant", "饭店": "restaurant", "中餐": "restaurant",
     "日料": "japanese", "日本料理": "japanese", "日式": "japanese", "居酒屋": "japanese",
     "电影": "cinema", "电影院": "cinema", "看电影": "cinema",
+    # 多日行程新增品类
+    "酒店": "hotel", "住宿": "hotel", "宾馆": "hotel", "旅馆": "hotel", "民宿": "hotel",
+    "景点": "scenic", "旅游": "scenic", "景区": "scenic", "公园": "scenic", "游玩": "scenic",
+    "早餐": "breakfast", "早点": "breakfast", "早饭": "breakfast",
+    "购物": "shopping", "逛街": "shopping", "商场": "shopping", "买": "shopping",
 }
 
 CATEGORY_NAME_CN = {
@@ -39,6 +44,10 @@ CATEGORY_NAME_CN = {
     "laundry": "干洗",
     "hotpot": "火锅",
     "japanese": "日料",
+    "hotel": "酒店",
+    "scenic": "景点",
+    "breakfast": "早餐",
+    "shopping": "购物",
 }
 
 def find_best_match(query_name: str, poi_cache: dict) -> str:

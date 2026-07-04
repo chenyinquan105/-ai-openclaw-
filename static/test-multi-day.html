@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多日行程测试</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+<h1 class="text-2xl font-black mb-4">多日行程 API 测试</h1>
+
+<div class="space-y-4">
+  <!-- 设置面板 -->
+  <div class="bg-white rounded-3xl p-6 shadow-lg max-w-md">
+    <h2 class="text-lg font-bold mb-3">1. 行程设置</h2>
+    <div class="flex items-center gap-2 mb-3">
+      <span>天数:</span>
+      <button onclick="changeDays(-1)" class="w-8 h-8 rounded-full bg-gray-200">-</button>
+      <span id="days-val" class="font-bold w-6 text-center">2</span>
+      <button onclick="changeDays(1)" class="w-8 h-8 rounded-full bg-gray-200">+</button>
+    </div>
+    <div class="mb-3">
+      <span>城市:</span>
+      <input id="city-input" value="北京" class="border rounded px-2 py-1 ml-2">
+      <button onclick="testSetConfig()" class="bg-yellow-400 px-4 py-2 rounded-xl font-bold ml-2">获取Top20</button>
+    </div>
+    <div id="config-result" class="text-xs text-gray-500 mt-2"></div>
+  </div>
+
+  <!-- Top20 结果 -->
+  <div class="bg-white rounded-3xl p-6 shadow-lg max-w-md" id="top20-panel" style="display:none">
+    <h2 class="text-lg font-bold mb-3">2. 热门Top20 (<span id="top20-city"></span>)</h2>
+    <div id="top20-list" class="space-y-1 max-h-96 overflow-y-auto"></div>
+    <div class="mt-3 text-sm">已选: <span id="selected-count" class="font-bold">0</span> 家</div>
+  </div>
+
+  <!-- 搜索 -->
+  <div class="bg-white rounded-3xl p-6 shadow-lg max-w-md">
+    <h2 class="text-lg font-bold mb-3">3. 搜索地点</h2>
+    <div class="flex gap-2">
+      <input id="search-input" placeholder="输入地点名..." class="flex-1 border rounded-xl px-3 py-2">
+      <button onclick="testSearch()" class="bg-yellow-400 px-4 py-2 rounded-xl font-bold">搜索</button>
+    </div>
+    <div id="search-result" class="text-sm mt-2"></div>
+  </div>
+
+  <!-- 排程 -->
+  <div class="bg-white rounded-3xl p-6 shadow-lg max-w-md">
+    <h2 class="text-lg font-bold mb-3">4. 智能排程</h2>
+    <button onclick="testSchedule()" class="bg-gray-900 text-yellow-400 px-6 py-3 rounded-xl font-bold">🪄 排程</button>
+    <div id="schedule-result" class="text-sm mt-2"></div>
+  </div>
+</div>
+
+<div id="log-panel" class="fixed bottom-4 right-4 bg-gray-900 text-green-400 text-xs p-4 rounded-xl max-w-lg max-h-64 overflow-y-auto font-mono" style="white-space: pre-wrap;">
+  <div class="text-yellow-400 font-bold mb-1">📋 日志</div>
+  <div id="log-content"></div>
+</div>
+
+<script>
+var API = '';
+var _days = 2;
+var _city = '北京';
+var _cachedAttractions = [];
+var _candidatePool = [];
+
+function log(msg) {
+  var el = document.getElementById('log-content');
+  el.innerHTML += '> ' + msg + '\n';
+  el.scrollTop = el.scrollHeight;
+  console.log(msg);
+}
+
+function changeDays(d) { _days = Math.max(1, Math.min(7, _days + d)); document.getElementById('days-val').textContent = _days; }
+
+async function testSetConfig() {
+  _city = document.getElementById('city-input').value.trim() || '北京';
+  log('调用 /api/set_trip_config... city=' + _city + ' days=' + _days);
+
+  try {
+    var res = await fetch(API + '/api/set_trip_config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({days: _days, destination: _city, transport: '地铁优先'})
+    });
+    var data = await res.json();
+    log('响应: status=' + data.status + ' source=' + data.attractions_source + ' count=' + (data.attractions ? data.attractions.length : 0));
+
+    if (data.status === 'SUCCESS' && data.attractions) {
+      _cachedAttractions = data.attractions;
+      document.getElementById('config-result').textContent = '✅ 成功加载 ' + data.attractions.length + ' 条 (' + data.attractions_source + ')';
+
+      // Render Top20
+      var panel = document.getElementById('top20-panel');
+      panel.style.display = 'block';
+      document.getElementById('top20-city').textContent = _city;
+      var html = '';
+      for (var i = 0; i < data.attractions.length; i++) {
+        var a = data.attractions[i];
+        html += '<div class="flex justify-between items-center border-b py-2">';
+        html += '<div><span class="font-medium">' + a.name + '</span>';
+        html += ' <span class="text-xs text-gray-400">' + (a.category_cn || a.category) + ' ⭐' + (a.rating || '-') + '</span></div>';
+        html += '<button onclick="toggleShop(' + i + ')" id="shop-btn-' + i + '" class="w-8 h-8 rounded-full bg-gray-200 text-sm">+</button>';
+        html += '</div>';
+      }
+      document.getElementById('top20-list').innerHTML = html;
+      log('✅ Top20 渲染完成');
+    } else {
+      document.getElementById('config-result').textContent = '❌ 失败: ' + JSON.stringify(data);
+      log('❌ set_trip_config 失败: ' + JSON.stringify(data));
+    }
+  } catch(e) {
+    document.getElementById('config-result').textContent = '❌ 网络错误: ' + e.message;
+    log('❌ 网络错误: ' + e.message);
+  }
+}
+
+function toggleShop(idx) {
+  var shop = _cachedAttractions[idx];
+  var btn = document.getElementById('shop-btn-' + idx);
+  var found = -1;
+  for (var i = 0; i < _candidatePool.length; i++) {
+    if (_candidatePool[i].shop_id === shop.shop_id) { found = i; break; }
+  }
+  if (found >= 0) {
+    _candidatePool.splice(found, 1);
+    btn.className = 'w-8 h-8 rounded-full bg-gray-200 text-sm';
+    btn.textContent = '+';
+  } else {
+    _candidatePool.push(shop);
+    btn.className = 'w-8 h-8 rounded-full bg-yellow-400 text-sm font-bold';
+    btn.textContent = '✓';
+  }
+  document.getElementById('selected-count').textContent = _candidatePool.length;
+  log('候选池: ' + _candidatePool.length + ' 家');
+}
+
+async function testSearch() {
+  var kw = document.getElementById('search-input').value.trim();
+  if (!kw) { log('请输入搜索关键词'); return; }
+  log('搜索: ' + kw);
+
+  try {
+    var res = await fetch(API + '/api/search_attraction', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({keywords: kw, city: _city})
+    });
+    var data = await res.json();
+    log('搜索结果: status=' + data.status + ' count=' + (data.results ? data.results.length : 0));
+
+    var el = document.getElementById('search-result');
+    if (data.status === 'SUCCESS' && data.results) {
+      var html = '<div class="font-medium text-green-600 mb-1">找到 ' + data.results.length + ' 个结果:</div>';
+      for (var i = 0; i < data.results.length; i++) {
+        var s = data.results[i];
+        html += '<div class="text-sm py-1 border-b">' + s.name + ' <span class="text-xs text-gray-400">⭐' + (s.rating || '-') + ' ' + (s.address || '') + '</span></div>';
+      }
+      el.innerHTML = html;
+    } else {
+      el.innerHTML = '<div class="text-red-500">未找到结果</div>';
+    }
+  } catch(e) {
+    document.getElementById('search-result').innerHTML = '<div class="text-red-500">错误: ' + e.message + '</div>';
+    log('❌ 搜索错误: ' + e.message);
+  }
+}
+
+async function testSchedule() {
+  if (_candidatePool.length === 0) {
+    // 自动选前5个
+    for (var i = 0; i < Math.min(5, _cachedAttractions.length); i++) {
+      _candidatePool.push(_cachedAttractions[i]);
+    }
+    log('自动选择前 ' + _candidatePool.length + ' 个');
+  }
+  log('调用 /api/smart_schedule...');
+
+  try {
+    var res = await fetch(API + '/api/smart_schedule', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({start_time: '09:00'})
+    });
+    var data = await res.json();
+    log('排程: status=' + data.status + ' days=' + (data.days ? data.days.length : 0));
+
+    var el = document.getElementById('schedule-result');
+    if (data.status === 'SUCCESS' && data.days) {
+      var html = '';
+      for (var d = 0; d < data.days.length; d++) {
+        var day = data.days[d];
+        html += '<div class="bg-gray-50 rounded-xl p-3 mb-2"><div class="font-bold">' + day.label + ' ⏱' + Math.round(day.total_duration_minutes/60) + 'h</div>';
+        if (day.pairs) {
+          for (var p = 0; p < day.pairs.length; p++) {
+            html += '<div class="text-sm ml-4">📍 ' + day.pairs[p][2] + '</div>';
+          }
+        }
+        html += '</div>';
+      }
+      el.innerHTML = html;
+    } else {
+      el.innerHTML = '<div class="text-red-500">排程失败: ' + (data.message || '') + '</div>';
+    }
+  } catch(e) {
+    document.getElementById('schedule-result').innerHTML = '<div class="text-red-500">错误: ' + e.message + '</div>';
+    log('❌ 排程错误: ' + e.message);
+  }
+}
+
+// 页面加载时自动测试一次
+log('🚀 测试页就绪，API_BASE="' + API + '"');
+log('点击"获取Top20"按钮开始测试');
+</script>
+</body>
+</html>

@@ -32,6 +32,7 @@ from skills.task_reminder_skill import task_reminder_skill as reminder_skill
 from skills.route_planner.route_planner import plan_route as _skill_route_planner
 from skills.queue_monitor.queue_monitor import handle as _skill_queue_monitor
 from skills.weather_extractor.weather_extractor import extract_weather as _skill_weather_extractor
+from skills.multi_day_scheduler.multi_day_scheduler import solve_multi_day as _skill_multi_day_schedule
 
 app = Flask(__name__, static_folder=os.path.join(base_dir, "static"))
 CORS(app)
@@ -345,6 +346,16 @@ session_state = {
     "time_desc": "",
     "has_time_from_input": False,
     "clock_enabled": False,
+    # === 多日行程扩展字段 ===
+    "trip_mode": "single",           # "single" | "multi"
+    "trip_days": 1,                  # 计划天数 (1-7)
+    "trip_destination": "北京",      # 目的地城市
+    "trip_transport": "步行优先",    # 全局交通偏好
+    "trip_checkin_lat": None,        # 酒店纬度
+    "trip_checkin_lng": None,        # 酒店经度
+    "active_day_index": 0,           # 当前查看/编辑的天
+    "days": [],                      # 每天独立数据 [{day_index, label, selected_pairs, task_list, spatial_matrix, schedule_result, chat_history, transport_override}, ...]
+    "candidate_pool": [],            # 多日模式下未分配的POI池 [shop_info_dict, ...]
 }
 
 
@@ -380,14 +391,67 @@ def _reset_session():
         "anomaly_intent_triggers": [],
         "pitfall_intent_triggers": [],
         "pitfall_global_reminders": [],
+        # === 多日行程扩展字段 ===
+        "trip_mode": "single",
+        "trip_days": 1,
+        "trip_destination": "北京",
+        "trip_transport": "步行优先",
+        "trip_checkin_lat": None,
+        "trip_checkin_lng": None,
+        "active_day_index": 0,
+        "days": [],
+        "candidate_pool": [],
     }
     # 清空虚拟时钟 session — gunicorn 模式下跳过（time_master 线程锁不兼容）
     # 原代码: tm = time_master.get_master(); tm.remove_session(_CLOCK_SESSION_ID)
 
 
+def _apairs():
+    """返回当前活跃的 selected_pairs，自动适配单日/多日模式。
+    单日模式 → 返回顶层 selected_pairs（向后兼容）
+    多日模式 → 返回当前活跃天的 selected_pairs
+    """
+    if session_state.get("trip_mode") == "multi":
+        idx = session_state.get("active_day_index", 0)
+        days = session_state.get("days", [])
+        if 0 <= idx < len(days):
+            return days[idx].get("selected_pairs", [])
+        return []
+    return session_state.get("selected_pairs", [])
+
+
+def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
+                             transport, start_time):
+    """调用多日排程引擎，将候选池中的店铺分配到每天。"""
+    # 转换候选池格式：确保有 lat/lng
+    shops = []
+    for item in candidate_pool:
+        shop = dict(item)
+        coord = shop.get("coord", "")
+        if "," in str(coord):
+            parts = str(coord).split(",")
+            try:
+                shop["lat"] = float(parts[0].strip())
+                shop["lng"] = float(parts[1].strip())
+            except (ValueError, TypeError):
+                shop["lat"] = float(checkin_lat)
+                shop["lng"] = float(checkin_lng)
+        else:
+            shop["lat"] = float(shop.get("lat", checkin_lat))
+            shop["lng"] = float(shop.get("lng", checkin_lng))
+        shops.append(shop)
+
+    return _skill_multi_day_schedule(
+        shops, trip_days,
+        float(checkin_lat), float(checkin_lng),
+        transport, start_time
+    )
+
+
 def _duration(cat: str) -> int:
     return {"hair": 60, "pet": 30, "cafe": 20,
-            "restaurant": 60, "gym": 60, "cinema": 120, "laundry": 30}.get(cat, 45)
+            "restaurant": 60, "gym": 60, "cinema": 120, "laundry": 30,
+            "hotel": 480, "scenic": 180, "breakfast": 45, "shopping": 90}.get(cat, 45)
 
 
 def _try_fast_category_match(user_text: str) -> list:
@@ -429,6 +493,28 @@ def _try_fast_category_match(user_text: str) -> list:
         "咖啡": "cafe", "奶茶": "cafe", "茶饮": "cafe", "水吧": "cafe",
         "星巴克": "cafe", "瑞幸": "cafe", "喜茶": "cafe", "饮品": "cafe",
         "喝东西": "cafe", "下午茶": "cafe", "喝咖啡": "cafe",
+        # ── 酒店/住宿 (hotel) ──
+        "酒店": "hotel", "住宿": "hotel", "宾馆": "hotel", "旅馆": "hotel",
+        "如家": "hotel", "汉庭": "hotel", "全季": "hotel", "民宿": "hotel",
+        "住哪": "hotel", "住": "hotel", "过夜": "hotel", "入住": "hotel",
+        "青旅": "hotel", "客栈": "hotel",
+        # ── 景点/旅游 (scenic) ──
+        "景点": "scenic", "旅游": "scenic", "景区": "scenic", "公园": "scenic",
+        "博物院": "scenic", "博物馆": "scenic", "故宫": "scenic", "颐和园": "scenic",
+        "天坛": "scenic", "长城": "scenic", "动物园": "scenic", "植物园": "scenic",
+        "寺庙": "scenic", "教堂": "scenic", "古镇": "scenic", "游乐园": "scenic",
+        "爬山": "scenic", "登山": "scenic", "名胜": "scenic", "古迹": "scenic",
+        "西湖": "scenic", "外滩": "scenic", "观光": "scenic", "游玩": "scenic",
+        "风景": "scenic", "园林": "scenic", "广场": "scenic", "步行街": "scenic",
+        # ── 早餐 (breakfast) ──
+        "早餐": "breakfast", "早点": "breakfast", "早饭": "breakfast",
+        "吃早饭": "breakfast", "吃早餐": "breakfast", "早茶": "breakfast",
+        "豆浆": "breakfast", "油条": "breakfast", "包子铺": "breakfast",
+        # ── 购物 (shopping) ──
+        "购物": "shopping", "逛街": "shopping", "商场": "shopping",
+        "百货": "shopping", "购物中心": "shopping", "买衣服": "shopping",
+        "逛街": "shopping", "奥特莱斯": "shopping", "免税店": "shopping",
+        "特产": "shopping", "纪念品": "shopping", "伴手礼": "shopping",
         # ── 其他 ──
         "干洗": "laundry", "洗衣服": "laundry", "洗衣": "laundry",
         "健身": "gym", "瑜伽": "gym", "游泳": "gym", "锻炼": "gym",
@@ -969,6 +1055,220 @@ def api_set_time():
 # ======================================================================
 # P0-3 + P0-4: 多轮对话路线编辑 + 行中动态修改目的地
 # ======================================================================
+
+def _shop_name_matches(candidate_name, keyword):
+    """精确 > 前缀 > 子串（仅当关键词 >= 3 字时启用子串匹配，防止短词误匹配）"""
+    cn = candidate_name.lower()
+    kw = keyword.lower()
+    if cn == kw:
+        return True
+    if cn.startswith(kw):
+        return True
+    if len(kw) >= 3 and kw in cn:
+        return True
+    return False
+
+
+def _looks_like_swap_intent(text):
+    """检测文本是否包含换店意图（用于 clarify 阶段判断是否应返回 clarify_swap_target）"""
+    return bool(
+        re.search(r'换.{0,2}(?:店|家|个|一家)', text) or
+        '有没有其他' in text or '别的' in text or '其他店' in text or
+        re.search(r'(?:这家|这个|这家店|不要这个|不喜欢这个|不想要这个)', text)
+    )
+
+
+def _resolve_swap_target(selected_pairs, target_name=None, target_category=None, target_shop_id=None):
+    """解析换店目标：按 shop_id > name > category 优先级匹配。
+    返回 (matched_stop, unresolved_pairs) 或 (None, selected_pairs)。
+    matched_stop 是 (category, shop_id, shop_name) 元组。
+    """
+    if target_shop_id:
+        for p in selected_pairs:
+            if p[1] == target_shop_id:
+                remaining = [x for x in selected_pairs if x[1] != target_shop_id]
+                return p, remaining
+        return None, selected_pairs
+
+    if target_name:
+        for p in selected_pairs:
+            if _shop_name_matches(p[2], target_name):
+                remaining = [x for x in selected_pairs if x[1] != p[1]]
+                return p, remaining
+        return None, selected_pairs
+
+    if target_category:
+        for p in selected_pairs:
+            if p[0] == target_category:
+                remaining = [x for x in selected_pairs if x[1] != p[1]]
+                return p, remaining
+        return None, selected_pairs
+
+    # 无目标 + 仅1个 stop → 直接用
+    if len(selected_pairs) == 1:
+        return selected_pairs[0], []
+
+    # 无目标 + 多个 stop → 需要追问
+    return None, selected_pairs
+
+
+def _fallback_parse_edit(edit_text, selected_pairs=None):
+    """规则兜底：当 LLM 解析失败时，用关键词匹配推断用户意图。
+    返回 {"action": ..., "params": {...}}，无法判定时返回 clarify。
+    """
+    text = edit_text.strip()
+
+    # ── 品类关键词映射（置顶，供 swap + add_stop 共用） ──
+    _CAT_KEYWORDS = {
+        '理发': 'hair', '剪头': 'hair', '美发': 'hair',
+        '咖啡': 'cafe', '奶茶': 'cafe', '茶': 'cafe', '喝杯': 'cafe',
+        '宠物': 'pet', '狗': 'pet', '猫': 'pet',
+        '健身': 'gym', '运动': 'gym',
+        '火锅': 'hotpot',
+        '日料': 'japanese', '日式': 'japanese', '寿司': 'japanese',
+        '电影': 'cinema', '看片': 'cinema',
+        '干洗': 'laundry', '洗衣': 'laundry',
+        '餐饮': 'restaurant', '吃饭': 'restaurant', '美食': 'restaurant',
+    }
+
+    # ── 跨品类替换（"把火锅改成理发"）──
+    # 优先级最高：在换店检测之前，因为"改成"语义更强
+    m_replace = re.search(r'(?:把|将)\s*([^\s，。！？、…]{1,8}?)\s*(?:改成|换成|换成去|改为|换为|变成)\s*([^\s，。！？、…]{1,8})', text)
+    if not m_replace:
+        # 无"把/将"前缀："火锅换成理发"（要求 old 部分是品类关键词，降低误匹配）
+        m_replace = re.search(r'(?:把|将)?\s*([^\s，。！？、…]{1,8}?)\s*(?:改成|换成|换成去|改为|换为|变成)\s*([^\s，。！？、…]{1,8})', text)
+    if not m_replace:
+        # 反向模式："不去X了(改为)去Y"
+        m_replace = re.search(r'(?:不去|不想去|不要)\s*([^\s，。！？、…]{1,8}?)(?:了|啦)?\s*(?:改成|换成|去|换)\s*([^\s，。！？、…]{1,8})', text)
+    if m_replace:
+        old_part = m_replace.group(1).strip()
+        new_part = m_replace.group(2).strip()
+        # 识别 old_part 的品类（用于 remove）
+        old_cat = _CAT_KEYWORDS.get(old_part, "")
+        # 识别 new_part 的品类和关键词
+        new_cat = _CAT_KEYWORDS.get(new_part, "")
+        new_kw = new_part
+        return {"action": "replace_stop", "params": {
+            "remove_name": old_part,
+            "remove_category": old_cat,
+            "add_keywords": new_kw,
+            "add_category": new_cat
+        }}
+
+    # ── 换店 ──
+    # 先尝试从文本中提取目标（品类或店名），裸"换一家"不在此返回，留给 LLM 解析
+    swap_target_category = None
+    swap_target_name = None
+
+    # 品类提取："换一家咖啡" / "换个理发"
+    for kw, cat in _CAT_KEYWORDS.items():
+        if kw in text:
+            swap_target_category = cat
+            break
+
+    # 店名提取："把海底捞换了" / "换掉XX" / "不想去XX了" / "不要XX" / "别去XX"
+    m_name = re.search(r'(?:换掉|换了|不想去|不要|别去|去掉)\s*([^\s，。！？、…]{2,10})', text)
+    if m_name:
+        swap_target_name = m_name.group(1).strip()
+    # "换一家XX" / "换个XX" → XX 可能是店名
+    m_name2 = re.search(r'换.{0,2}(?:店|家|个|一家)\s*([^\s，。！？、…]{2,10})', text)
+    if m_name2 and not swap_target_name:
+        candidate = m_name2.group(1).strip()
+        # 排除掉本身就是品类词的情况（如"换一家咖啡"→"咖啡"是品类不是店名）
+        if candidate not in _CAT_KEYWORDS:
+            swap_target_name = candidate
+
+    # 换店模式分类：
+    # - explicit: "换一家"、"换个别的"、"有没有其他" → L1 可处理，handler 负责解析目标
+    # - pronoun: "这家不要"、"不喜欢这个" → 需要 LLM 对话上下文来消解指代
+    is_explicit_swap = bool(
+        re.search(r'换.{0,2}(?:店|家|个|一家)', text) or
+        '有没有其他' in text or '别的' in text or '其他店' in text
+    )
+    is_pronoun_swap = bool(
+        re.search(r'(?:这家|这个|这家店|不要这个|不喜欢这个|不想要这个)', text)
+    )
+
+    if is_explicit_swap:
+        if swap_target_category or swap_target_name:
+            # 有明确目标 → 直接返回带 target 的 swap_current，跳过 LLM
+            params = {}
+            if swap_target_category:
+                params["target_category"] = swap_target_category
+            if swap_target_name:
+                params["target_name"] = swap_target_name
+            return {"action": "swap_current", "params": params}
+        # 裸"换一家"无目标 → 仍返回 swap_current，但 params 为空
+        # handler 层 _resolve_swap_target 会处理：
+        #   1个stop → 直接用 → 搜候选 → swap_selection
+        #   多个stop → 返回 clarify_swap_target 追问
+        return {"action": "swap_current", "params": {}}
+
+    if is_pronoun_swap:
+        # 代词指代 → 不在此返回（pass），让后续逻辑落入 clarify
+        # L2 LLM 利用对话上下文解析"这家"指的是哪个 stop
+        # 如果 LLM 也无法确定 → L3 clarify → handler 判断后返回 clarify_swap_target
+        pass
+
+    # ── 放弃修改 ──
+    if re.search(r'还是|算了|不换|就这个|就这样|不改|不换|不用了|就它吧|就这家|听你的|不折腾了', text):
+        return {"action": "no_change", "params": {}}
+
+    # ── 删除 ──
+    m = re.search(r'(?:不去|删掉?|取消|去掉|移除)\s*(.{1,10}?)\s*(?:了|吧|吗|$)', text)
+    if m:
+        name = m.group(1).strip()
+        # 拒绝空 name、单字 name、纯标点/空白 name
+        if name and len(name) >= 2 and not re.match(r'^[\s，。！？、…]+$', name):
+            return {"action": "remove_stop", "params": {"name": name}}
+
+    # ── 交通方式 ──
+    if '打车' in text or '出租车' in text:
+        return {"action": "change_transport", "params": {"mode": "TAXI"}}
+    if '地铁' in text or '公交' in text or '坐公交' in text or '搭公交' in text or '坐地铁' in text or '搭地铁' in text:
+        return {"action": "change_transport", "params": {"mode": "METRO"}}
+    if '走路' in text or '步行' in text:
+        return {"action": "change_transport", "params": {"mode": "WALK"}}
+    if '开车' in text or '驾车' in text:
+        return {"action": "change_transport", "params": {"mode": "DRIVE"}}
+    if '骑单车' in text or '骑行' in text or '骑车' in text:
+        return {"action": "change_transport", "params": {"mode": "WALK"}}  # 非机动车最近似步行模式
+
+    # ── 时间 ──
+    m = re.search(r'(?:推迟|延迟|推后).{0,3}?(\d+)\s*(?:分钟|分)', text)
+    if m:
+        return {"action": "change_time", "params": {"time": f"+{m.group(1)}"}}
+    m = re.search(r'(?:提前|提早).{0,3}?(\d+)\s*(?:分钟|分)', text)
+    if m:
+        return {"action": "change_time", "params": {"time": f"-{m.group(1)}"}}
+    m = re.search(r'(?:改成|改到|调到|换到).{0,3}?(\d{1,2}:\d{2})', text)
+    if m:
+        t = m.group(1)
+        parts = t.split(':')
+        if 0 <= int(parts[0]) <= 23 and 0 <= int(parts[1]) <= 59:
+            return {"action": "change_time", "params": {"time": t}}
+
+    # ── 新增（品类关键词，复用函数顶部的 _CAT_KEYWORDS） ──
+    for kw, cat in _CAT_KEYWORDS.items():
+        if kw in text:
+            return {"action": "add_stop", "params": {"keywords": kw, "category": cat, "shop_name": ""}}
+
+    # ── 路线 ──
+    if '高速' in text or '走近路' in text or '换路线' in text or '换条路' in text:
+        pref = 'avoid_highway' if '不走高速' in text or '避免高速' in text else 'fast'
+        return {"action": "reroute", "params": {"preference": pref}}
+
+    # ── 包含"去"字可能是新增（但排除代词停用词） ──
+    _ADD_STOP_STOPWORDS = {'这家', '那家', '那里', '这里', '一下', '一个', '几个', '一些'}
+    m = re.search(r'(?:去|加|添加|加入|再来一个)\s*([^\s，。！？、…]{1,8})', text)
+    if m:
+        kw = m.group(1).strip()
+        if kw and kw not in _ADD_STOP_STOPWORDS and len(kw) >= 2:
+            return {"action": "add_stop", "params": {"keywords": kw, "category": "", "shop_name": ""}}
+
+    # ── 默认：追问 ──
+    return {"action": "clarify", "params": {"message": "抱歉，我没太理解您的意思，能再说一遍吗？"}}
+
 @app.route("/api/edit_trip", methods=["POST"])
 def api_edit_trip():
     """行程编辑端点：用户用自然语言微调已有行程。
@@ -977,7 +1277,9 @@ def api_edit_trip():
     global agent, session_state
     data = request.get_json(silent=True) or {}
     edit_text = (data.get("text") or "").strip()
-    if not edit_text:
+    # 前端直接传的目标店铺 ID（用户点击了 clarify_swap_target 选择器）
+    swap_target_shop_id = (data.get("swap_target_shop_id") or "").strip()
+    if not edit_text and not swap_target_shop_id:
         return jsonify({"error": "请输入编辑指令"}), 400
 
     if session_state.get("phase") != "done" and not session_state.get("selected_pairs"):
@@ -988,50 +1290,339 @@ def api_edit_trip():
     for cat, sid, sname in session_state.get("selected_pairs", []):
         current_plan_desc += f"- {sname} ({cat})\n"
 
-    edit_prompt = f"""当前行程：
-{current_plan_desc}
-用户编辑指令：{edit_text}
+    # 对话历史（前端传入，用于指代消解）
+    context = (data.get("context") or "").strip()
 
-请判断用户意图，返回 JSON（只返回 JSON，不要其他文字）：
-{{
-  "action": "add_stop" | "remove_stop" | "reroute" | "change_time" | "change_transport",
-  "params": {{}}
-}}
+    # 用户 prompt：仅包含当前上下文，规则和示例已在 system prompt 中
+    edit_prompt = f"""## 对话历史（用于理解指代）
+{context if context else '（无历史）'}
 
-意图说明：
-- add_stop: 新增目的地。params: {{keywords: 搜索关键词, category: 品类或空}}
-- remove_stop: 删除目的地。params: {{name: 要删的店名关键词}}
-- reroute: 换路线。params: {{preference: fast|short|scenic|avoid_highway}}
-- change_time: 调整时间。params: {{time: HH:MM 或 now 或 +30}}
-- change_transport: 换交通方式。params: {{mode: WALK|TAXI|METRO|DRIVE}}"""
+## 当前行程
+{current_plan_desc if current_plan_desc else '（行程为空，只能执行 add_stop 操作）'}
+
+## 用户编辑指令
+{edit_text}
+
+请返回 JSON（只返回 JSON，不要其他文字）："""
 
     edit_messages = [
-        {"role": "system", "content": "你是行程编辑助手，解析用户编辑意图。只返回 JSON。"},
+        {"role": "system", "content": """你是行程编辑助手，负责将用户的自然语言编辑指令解析为精确的 JSON 操作。
+
+## 规则总览（10条）
+1. swap_current: 用户想替换当前行程中的某个目的地（同品类换店）。必须从用户文本和对话上下文中解析出具体目标：
+   - 用户说"换一家咖啡"→ target_category: "cafe"
+   - 用户说"把海底捞换了"→ target_name: "海底捞"
+   - 用户说"这家不要"且上文AI推荐了某店→ target_name: 那家店名
+   - 用户说"换一家"且行程只有1个目的地→ target_category: 那个目的地的品类
+   - 用户说"换一家"且行程有多个目的地→ 必须返回 clarify！追问具体换哪个
+   params: {target_category: 品类代码或空, target_name: 店名或空}
+   ⚠️ 无法确定目标且有多个目的地时，必须返回 clarify！
+2. no_change: 用户放弃修改（"还是去这家吧"、"算了不换了"、"就这个吧"）
+3. clarify: 用户意图模糊，无法确定具体操作——返回追问消息。模糊输入如"嗯..."、"那个..."、"emmm"都应返回 clarify
+4. replace_stop: 用户想把某个目的地换成不同品类（跨品类替换）。⚠️ 与 swap_current 的区别：replace_stop 是新老品类不同！如"把火锅改成理发"=跨品类替换，不是同品类换店。
+   params: {remove_name: 要去掉的目的地名称或品类, remove_category: 要去掉的品类代码或空, add_keywords: 新品类搜索关键词, add_category: 新品类代码或空}
+   示例："把火锅改成理发"→ remove_name="火锅", add_keywords="理发", add_category="hair"
+5. add_stop: 新增目的地。params: {keywords: 搜索关键词, category: 品类代码或空字符串, shop_name: 用户明确提到的店名，没提则为空字符串}
+   品类代码: hair=理发, pet=宠物, cafe=咖啡, gym=健身, restaurant=餐饮, cinema=电影, laundry=干洗, hotpot=火锅, japanese=日料
+6. remove_stop: 删除目的地。params: {name: 要删的店名关键词，至少2个字}
+7. change_time: 调整时间。params: {time: HH:MM 或 "now" 或 "+30"（推迟30分钟）或 "-15"（提前15分钟）}
+8. change_transport: 切换交通方式。params: {mode: WALK|TAXI|METRO|DRIVE}
+9. reroute: 修改路线偏好。params: {preference: fast|short|scenic|avoid_highway}
+10. 格式要求：只返回 JSON，不要任何解释文字、markdown 代码块标记或前后缀
+
+## 指代消解规则
+- 利用对话历史理解"这家"、"那个"、"它"等代词
+- 如果对话历史中 AI 刚推荐了某家店，用户说"这家不要"或"换一家" → swap_current
+- 如果对话历史中 AI 刚推荐了某家店，用户说"还是这家吧"或"就它了" → no_change
+- 用户说"那还是去这家吧"是对之前换店意图的撤销 → no_change
+
+## 示例（10-shot）
+
+用户: "换一家吧不想去这家"
+→ {"action": "swap_current", "params": {}}
+
+// 说明：上方示例中用户未指定具体目标，但若行程仅1个目的地则可直接 swap；
+// 若行程有多个目的地，LLM 应返回 clarify 追问"您想换哪一个？"
+
+用户: "换一家咖啡"
+→ {"action": "swap_current", "params": {"target_category": "cafe"}}
+
+用户: "把海底捞换了"
+→ {"action": "swap_current", "params": {"target_name": "海底捞"}}
+
+用户: "那还是去这家吧"
+→ {"action": "no_change", "params": {}}
+
+用户: "帮我加一个理发"
+→ {"action": "add_stop", "params": {"keywords": "理发", "category": "hair", "shop_name": ""}}
+
+用户: "去海底捞吃饭"
+→ {"action": "add_stop", "params": {"keywords": "海底捞", "category": "restaurant", "shop_name": "海底捞"}}
+
+用户: "不去一楼一饭店了"
+→ {"action": "remove_stop", "params": {"name": "一楼一饭店"}}
+
+用户: "打车去吧"
+→ {"action": "change_transport", "params": {"mode": "TAXI"}}
+
+用户: "推迟30分钟出发"
+→ {"action": "change_time", "params": {"time": "+30"}}
+
+用户: "换一条不走高速的路"
+→ {"action": "reroute", "params": {"preference": "avoid_highway"}}
+
+对话历史: AI: "为您找到以下可替换的餐饮店铺" / 用户: "算了还是原来的吧"
+→ {"action": "no_change", "params": {}}
+
+对话历史: AI: "已为您推荐星巴克" / 用户: "这家不要，换一个"
+→ {"action": "swap_current", "params": {"target_name": "星巴克"}}
+
+当前行程有[理发:东田造型, 咖啡:星巴克, 餐饮:海底捞] / 用户: "换一家吧"
+→ {"action": "clarify", "params": {"message": "您想换哪一个目的地？目前行程中有理发（东田造型）、咖啡（星巴克）和餐饮（海底捞）。"}}
+
+当前行程有[咖啡:星巴克] / 用户: "换一家吧"
+→ {"action": "swap_current", "params": {"target_category": "cafe"}}
+
+当前行程有[火锅:海底捞] / 用户: "把火锅改成理发"
+→ {"action": "replace_stop", "params": {"remove_name": "火锅", "remove_category": "hotpot", "add_keywords": "理发", "add_category": "hair"}}
+
+当前行程有[咖啡:星巴克] / 用户: "不想喝咖啡了改成奶茶"
+→ {"action": "replace_stop", "params": {"remove_name": "咖啡", "remove_category": "cafe", "add_keywords": "奶茶", "add_category": "cafe"}}
+
+只返回 JSON，不要其他文字。"""},
         {"role": "user", "content": edit_prompt}
     ]
-    try:
-        edit_resp = agent._call_llm(edit_messages, max_tokens=500)
-        raw = (edit_resp.content or "").strip()
-        # 提取 JSON（可能被 markdown 包裹）
-        json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', raw, re.DOTALL)
-        if not json_match:
-            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if json_match:
-            intent = json.loads(json_match.group(0))
-        else:
-            intent = {"action": "reroute", "params": {"preference": "fast"}}
-    except Exception as e:
-        print(f"[edit_trip] LLM 解析失败: {e}, raw={raw if 'raw' in dir() else 'N/A'}")
-        return jsonify({"error": f"无法理解编辑指令: {str(e)}"}), 400
 
-    action = intent.get("action", "reroute")
+    # ── 三层兜底：L1 规则 → L2 LLM → L3 默认 clarify ──
+    ALLOWED_ACTIONS = {
+        "add_stop", "remove_stop", "reroute", "change_time",
+        "change_transport", "swap_current", "no_change", "clarify", "replace_stop"
+    }
+
+    # L1: 规则优先解析（高置信度模式直接用规则，避免 LLM 误判）
+    intent = _fallback_parse_edit(edit_text, session_state.get("selected_pairs", []))
+    rule_action = intent.get("action", "clarify")
+
+    if rule_action != "clarify":
+        print(f"[edit_trip] L1-rule 命中: {rule_action}")
+    else:
+        # L2: LLM 解析（规则无法判定时才调用）
+        print(f"[edit_trip] L1-rule 未匹配，进入 L2-LLM 解析: {edit_text}")
+        llm_success = False
+        try:
+            edit_resp = agent._call_llm(edit_messages, max_tokens=500)
+            raw = (edit_resp.content or "").strip()
+            # 严格 JSON 提取：优先找含 action 键的紧凑对象
+            json_match = re.search(r'\{[^{}]*"action"\s*:\s*"[a-z_]+"[^{}]*\}', raw, re.DOTALL)
+            if not json_match:
+                json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if json_match:
+                llm_intent = json.loads(json_match.group(0))
+                action_val = llm_intent.get("action", "")
+                # L3: 验证 LLM 输出的 action 是否合法
+                if action_val in ALLOWED_ACTIONS:
+                    intent = llm_intent
+                    llm_success = True
+                    print(f"[edit_trip] L2-LLM 解析成功: action={action_val}")
+                else:
+                    print(f"[edit_trip] L3-validate 拒绝无效 action: '{action_val}', 回退为 clarify")
+            else:
+                print(f"[edit_trip] L2-LLM 返回无法解析的 JSON, 回退为 clarify")
+        except json.JSONDecodeError as e:
+            print(f"[edit_trip] L2-LLM JSON 解析失败: {e}, 回退为 clarify")
+        except Exception as e:
+            print(f"[edit_trip] L2-LLM 调用异常: {e}, 回退为 clarify")
+        # L3 fallback: intent 保持为 _fallback_parse_edit 返回的 clarify
+        if not llm_success:
+            print(f"[edit_trip] L3-fallback: 最终回退为 clarify")
+
+    action = intent.get("action", "clarify")
     params = intent.get("params", {})
 
+    # 如果前端传了 swap_target_shop_id（用户点击了目标选择器），注入到 params
+    if swap_target_shop_id and action == "swap_current":
+        params["target_shop_id"] = swap_target_shop_id
+
     # ── 执行编辑 ──
+
+    # 无需重跑排程的 action
+    if action == "no_change":
+        return jsonify({"phase": "no_change", "message": "好的，行程保持不变 ✅"})
+
+    if action == "clarify":
+        # 如果用户输入看起来像换店意图但无法确定目标，返回 clarify_swap_target
+        if _looks_like_swap_intent(edit_text):
+            pairs = session_state.get("selected_pairs", [])
+            if len(pairs) == 1:
+                # 只有1个 stop → 不追问，直接搜索同品类候选
+                cat, sid, sname = pairs[0]
+                try:
+                    swap_res = backend.skill_poi.search_poi_matrix(
+                        center_coord="39.93,116.45",
+                        categories=[cat] if cat else ["restaurant"],
+                        radius_meters=5000,
+                        min_rating=3.5,
+                        keywords=sname,
+                    )
+                    candidates = []
+                    for c, shops in swap_res.get("search_results", {}).items():
+                        for s in shops:
+                            if s.get("shop_id") != sid:
+                                s["coord"] = f"{s.get('lat','')},{s.get('lng','')}"
+                                agent.poi_cache[s["shop_id"]] = s
+                                candidates.append(s)
+                    if not candidates:
+                        return jsonify({"error": f"附近未找到其他{cat}品类店铺"}), 404
+                    return jsonify({
+                        "phase": "swap_selection",
+                        "current_shop": {"name": sname, "shop_id": sid},
+                        "category": cat,
+                        "label": backend.CATEGORY_NAME_CN.get(cat, cat),
+                        "candidates": candidates[:5],
+                        "message": f"为您找到以下可替换的{backend.CATEGORY_NAME_CN.get(cat, cat)}店铺："
+                    })
+                except Exception as e:
+                    return jsonify({"error": f"搜索替换店铺失败: {str(e)}"}), 500
+            elif len(pairs) > 1:
+                stop_list = []
+                for c, sid, sname in pairs:
+                    stop_list.append({
+                        "category": c, "shop_id": sid, "name": sname,
+                        "label": backend.CATEGORY_NAME_CN.get(c, c)
+                    })
+                return jsonify({
+                    "phase": "clarify_swap_target",
+                    "stops": stop_list,
+                    "message": params.get("message", "您想换哪一个目的地？")
+                })
+        msg = params.get("message", "抱歉，我没太理解您的意思，能再说一遍吗？")
+        return jsonify({"phase": "clarify", "message": msg})
+
+    if action == "swap_current":
+        pairs = session_state.get("selected_pairs", [])
+        if not pairs:
+            return jsonify({"error": "没有可替换的目的地"}), 400
+
+        # 解析目标：按 shop_id > name > category 优先级
+        target_name = params.get("target_name", "")
+        target_category = params.get("target_category", "")
+        target_shop_id = params.get("target_shop_id", "")
+        matched, _ = _resolve_swap_target(pairs, target_name, target_category, target_shop_id)
+
+        if not matched:
+            # 无法确定目标 → 返回目的地列表让用户选
+            stop_list = []
+            for c, sid, sname in pairs:
+                stop_list.append({
+                    "category": c,
+                    "shop_id": sid,
+                    "name": sname,
+                    "label": backend.CATEGORY_NAME_CN.get(c, c)
+                })
+            return jsonify({
+                "phase": "clarify_swap_target",
+                "stops": stop_list,
+                "message": "您想换哪一个目的地？"
+            })
+
+        cat, sid, sname = matched
+        # 搜索同品类候选店铺
+        try:
+            swap_res = backend.skill_poi.search_poi_matrix(
+                center_coord="39.93,116.45",
+                categories=[cat] if cat else ["restaurant"],
+                radius_meters=5000,
+                min_rating=3.5,
+                keywords=sname,
+            )
+            candidates = []
+            for c, shops in swap_res.get("search_results", {}).items():
+                for s in shops:
+                    if s.get("shop_id") != sid:
+                        s["coord"] = f"{s.get('lat','')},{s.get('lng','')}"
+                        agent.poi_cache[s["shop_id"]] = s
+                        candidates.append(s)
+            if not candidates:
+                return jsonify({"error": f"附近未找到其他{cat}品类店铺"}), 404
+            return jsonify({
+                "phase": "swap_selection",
+                "current_shop": {"name": sname, "shop_id": sid},
+                "category": cat,
+                "label": backend.CATEGORY_NAME_CN.get(cat, cat),
+                "candidates": candidates[:5],
+                "message": f"为您找到以下可替换的{backend.CATEGORY_NAME_CN.get(cat, cat)}店铺："
+            })
+        except Exception as e:
+            return jsonify({"error": f"搜索替换店铺失败: {str(e)}"}), 500
+
+    if action == "replace_stop":
+        # 跨品类替换：先移除旧 stop，再搜索新品类
+        remove_name = params.get("remove_name", "").strip()
+        add_keywords = params.get("add_keywords", edit_text)
+        add_category = params.get("add_category", "")
+        remove_category = params.get("remove_category", "")
+
+        if not remove_name or len(remove_name) < 1:
+            return jsonify({"error": "请指定要替换的目的地"}), 400
+
+        old_pairs = session_state.get("selected_pairs", [])
+        # 用 _shop_name_matches 匹配要移除的 stop，品类匹配也参与（优先品类）
+        new_pairs = []
+        removed_stop = None
+        for cat, sid, sname in old_pairs:
+            if removed_stop is None and (
+                (remove_category and cat == remove_category) or
+                _shop_name_matches(sname, remove_name) or
+                (remove_name in _CAT_KEYWORDS and cat == _CAT_KEYWORDS[remove_name])
+            ):
+                removed_stop = (cat, sid, sname)
+                continue
+            new_pairs.append((cat, sid, sname))
+
+        if removed_stop is None:
+            return jsonify({"error": f"未找到可替换的目的地'{remove_name}'"}), 404
+        if not new_pairs and not add_keywords:
+            return jsonify({"error": "该操作会清空所有行程，已拒绝。请指定新目的地"}), 400
+
+        # 先更新 selected_pairs（移除旧 stop）
+        session_state["selected_pairs"] = new_pairs
+
+        # 搜索新品类店铺
+        try:
+            new_res = backend.skill_poi.search_poi_matrix(
+                center_coord="39.93,116.45",
+                categories=[add_category] if add_category else ["restaurant"],
+                radius_meters=5000,
+                min_rating=3.5,
+                keywords=add_keywords if add_keywords else None,
+            )
+            added = False
+            for c, shops in new_res.get("search_results", {}).items():
+                if shops:
+                    shop_list = []
+                    for s in shops[:3]:
+                        s["coord"] = f"{s.get('lat','')},{s.get('lng','')}"
+                        agent.poi_cache[s["shop_id"]] = s
+                        shop_list.append(s)
+                    return jsonify({
+                        "phase": "need_shop_selection",
+                        "category": c,
+                        "label": backend.CATEGORY_NAME_CN.get(c, add_keywords),
+                        "shops": shop_list,
+                        "message": f"已移除{backend.CATEGORY_NAME_CN.get(removed_stop[0], removed_stop[2])}，为您搜索{backend.CATEGORY_NAME_CN.get(c, '')}店铺："
+                    })
+            if not added:
+                return jsonify({"error": f"未找到匹配'{add_keywords}'的新目的地"}), 404
+        except Exception as e:
+            # 恢复旧 pairs
+            session_state["selected_pairs"] = old_pairs
+            return jsonify({"error": f"搜索新目的地失败: {str(e)}"}), 500
+
     if action == "add_stop":
         # 搜索新目的地
         kw = params.get("keywords", edit_text)
         cat = params.get("category")
+        shop_name = params.get("shop_name", "")
         try:
             new_res = backend.skill_poi.search_poi_matrix(
                 center_coord="39.93,116.45",
@@ -1044,6 +1635,20 @@ def api_edit_trip():
             added = False
             for c, shops in new_res.get("search_results", {}).items():
                 if shops:
+                    # 用户没指定具体店名 → 返回推荐面板数据
+                    if not shop_name:
+                        shop_list = []
+                        for s in shops[:3]:
+                            s["coord"] = f"{s.get('lat','')},{s.get('lng','')}"
+                            shop_list.append(s)
+                        return jsonify({
+                            "phase": "need_shop_selection",
+                            "category": c,
+                            "label": backend.CATEGORY_NAME_CN.get(c, kw),
+                            "shops": shop_list,
+                            "message": f"您有常去的{backend.CATEGORY_NAME_CN.get(c, '')}吗？还是我推荐几个？"
+                        })
+                    # 有具体店名 → 匹配并自动添加
                     best = max(shops, key=lambda s: s.get("rating", 0))
                     agent.poi_cache[best["shop_id"]] = best
                     session_state["selected_pairs"].append((c, best["shop_id"], best["name"]))
@@ -1055,17 +1660,22 @@ def api_edit_trip():
             return jsonify({"error": f"搜索失败: {str(e)}"}), 500
 
     elif action == "remove_stop":
-        name_kw = params.get("name", "")
-        before = len(session_state["selected_pairs"])
-        session_state["selected_pairs"] = [
+        name_kw = params.get("name", "").strip()
+        if not name_kw or len(name_kw) < 2:
+            return jsonify({"error": "请指定要删除的目的地名称"}), 400
+        old_pairs = session_state.get("selected_pairs", [])
+        # 先计算，不直接赋值（防止误清空）
+        # 使用 _shop_name_matches 逐级匹配，防止短关键词误匹配
+        new_pairs = [
             (cat, sid, sname)
-            for cat, sid, sname in session_state["selected_pairs"]
-            if name_kw not in sname
+            for cat, sid, sname in old_pairs
+            if not _shop_name_matches(sname, name_kw)
         ]
-        if len(session_state["selected_pairs"]) == before:
+        if len(new_pairs) == len(old_pairs):
             return jsonify({"error": f"未找到含'{name_kw}'的目的地"}), 404
-        if not session_state["selected_pairs"]:
-            return jsonify({"error": "行程已清空，请重新发起"}), 400
+        if not new_pairs:
+            return jsonify({"error": "该操作会清空所有行程，已拒绝。请指定更具体的目的地名称"}), 400
+        session_state["selected_pairs"] = new_pairs
 
     elif action == "change_time":
         t = params.get("time", "now")
@@ -1092,6 +1702,19 @@ def api_edit_trip():
 
     # reroute / 其他: 直接重跑排程（可能用新偏好）
     session_state["phase"] = "running"
+    return _run_schedule_from_session()
+
+
+@app.route("/api/add_stop_to_trip", methods=["POST"])
+def api_add_stop_to_trip():
+    """行程中用户选店后，将店铺加入 selected_pairs 并重跑排程"""
+    data = request.get_json()
+    category = data.get("category", "")
+    shop_id = data.get("shop_id", "")
+    info = agent.poi_cache.get(shop_id, {})
+    if not info:
+        return jsonify({"error": "店铺不存在"}), 404
+    session_state["selected_pairs"].append((category, shop_id, info.get("name", shop_id)))
     return _run_schedule_from_session()
 
 
@@ -1904,15 +2527,15 @@ def api_swap_shop():
     new_name = new_shop.get("name", "")
 
     selected_pairs = session_state.get("selected_pairs", [])
-    updated = False
+    replaced = False
     for i, (cat, sid, sname) in enumerate(selected_pairs):
-        # 匹配品类后替换
-        if cat == new_category or (not updated):
+        # 只按品类匹配替换，防止误替换不同品类的 stop
+        if cat == new_category:
             selected_pairs[i] = (new_category, new_shop_id, new_name)
-            updated = True
+            replaced = True
             break
-    if not updated:
-        selected_pairs.append((new_category, new_shop_id, new_name))
+    if not replaced:
+        return jsonify({"error": f"行程中未找到品类为 {new_category} 的目的地，无法替换"}), 400
     session_state["selected_pairs"] = selected_pairs
 
     # 更新 task_list
@@ -3589,19 +4212,22 @@ CHAT_TOOLS = [
         "type": "function",
         "function": {
             "name": "edit_trip",
-            "description": "修改进行中的行程：增加/删除目的地、调整时间、更换交通方式、重新排序。",
+            "description": "修改进行中的行程：增加/删除目的地、调整时间、更换交通方式、换店、重新排序。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["add_stop", "remove_stop", "change_time", "change_transport", "reroute"], "description": "操作类型"},
+                    "action": {"type": "string", "enum": ["add_stop", "remove_stop", "change_time", "change_transport", "reroute", "swap_current", "no_change", "clarify"], "description": "操作类型。swap_current=用户想换掉某家店；no_change=用户放弃修改；clarify=意图不明确需追问"},
                     "params": {
                         "type": "object",
                         "properties": {
                             "keywords": {"type": "string", "description": "新增目的地关键词"},
+                            "category": {"type": "string", "description": "品类"},
+                            "shop_name": {"type": "string", "description": "用户明确提到的店名，没提则为空字符串"},
                             "name": {"type": "string", "description": "要删除的店名"},
                             "time": {"type": "string", "description": "新时间 HH:MM"},
                             "mode": {"type": "string", "enum": ["WALK", "TAXI", "METRO", "BUS"], "description": "交通方式"},
-                            "preference": {"type": "string", "enum": ["fast", "short", "scenic"]}
+                            "preference": {"type": "string", "enum": ["fast", "short", "scenic", "avoid_highway"]},
+                            "message": {"type": "string", "description": "clarify 时的追问内容"}
                         }
                     }
                 },
@@ -3880,9 +4506,37 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
         elif tool_name == "edit_trip":
             action = arguments.get("action", "reroute")
             params = arguments.get("params", {})
-            # 复用现有的编辑逻辑
+
             if session_state.get("phase") != "done" and not session_state.get("selected_pairs"):
                 return {"status": "ERROR", "message": "没有活跃行程"}
+
+            # ── 规则优先验证：用规则引擎检查 LLM 决定的 action 是否合理 ──
+            user_msg = session_state.get("_last_user_message", "")
+            if user_msg:
+                rule_intent = _fallback_parse_edit(user_msg, session_state.get("selected_pairs", []))
+                rule_action = rule_intent.get("action", "clarify")
+                # 如果规则给了高置信度结果且与 LLM 不同，优先用规则的
+                if rule_action != "clarify" and rule_action != action:
+                    print(f"[chat-tool edit_trip] 规则覆盖: LLM={action} -> rule={rule_action} (用户消息: {user_msg[:60]})")
+                    action = rule_action
+                    # 合并参数：规则参数优先，LLM 参数作为补充
+                    merged_params = dict(params)
+                    merged_params.update(rule_intent.get("params", {}))
+                    params = merged_params
+
+            # 验证 action 是否合法
+            _CHAT_ALLOWED_ACTIONS = {
+                "add_stop", "remove_stop", "change_time", "change_transport",
+                "reroute", "swap_current", "no_change", "clarify", "replace_stop"
+            }
+            if action not in _CHAT_ALLOWED_ACTIONS:
+                print(f"[chat-tool edit_trip] 拒绝无效 action: {action}")
+                return {"status": "ERROR", "message": f"不支持的操作: {action}"}
+
+            # 注入前端传的 swap_target_shop_id（用户点击了 clarify_swap_target 选择器）
+            swap_target_shop_id = (arguments.get("swap_target_shop_id") or "").strip()
+            if swap_target_shop_id and action == "swap_current":
+                params["target_shop_id"] = swap_target_shop_id
 
             if action == "change_time":
                 new_time = params.get("time", "")
@@ -3898,8 +4552,9 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
                 return _run_schedule_from_session()
 
             elif action == "add_stop":
-                kw = params.get("keywords", "")
+                kw = params.get("keywords", "") or params.get("shop_name", "")
                 cat = params.get("category")
+                shop_name = params.get("shop_name", "")
                 if not kw:
                     return {"status": "ERROR", "message": "请提供搜索关键词"}
                 try:
@@ -3912,6 +4567,19 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
                     )
                     for c, shops in new_res.get("search_results", {}).items():
                         if shops:
+                            # 用户没指定具体店名 → 返回推荐面板
+                            if not shop_name:
+                                shop_list = []
+                                for s in shops[:3]:
+                                    s["coord"] = f"{s.get('lat','')},{s.get('lng','')}"
+                                    agent.poi_cache[s["shop_id"]] = s
+                                    shop_list.append(s)
+                                return {"status": "SUCCESS", "phase": "need_shop_selection",
+                                        "category": c,
+                                        "label": backend.CATEGORY_NAME_CN.get(c, kw),
+                                        "shops": shop_list,
+                                        "message": f"您有常去的{backend.CATEGORY_NAME_CN.get(c, '')}吗？还是我推荐几个？"}
+                            # 有具体店名 → 匹配并自动添加
                             best = max(shops, key=lambda s: s.get("rating", 0))
                             agent.poi_cache[best["shop_id"]] = best
                             pairs = list(session_state.get("selected_pairs", []))
@@ -3925,14 +4593,127 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
                     return {"status": "ERROR", "message": f"搜索失败: {str(e)}"}
 
             elif action == "remove_stop":
-                name = params.get("name", "")
-                pairs = [(c, sid, sn) for c, sid, sn in session_state.get("selected_pairs", []) if name not in sn]
-                if len(pairs) == len(session_state.get("selected_pairs", [])):
+                name = params.get("name", "").strip()
+                if not name or len(name) < 2:
+                    return {"status": "ERROR", "message": "请指定要删除的目的地名称"}
+                old_pairs = session_state.get("selected_pairs", [])
+                # 使用 _shop_name_matches 逐级匹配，防止短关键词误匹配
+                new_pairs = [(c, sid, sn) for c, sid, sn in old_pairs if not _shop_name_matches(sn, name)]
+                if len(new_pairs) == len(old_pairs):
                     return {"status": "ERROR", "message": f"未找到 '{name}'"}
-                session_state["selected_pairs"] = pairs
+                if not new_pairs:
+                    return {"status": "ERROR", "message": "该操作会清空所有行程，已拒绝"}
+                session_state["selected_pairs"] = new_pairs
                 result = _run_schedule_from_session()
                 return {"status": "SUCCESS", "data": (result.get_json() if hasattr(result, 'get_json') else result),
                         "message": f"已移除 {name}"}
+
+            elif action == "replace_stop":
+                remove_name = params.get("remove_name", "").strip()
+                add_keywords = params.get("add_keywords", "")
+                add_category = params.get("add_category", "")
+                remove_category = params.get("remove_category", "")
+
+                if not remove_name:
+                    return {"status": "ERROR", "message": "请指定要替换的目的地"}
+                old_pairs = session_state.get("selected_pairs", [])
+                new_pairs = []
+                removed_stop = None
+                for cat, sid, sname in old_pairs:
+                    if removed_stop is None and (
+                        (remove_category and cat == remove_category) or
+                        _shop_name_matches(sname, remove_name) or
+                        (remove_name in _CAT_KEYWORDS and cat == _CAT_KEYWORDS[remove_name])
+                    ):
+                        removed_stop = (cat, sid, sname)
+                        continue
+                    new_pairs.append((cat, sid, sname))
+                if removed_stop is None:
+                    return {"status": "ERROR", "message": f"未找到可替换的目的地'{remove_name}'"}
+                session_state["selected_pairs"] = new_pairs
+                try:
+                    new_res = backend.skill_poi.search_poi_matrix(
+                        center_coord="39.93,116.45",
+                        categories=[add_category] if add_category else ["restaurant"],
+                        radius_meters=5000,
+                        min_rating=3.5,
+                        keywords=add_keywords if add_keywords else None,
+                    )
+                    for c, shops in new_res.get("search_results", {}).items():
+                        if shops:
+                            shop_list = []
+                            for s in shops[:3]:
+                                s["coord"] = f"{s.get('lat','')},{s.get('lng','')}"
+                                agent.poi_cache[s["shop_id"]] = s
+                                shop_list.append(s)
+                            return {"status": "SUCCESS", "phase": "need_shop_selection",
+                                    "category": c,
+                                    "label": backend.CATEGORY_NAME_CN.get(c, add_keywords),
+                                    "shops": shop_list,
+                                    "message": f"已移除{backend.CATEGORY_NAME_CN.get(removed_stop[0], removed_stop[2])}，为您推荐{backend.CATEGORY_NAME_CN.get(c, '')}店铺："}
+                    return {"status": "ERROR", "message": f"未找到'{add_keywords}'相关店铺"}
+                except Exception as e:
+                    session_state["selected_pairs"] = old_pairs
+                    return {"status": "ERROR", "message": f"搜索新目的地失败: {str(e)}"}
+
+            elif action == "no_change":
+                return {"status": "SUCCESS", "message": "好的，行程保持不变 ✅"}
+
+            elif action == "clarify":
+                msg = params.get("message", "抱歉，我没太理解您的意思，能再说一遍吗？")
+                return {"status": "SUCCESS", "message": msg, "phase": "clarify"}
+
+            elif action == "swap_current":
+                pairs = session_state.get("selected_pairs", [])
+                if not pairs:
+                    return {"status": "ERROR", "message": "没有可替换的目的地"}
+
+                # 解析目标：按 shop_id > name > category 优先级
+                target_name = params.get("target_name", "")
+                target_category = params.get("target_category", "")
+                target_shop_id = params.get("target_shop_id", "")
+                matched, _ = _resolve_swap_target(pairs, target_name, target_category, target_shop_id)
+
+                if not matched:
+                    # 无法确定目标 → 返回目的地列表让用户选（CHAT_TOOLS 返回 clarify）
+                    stop_list = []
+                    for c, sid, sname in pairs:
+                        stop_list.append({
+                            "category": c,
+                            "shop_id": sid,
+                            "name": sname,
+                            "label": backend.CATEGORY_NAME_CN.get(c, c)
+                        })
+                    return {"status": "SUCCESS", "phase": "clarify_swap_target",
+                            "stops": stop_list,
+                            "message": "您想换哪一个目的地？"}
+
+                cat, sid, sname = matched
+                try:
+                    swap_res = backend.skill_poi.search_poi_matrix(
+                        center_coord="39.93,116.45",
+                        categories=[cat] if cat else ["restaurant"],
+                        radius_meters=5000,
+                        min_rating=3.5,
+                        keywords=sname,
+                    )
+                    candidates = []
+                    for c, shops in swap_res.get("search_results", {}).items():
+                        for s in shops:
+                            if s.get("shop_id") != sid:
+                                s["coord"] = f"{s.get('lat','')},{s.get('lng','')}"
+                                agent.poi_cache[s["shop_id"]] = s
+                                candidates.append(s)
+                    if not candidates:
+                        return {"status": "ERROR", "message": f"附近未找到其他可替换店铺"}
+                    return {"status": "SUCCESS", "phase": "swap_selection",
+                            "current_shop": {"name": sname, "shop_id": sid},
+                            "category": cat,
+                            "label": backend.CATEGORY_NAME_CN.get(cat, cat),
+                            "candidates": candidates[:5],
+                            "message": f"为您找到以下可替换的{backend.CATEGORY_NAME_CN.get(cat, cat)}店铺："}
+                except Exception as e:
+                    return {"status": "ERROR", "message": f"搜索替换店铺失败: {str(e)}"}
 
             return {"status": "ERROR", "message": f"不支持的操作: {action}"}
 
@@ -4435,6 +5216,484 @@ def get_session_detail(session_id):
         "created_at": session.get("created_at"),
         "updated_at": session.get("updated_at"),
     })
+
+
+# ======================================================================
+# 多日行程 API
+# ======================================================================
+
+# 热门城市坐标映射
+_CITY_COORDS = {
+    "北京": (39.93, 116.45), "上海": (31.23, 121.47), "广州": (23.13, 113.26),
+    "深圳": (22.54, 114.06), "成都": (30.57, 104.07), "杭州": (30.25, 120.16),
+    "西安": (34.26, 108.94), "重庆": (29.56, 106.55), "南京": (32.06, 118.79),
+    "武汉": (30.59, 114.30), "长沙": (28.23, 112.94), "厦门": (24.48, 118.09),
+    "三亚": (18.25, 109.51), "丽江": (26.87, 100.23), "大理": (25.61, 100.27),
+    "桂林": (25.27, 110.29), "苏州": (31.30, 120.63), "青岛": (36.07, 120.38),
+    "大连": (38.91, 121.61), "昆明": (25.04, 102.71),
+}
+
+# 加载预缓存
+import json as _json
+_top20_cache = {}
+_top20_cache_path = os.path.join(base_dir, "skills", "multi_day_scheduler", "top20_cache.json")
+try:
+    with open(_top20_cache_path, "r", encoding="utf-8") as _f:
+        _top20_cache = _json.loads(_f.read())
+except Exception:
+    print(f"[多日行程] 未能加载 top20_cache.json，将全量使用API实时搜索", flush=True)
+
+
+def _get_top20_attractions(city: str, ref_lat: float = None, ref_lng: float = None) -> dict:
+    """获取城市 Top20 热门景点/餐厅。先查预缓存，miss 则调高德 API 实时搜索。"""
+    # 城市名模糊匹配缓存
+    cached = None
+    for cached_city, shops in _top20_cache.items():
+        if cached_city == city or city in cached_city or cached_city in city:
+            cached = shops
+            break
+
+    if cached:
+        # 用缓存数据
+        if ref_lat is None:
+            coords = _CITY_COORDS.get(city, (39.93, 116.45))
+            ref_lat, ref_lng = coords
+        formatted = []
+        for s in cached:
+            s_lat = float(s.get("lat", ref_lat))
+            s_lng = float(s.get("lng", ref_lng))
+            formatted.append({
+                "shop_id": s.get("shop_id", ""),
+                "name": s.get("name", ""),
+                "category": s.get("category", ""),
+                "category_cn": backend.CATEGORY_NAME_CN.get(s.get("category", ""), s.get("category", "")),
+                "rating": s.get("rating", 0),
+                "coord": f"{s_lat},{s_lng}",
+                "lat": s_lat,
+                "lng": s_lng,
+                "address": s.get("address", ""),
+                "source": "cache",
+            })
+        return {"city": city, "attractions": formatted, "total": len(formatted), "source": "cache"}
+
+    # 缓存 miss → 实时 API 搜索
+    coords = _CITY_COORDS.get(city, (39.93, 116.45))
+    if ref_lat is None:
+        ref_lat, ref_lng = coords
+    else:
+        ref_lat = float(ref_lat)
+        ref_lng = float(ref_lng)
+
+    travel_categories = ["scenic", "restaurant", "hotpot", "shopping", "cafe"]
+    all_shops = []
+    seen_ids = set()
+
+    for cat in travel_categories:
+        try:
+            resp = _amap_client.search_nearby(
+                lng=ref_lng, lat=ref_lat,
+                radius=30000,
+                keywords="",
+                category=cat,
+                min_rating=3.5,
+            )
+            for shop in resp.get("shops", []):
+                sid = shop.get("shop_id", "")
+                if sid and sid not in seen_ids:
+                    seen_ids.add(sid)
+                    shop["_category"] = cat
+                    all_shops.append(shop)
+        except Exception as e:
+            print(f"[get_top20] 品类 '{cat}' API搜索失败: {e}", flush=True)
+            continue
+
+    all_shops.sort(key=lambda s: float(s.get("rating", 0) or 0), reverse=True)
+    top20 = all_shops[:20]
+
+    formatted = []
+    for s in top20:
+        formatted.append({
+            "shop_id": s.get("shop_id", ""),
+            "name": s.get("name", ""),
+            "category": s.get("_category", ""),
+            "category_cn": backend.CATEGORY_NAME_CN.get(s.get("_category", ""), s.get("_category", "")),
+            "rating": s.get("rating", 0),
+            "coord": s.get("coord", f"{s.get('lat', ref_lat)},{s.get('lng', ref_lng)}"),
+            "lat": s.get("lat", ref_lat),
+            "lng": s.get("lng", ref_lng),
+            "address": s.get("address", ""),
+            "source": "api",
+        })
+
+    return {"city": city, "attractions": formatted, "total": len(formatted), "source": "api"}
+
+
+@app.route("/api/popular_attractions", methods=["GET"])
+def popular_attractions():
+    """获取目的地城市 Top20 热门景点/餐厅。
+    先查预缓存（北京/上海/广州/深圳/成都/杭州），miss 则实时调用高德 API。
+    查询参数: ?city=北京
+    """
+    city = request.args.get("city", session_state.get("trip_destination", "北京"))
+    result = _get_top20_attractions(city)
+    return jsonify(dict(status="SUCCESS", **result))
+
+
+@app.route("/api/search_attraction", methods=["POST"])
+def search_attraction():
+    """在弹窗内搜索POI加入候选池。优先用 search_poi（完整数据），fallback 到 fuzzy_search。
+    请求: {keywords: "长城", city: "北京"}
+    """
+    data = request.get_json(silent=True) or {}
+    keywords = data.get("keywords", "").strip()
+    city = data.get("city", session_state.get("trip_destination", "北京"))
+
+    if not keywords:
+        return jsonify({"status": "ERROR", "message": "请输入搜索关键词"}), 400
+
+    formatted = []
+
+    # 方法1: search_poi（返回完整 shop 数据：shop_id/rating/category/lat/lng）
+    try:
+        result = _amap_client.search_poi(keywords=keywords, city=city, offset=10)
+        shops = result.get("shops", []) if isinstance(result, dict) else []
+        for s in shops[:10]:
+            formatted.append({
+                "shop_id": s.get("shop_id", ""),
+                "name": s.get("name", ""),
+                "category": s.get("category", s.get("_category", "")),
+                "category_cn": backend.CATEGORY_NAME_CN.get(s.get("category", s.get("_category", "")), ""),
+                "rating": s.get("rating", 0),
+                "coord": s.get("coord", f"{s.get('lat', 0)},{s.get('lng', 0)}"),
+                "lat": s.get("lat", 0),
+                "lng": s.get("lng", 0),
+                "address": s.get("address", ""),
+            })
+    except Exception as e:
+        print(f"[search_attraction] search_poi 失败: {e}", flush=True)
+
+    # 方法2: fuzzy_search 兜底（返回 name/address/location，无 rating/category）
+    if not formatted:
+        try:
+            tips = _amap_client.fuzzy_search(keywords=keywords, city=city)
+            if isinstance(tips, list):
+                for i, t in enumerate(tips[:10]):
+                    loc = t.get("location", "")
+                    lat, lng = 0, 0
+                    if "," in loc:
+                        parts = loc.split(",")
+                        try:
+                            lng = float(parts[0])
+                            lat = float(parts[1])
+                        except (ValueError, TypeError):
+                            pass
+                    formatted.append({
+                        "shop_id": f"search_{city}_{i}_{hash(t.get('name', ''))}",
+                        "name": t.get("name", ""),
+                        "category": "",
+                        "category_cn": "",
+                        "rating": 0,
+                        "coord": f"{lat},{lng}",
+                        "lat": lat,
+                        "lng": lng,
+                        "address": t.get("address", t.get("district", "")),
+                    })
+        except Exception as e2:
+            print(f"[search_attraction] fuzzy_search 也失败: {e2}", flush=True)
+
+    if not formatted:
+        return jsonify({"status": "ERROR", "message": f"未找到'{keywords}'相关地点", "results": [], "total": 0}), 200
+
+    return jsonify({"status": "SUCCESS", "results": formatted, "total": len(formatted)})
+
+
+@app.route("/api/set_trip_config", methods=["POST"])
+def set_trip_config():
+    """设置多日行程配置：天数 + 目的地 + 交通方式，返回 Top20 热门。
+    请求: {days: 2, destination: "北京", transport: "地铁优先",
+           checkin_lat: 39.93, checkin_lng: 116.45}
+    """
+    data = request.get_json(silent=True) or {}
+
+    days = int(data.get("days", 2))
+    if days < 1:
+        days = 1
+    elif days > 7:
+        days = 7
+
+    destination = data.get("destination", "北京")
+    transport = data.get("transport", "步行优先")
+    checkin_lat = data.get("checkin_lat")
+    checkin_lng = data.get("checkin_lng")
+
+    # 存储到 session_state
+    session_state["trip_mode"] = "multi"
+    session_state["trip_days"] = days
+    session_state["trip_destination"] = destination
+    session_state["trip_transport"] = transport
+    session_state["trip_checkin_lat"] = checkin_lat
+    session_state["trip_checkin_lng"] = checkin_lng
+
+    # 初始化每天的容器
+    session_state["days"] = []
+    for i in range(days):
+        session_state["days"].append({
+            "day_index": i,
+            "label": f"第{i+1}天",
+            "selected_pairs": [],
+            "task_list": [],
+            "spatial_matrix": {},
+            "schedule_result": None,
+            "chat_history": [],
+            "transport_override": None,
+        })
+    session_state["active_day_index"] = 0
+    session_state["candidate_pool"] = []
+
+    # 获取热门推荐（缓存优先）
+    result = _get_top20_attractions(destination, checkin_lat, checkin_lng)
+
+    return jsonify({
+        "status": "SUCCESS",
+        "trip_mode": "multi",
+        "trip_days": days,
+        "trip_destination": destination,
+        "trip_transport": transport,
+        "attractions": result["attractions"],
+        "attractions_source": result.get("source", "unknown"),
+        "candidate_pool_size": len(session_state.get("candidate_pool", [])),
+    })
+
+
+@app.route("/api/smart_schedule", methods=["POST"])
+def smart_schedule():
+    """核心排程：对候选池执行智能分天+排程。
+    请求: {start_time: "09:00"}
+    """
+    data = request.get_json(silent=True) or {}
+    start_time = data.get("start_time", "09:00")
+
+    # 优先使用请求中携带的候选列表（前端直接传），回退到 session 缓存
+    candidates_from_client = data.get("candidates", None)
+    if candidates_from_client:
+        candidate_pool = candidates_from_client
+        session_state["candidate_pool"] = candidate_pool
+    else:
+        candidate_pool = session_state.get("candidate_pool", [])
+    trip_days = session_state.get("trip_days", 2)
+    checkin_lat = session_state.get("trip_checkin_lat")
+    checkin_lng = session_state.get("trip_checkin_lng")
+    transport = session_state.get("trip_transport", "步行优先")
+
+    if not candidate_pool:
+        return jsonify({"status": "ERROR", "message": "候选池为空，请先选择想去的地方"}), 400
+
+    if trip_days < 1:
+        return jsonify({"status": "ERROR", "message": "天数必须 >= 1"}), 400
+
+    # 如果没有酒店坐标，用第一个POI的坐标作为参考
+    if not checkin_lat or not checkin_lng:
+        first = candidate_pool[0]
+        checkin_lat = float(first.get("lat", 39.93))
+        checkin_lng = float(first.get("lng", 116.45))
+        session_state["trip_checkin_lat"] = checkin_lat
+        session_state["trip_checkin_lng"] = checkin_lng
+
+    # 调用排程引擎
+    try:
+        result = _run_multi_day_schedule(
+            candidate_pool, trip_days,
+            checkin_lat, checkin_lng,
+            transport, start_time
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "ERROR", "message": f"排程失败: {str(e)}"}), 500
+
+    # 将结果写入 session_state.days
+    days = session_state.get("days", [])
+    for i, day_result in enumerate(result.get("days", [])):
+        if i < len(days):
+            days[i]["selected_pairs"] = day_result.get("pairs", [])
+            days[i]["task_list"] = day_result.get("task_list", [])
+            days[i]["spatial_matrix"] = day_result.get("spatial_matrix", {})
+            days[i]["schedule_result"] = day_result
+
+    session_state["days"] = days
+    session_state["phase"] = "done"
+    session_state["active_day_index"] = 0
+
+    return jsonify({
+        "status": "SUCCESS",
+        "days": result.get("days", []),
+        "unassigned": result.get("unassigned", []),
+        "algorithm_metadata": result.get("algorithm_metadata", {}),
+    })
+
+
+@app.route("/api/switch_day", methods=["POST"])
+def switch_day():
+    """切换活跃天视图。
+    请求: {day_index: 1}
+    """
+    data = request.get_json(silent=True) or {}
+    day_index = int(data.get("day_index", 0))
+
+    days = session_state.get("days", [])
+    if day_index < 0 or day_index >= len(days):
+        return jsonify({"status": "ERROR", "message": f"无效的天索引: {day_index}"}), 400
+
+    session_state["active_day_index"] = day_index
+    day_data = days[day_index]
+
+    return jsonify({
+        "status": "SUCCESS",
+        "active_day_index": day_index,
+        "day_data": {
+            "day_index": day_data.get("day_index"),
+            "label": day_data.get("label", f"第{day_index+1}天"),
+            "selected_pairs": day_data.get("selected_pairs", []),
+            "schedule_result": day_data.get("schedule_result"),
+            "chat_history": day_data.get("chat_history", []),
+        },
+        "days_count": len(days),
+    })
+
+
+@app.route("/api/move_to_day", methods=["POST"])
+def move_to_day():
+    """跨天移动 POI，触发两天重排。
+    请求: {shop_id: "B0001", from_day: 0, to_day: 1}
+    """
+    data = request.get_json(silent=True) or {}
+    shop_id = data.get("shop_id", "")
+    from_day = int(data.get("from_day", 0))
+    to_day = int(data.get("to_day", 0))
+
+    days = session_state.get("days", [])
+
+    if from_day >= len(days) or to_day >= len(days):
+        return jsonify({"status": "ERROR", "message": "无效的天索引"}), 400
+
+    # 从源天移除
+    from_pairs = days[from_day].get("selected_pairs", [])
+    moved_pair = None
+    new_from_pairs = []
+    for pair in from_pairs:
+        if pair[1] == shop_id:
+            moved_pair = pair
+        else:
+            new_from_pairs.append(pair)
+
+    if moved_pair is None:
+        return jsonify({"status": "ERROR", "message": f"在第{from_day+1}天中找不到店铺: {shop_id}"}), 404
+
+    days[from_day]["selected_pairs"] = new_from_pairs
+
+    # 添加到目标天
+    days[to_day].setdefault("selected_pairs", []).append(moved_pair)
+
+    # 重排两天（简单版：只更新数据，实际重排由前端触发）
+    session_state["days"] = days
+
+    return jsonify({
+        "status": "SUCCESS",
+        "moved_shop": {"shop_id": shop_id, "name": moved_pair[2] if len(moved_pair) > 2 else shop_id},
+        "from_day": from_day,
+        "to_day": to_day,
+        "message": f"已将{moved_pair[2] if len(moved_pair) > 2 else shop_id}移至第{to_day+1}天",
+    })
+
+
+@app.route("/api/set_trip_days", methods=["POST"])
+def set_trip_days():
+    """修改天数、切换单日/多日模式。
+    请求: {mode: "multi", days: 3}
+    """
+    data = request.get_json(silent=True) or {}
+    mode = data.get("mode", session_state.get("trip_mode", "single"))
+    days_count = int(data.get("days", session_state.get("trip_days", 2)))
+
+    if mode not in ("single", "multi"):
+        return jsonify({"status": "ERROR", "message": "mode 必须是 'single' 或 'multi'"}), 400
+
+    old_mode = session_state.get("trip_mode", "single")
+
+    if mode == "multi":
+        # 切换到多日模式
+        if old_mode == "single":
+            # 迁移现有 selected_pairs 到候选池
+            existing_pairs = session_state.get("selected_pairs", [])
+            session_state["candidate_pool"] = []
+            for cat, sid, sname in existing_pairs:
+                session_state["candidate_pool"].append({
+                    "category": cat,
+                    "shop_id": sid,
+                    "name": sname,
+                    "coord": "",
+                })
+            # 清理单日数据
+            session_state["selected_pairs"] = []
+            session_state["task_list"] = []
+            session_state["spatial_matrix"] = {}
+
+        session_state["trip_mode"] = "multi"
+        session_state["trip_days"] = min(max(days_count, 1), 7)
+
+        # 重建 days 数组
+        new_days = []
+        old_days = session_state.get("days", [])
+        for i in range(session_state["trip_days"]):
+            if i < len(old_days):
+                new_days.append(old_days[i])
+                new_days[i]["day_index"] = i
+                new_days[i]["label"] = f"第{i+1}天"
+            else:
+                new_days.append({
+                    "day_index": i,
+                    "label": f"第{i+1}天",
+                    "selected_pairs": [],
+                    "task_list": [],
+                    "spatial_matrix": {},
+                    "schedule_result": None,
+                    "chat_history": [],
+                    "transport_override": None,
+                })
+        session_state["days"] = new_days
+        session_state["active_day_index"] = 0
+
+        return jsonify({
+            "status": "SUCCESS",
+            "trip_mode": "multi",
+            "trip_days": session_state["trip_days"],
+            "candidate_pool_size": len(session_state.get("candidate_pool", [])),
+            "days_count": len(session_state.get("days", [])),
+        })
+
+    else:
+        # 切换回单日模式
+        # 合并所有天的 selected_pairs
+        all_pairs = []
+        for d in session_state.get("days", []):
+            all_pairs.extend(d.get("selected_pairs", []))
+        # 也合并候选池
+        for item in session_state.get("candidate_pool", []):
+            all_pairs.append((item.get("category", ""), item.get("shop_id", ""), item.get("name", "")))
+
+        session_state["trip_mode"] = "single"
+        session_state["trip_days"] = 1
+        session_state["days"] = []
+        session_state["candidate_pool"] = []
+        session_state["selected_pairs"] = all_pairs
+        session_state["active_day_index"] = 0
+
+        return jsonify({
+            "status": "SUCCESS",
+            "trip_mode": "single",
+            "merged_pairs_count": len(all_pairs),
+            "message": f"已合并所有店铺到单日行程，共 {len(all_pairs)} 家",
+        })
 
 
 # ======================================================================

@@ -248,7 +248,7 @@
 #morph-clone { box-shadow: 0 8px 32px rgba(251,191,36,0.35), 0 2px 8px rgba(0,0,0,0.15); }
  </style>
 </head>
-<body class="bg-gray-100 text-gray-900 font-sans p-4 md:p-8">
+<body class="bg-gray-100 text-gray-900 font-sans p-4 md:p-8 overflow-hidden">
 
  <div class="flex flex-col lg:flex-row items-start justify-center gap-6 min-h-screen" style="margin: 0 auto;">
 
@@ -442,6 +442,8 @@
         <div class="rain-drop" style="left:40px; height:3px; animation-delay:0.65s; --rd:1.4s"></div>
         <div class="lightning"></div>
        </div></span>
+       <!-- 多日行程切换按钮 -->
+       <div onclick="toggleMultiDayMode()" id="trip-mode-btn" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="多日行程" style="font-size:14px;">📅</div>
 	       <div onclick="openPrefEdit()" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="偏好设置" style="font-size:14px;">⚙️</div>
        <div onclick="openButlerPanel()" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="管家面板" style="font-size:14px;">⏰</div>
        <div onclick="openHistoryPanel()" class="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition cursor-pointer flex-shrink-0" title="历史记录" style="font-size:16px;">≡</div>
@@ -455,7 +457,7 @@
      </div>
     </div>
     <!-- 内容区 -->
-    <main class="flex-1 overflow-y-auto p-6 space-y-8">
+    <main class="flex-1 overflow-y-auto p-6 space-y-8" style="overscroll-behavior: contain;">
      <div id="dynamic-content"></div>
 
      <div id="conflict-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
@@ -474,6 +476,80 @@
       </div>
      </div>
     </main>
+
+      <!-- ===== 多日行程设置面板 ===== -->
+      <div id="multi-day-setup-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden" style="background: rgba(0,0,0,0.5);">
+        <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full max-h-[80vh] overflow-y-auto animate-fade-in">
+          <!-- Step 1: 基本设置 -->
+          <div id="multi-setup-step1" class="p-6">
+            <div class="text-center mb-5">
+              <div class="text-4xl mb-3">🗓️</div>
+              <h3 class="text-xl font-black text-gray-900">多日行程规划</h3>
+              <p class="text-xs text-gray-500 mt-1">告诉我您的旅行计划</p>
+            </div>
+            <div class="mb-4">
+              <label class="text-sm font-bold text-gray-600 mb-2 block">计划玩几天？</label>
+              <div class="flex items-center justify-center gap-3">
+                <button onclick="changeTripDays(-1)" class="w-10 h-10 rounded-full bg-gray-100 text-xl font-bold hover:bg-gray-200 transition">−</button>
+                <span id="multi-day-count" class="text-2xl font-black text-gray-900 w-8 text-center">2</span>
+                <button onclick="changeTripDays(1)" class="w-10 h-10 rounded-full bg-gray-100 text-xl font-bold hover:bg-gray-200 transition">+</button>
+              </div>
+            </div>
+            <div class="mb-4">
+              <label class="text-sm font-bold text-gray-600 mb-2 block">📍 去哪里旅游？</label>
+              <input type="text" id="multi-destination-input" value="北京" placeholder="输入城市名" class="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-yellow-400 transition">
+            </div>
+            <div class="mb-5">
+              <label class="text-sm font-bold text-gray-600 mb-2 block">🚗 怎么出行？</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="selectMultiTransport('步行优先', this)" class="multi-transport-btn py-2 px-3 rounded-2xl text-sm font-bold bg-yellow-400 text-black transition">🚶 步行优先</button>
+                <button onclick="selectMultiTransport('地铁优先', this)" class="multi-transport-btn py-2 px-3 rounded-2xl text-sm font-bold bg-gray-100 text-gray-600 transition">🚇 地铁优先</button>
+                <button onclick="selectMultiTransport('打车优先', this)" class="multi-transport-btn py-2 px-3 rounded-2xl text-sm font-bold bg-gray-100 text-gray-600 transition">🚗 打车优先</button>
+                <button onclick="selectMultiTransport('驾车', this)" class="multi-transport-btn py-2 px-3 rounded-2xl text-sm font-bold bg-gray-100 text-gray-600 transition">🚘 驾车</button>
+              </div>
+            </div>
+            <button onclick="goToMultiSetupStep2()" class="w-full bg-gray-900 text-yellow-400 font-black py-4 rounded-2xl hover:scale-95 transition-transform meituan-shadow">下一步：选想去的地方 →</button>
+            <button onclick="closeMultiDaySetup()" class="w-full mt-2 text-gray-400 text-sm font-medium py-2 hover:text-gray-600 transition">取消</button>
+          </div>
+          <!-- Step 2: 热门推荐 + 搜索添加 -->
+          <div id="multi-setup-step2" class="p-6 hidden">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-lg font-black text-gray-900">🔥 <span id="multi-dest-label">北京</span>热门 Top 20</h3>
+              <button onclick="closeMultiDaySetup()" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <!-- 搜索添加栏 -->
+            <div class="flex items-center gap-2 mb-3">
+              <input type="text" id="multi-search-input" placeholder="搜索地点添加到候选池..." class="flex-1 bg-gray-100 rounded-2xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-yellow-400 transition">
+              <button onclick="searchInModal()" id="multi-search-btn" class="bg-yellow-400 text-black font-bold text-sm px-4 py-2.5 rounded-2xl hover:scale-95 transition-transform flex-shrink-0">🔍 搜索</button>
+            </div>
+            <div id="multi-search-results" class="space-y-1.5 max-h-40 overflow-y-auto mb-3 hidden"></div>
+            <!-- 热门列表 -->
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-gray-400">📋 热门推荐</span>
+              <span id="multi-cache-badge" class="text-[10px] text-gray-400 hidden"></span>
+            </div>
+            <div id="multi-attractions-loading" class="text-center py-4">
+              <div class="animate-spin w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p class="text-xs text-gray-400">正在搜索热门地点...</p>
+            </div>
+            <div id="multi-attractions-list" class="space-y-1.5 max-h-52 overflow-y-auto mb-3 hidden"></div>
+            <div id="multi-candidate-stats" class="bg-yellow-50 rounded-2xl p-3 mb-3 hidden">
+              <span class="text-sm font-bold text-yellow-700">已选 <span id="multi-candidate-count">0</span> 家</span>
+              <span class="text-xs text-yellow-500 ml-2">继续搜索添加，或直接排程</span>
+            </div>
+            <button onclick="executeSmartSchedule()" id="multi-schedule-btn" class="w-full bg-gray-900 text-yellow-400 font-black py-4 rounded-2xl hover:scale-95 transition-transform meituan-shadow disabled:opacity-50 disabled:cursor-not-allowed" disabled>🪄 开始智能排程</button>
+            <button onclick="goBackToMultiSetupStep1()" class="w-full mt-2 text-gray-400 text-sm font-medium py-2 hover:text-gray-600 transition">← 返回修改设置</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 多日候选池栏 ===== -->
+      <div id="multi-candidate-bar" class="flex-shrink-0 hidden bg-yellow-50 border-t border-yellow-200 px-4 py-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-bold text-yellow-700">📋 候选池 · <span id="multi-candidate-bar-count">0</span> 家</span>
+          <button onclick="executeSmartSchedule()" id="multi-candidate-bar-schedule-btn" class="bg-gray-900 text-yellow-400 font-bold text-xs px-4 py-2 rounded-full hover:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed" disabled>🪄 智能排程</button>
+        </div>
+      </div>
 
     <!-- 底部搜索栏（原顶部搜索框移至此） -->
     <div class="flex-shrink-0 px-6 pb-6 pt-2 bg-white">
@@ -857,6 +933,14 @@ let mapMarkers = [];
 let mapPolyline = null;
 let timePositionTracker = null;
 
+// --- 多日行程状态 ---
+let multiDayMode = false;
+let multiDayCount = 2;
+let multiDayTransport = '步行优先';
+let multiDayDestination = '北京';
+let multiCandidatePool = [];       // [{shop_id, name, category, lat, lng, coord, rating, ...}]
+let multiDayScheduleResult = null; // 排程结果缓存
+let multiActiveDayIndex = 0;
 
 // --- 消息队列系统 ---
 async function processMessageQueue() {
@@ -1787,6 +1871,7 @@ async function resetAll() {
 // ======================================================================
 
 let lastScheduleData = null;
+let tripChatHistory = [];  // 行程聊天历史，用于 LLM 指代消解
 
 function handleNavigation() {
   var scheduleCard = activeChatCard;
@@ -2096,6 +2181,7 @@ function buildWaypointCoords(data) {
 // --- 底部栏模式切换 ---
 
 function switchBottomBarToTripMode() {
+  tripChatHistory = [];  // 进入行程模式时清空对话历史
   var input = document.getElementById('bottom-search-input');
   var hint = document.getElementById('bottom-bar-mode-hint');
   if (hint) hint.classList.remove('hidden');
@@ -2103,6 +2189,8 @@ function switchBottomBarToTripMode() {
     input.placeholder = '输入消息调整行程...';
     input.onkeydown = function(e) { if (e.key === 'Enter') sendTripMessage(); };
   }
+  var sendBtn = document.getElementById('bottom-send-btn');
+  if (sendBtn) { sendBtn.onclick = sendTripMessage; }
   var headerTitle = document.querySelector('#main-face-front header h1');
   if (headerTitle) headerTitle.innerHTML = 'Meituan <span class="text-yellow-400">AI</span> <span class="text-xs text-gray-400 font-normal">· 行程中</span>';
 }
@@ -2116,6 +2204,8 @@ function switchBottomBarToSearchMode() {
     input.placeholder = '输入您的需求';
     input.onkeydown = function(e) { if (e.key === 'Enter') doSearch(); };
   }
+  var sendBtn = document.getElementById('bottom-send-btn');
+  if (sendBtn) { sendBtn.onclick = doSearch; }
   var headerTitle = document.querySelector('#main-face-front header h1');
   if (headerTitle) headerTitle.innerHTML = 'Meituan <span class="text-yellow-400">AI</span>';
 }
@@ -2126,34 +2216,86 @@ async function sendTripMessage() {
   var msg = input.value.trim();
   input.value = '';
   input.disabled = true;
+
+  // 维护对话历史（最近 6 条，用于 LLM 指代消解）
+  tripChatHistory.push({role: 'user', text: msg});
+  if (tripChatHistory.length > 6) tripChatHistory.shift();
+
   var chatArea = document.getElementById('trip-chat-area');
   if (chatArea) {
-    chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 ml-8 text-right">' + _escHtml(msg) + '</div>';
+    // 用户气泡：白色背景，与主聊天 _addChatBubble('user') 一致
+    chatArea.innerHTML += '<div class="flex justify-end mb-2"><div class="max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.06);">' + _escHtml(msg) + '</div></div>';
     chatArea.innerHTML += '<div id="trip-loading-bubble" class="bg-gray-50 rounded-2xl p-3 mb-2 mr-8"><span class="typing-dots-inline"><span></span><span></span><span></span></span></div>';
     scrollToBottom();
   }
+
+  // 构建对话历史上下文
+  var contextMessages = tripChatHistory.slice(0, -1).map(function(m) {
+    return (m.role === 'user' ? '用户: ' : 'AI: ') + m.text;
+  }).join('\n');
+
+  // AbortController 5s 超时
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+  var timedOut = false;
+
   try {
     var res = await fetch(API_BASE + '/api/edit_trip', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ text: msg })
+      body: JSON.stringify({ text: msg, context: contextMessages }),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
     var data = await res.json();
     var lb = document.getElementById('trip-loading-bubble');
     if (lb) lb.remove();
+
     if (data.error) {
       if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">' + _escHtml(data.error) + '</p></div>';
+      tripChatHistory.push({role: 'ai', text: data.error});
+    } else if (data.phase === 'need_shop_selection') {
+      // 用户只说了品类没提店名 → 弹出询问气泡
+      tripChatHistory.push({role: 'ai', text: data.message || '需要我推荐几个吗？'});
+      _showTripShopAskBubble(data);
+    } else if (data.phase === 'swap_selection') {
+      // 用户想换店 → 展示候选店铺面板
+      tripChatHistory.push({role: 'ai', text: data.message || '为您找到以下替代店铺：'});
+      _showTripSwapPanel(data);
+    } else if (data.phase === 'clarify_swap_target') {
+      // 用户想换店但没说是哪个 → 展示目的地选择列表
+      tripChatHistory.push({role: 'ai', text: data.message || '您想换哪一个目的地？'});
+      _showSwapTargetPicker(data);
+    } else if (data.phase === 'no_change') {
+      // 用户放弃修改
+      if (chatArea) chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-gray-800">' + _escHtml(data.message || '好的，行程保持不变 ✅') + '</p></div>';
+      tripChatHistory.push({role: 'ai', text: data.message || '好的，行程保持不变 ✅'});
+    } else if (data.phase === 'clarify') {
+      // 意图不明确，追问
+      if (chatArea) chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-gray-800">' + _escHtml(data.message || '抱歉，我没太理解您的意思，能再说一遍吗？') + '</p></div>';
+      tripChatHistory.push({role: 'ai', text: data.message || '抱歉，我没太理解'});
     } else {
-      if (chatArea) chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-gray-800">已按你的要求更新行程</p></div>';
+      var shortMsg = msg.length > 40 ? msg.substring(0, 40) + '...' : msg;
+      if (chatArea) chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-gray-800">已根据「' + _escHtml(shortMsg) + '」更新行程 ✅</p></div>';
+      tripChatHistory.push({role: 'ai', text: '已根据「' + shortMsg + '」更新行程'});
       if (data.timeline || data.phase === 'done') {
         lastScheduleData = data.timeline ? data : Object.assign({}, lastScheduleData, data);
         _refreshTripView();
       }
     }
+
+    // 限制对话历史长度
+    if (tripChatHistory.length > 6) tripChatHistory = tripChatHistory.slice(-6);
     scrollToBottom();
   } catch(e) {
+    clearTimeout(timeoutId);
     var lb2 = document.getElementById('trip-loading-bubble');
     if (lb2) lb2.remove();
-    if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">网络错误，请重试</p></div>';
+    if (e.name === 'AbortError') {
+      timedOut = true;
+      if (chatArea) chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-yellow-700">⏱️ 响应超时，请稍后重试</p></div>';
+    } else {
+      if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">网络错误，请重试</p></div>';
+    }
   }
   input.disabled = false;
   input.focus();
@@ -2161,12 +2303,313 @@ async function sendTripMessage() {
 
 function _refreshTripView() {
   var tripView = document.getElementById('trip-view-container');
-  if (tripView) tripView.remove();
+  var chatHTML = '';
+  if (tripView) {
+    var chatArea = document.getElementById('trip-chat-area');
+    if (chatArea) chatHTML = chatArea.innerHTML;
+    tripView.remove();
+  }
   if (lastScheduleData && lastScheduleData.timeline) {
     renderTripView(lastScheduleData);
+    // 恢复聊天记录，不被重建清空
+    if (chatHTML) {
+      var newChatArea = document.getElementById('trip-chat-area');
+      if (newChatArea) newChatArea.innerHTML = chatHTML;
+    }
     renderMetroTimelineForMainFace(lastScheduleData);
     buildWaypointCoords(lastScheduleData);
   }
+}
+
+// --- 行程中添加目的地：询问气泡 + 简化推荐面板 ---
+
+function _showTripShopAskBubble(data) {
+  var chatArea = document.getElementById('trip-chat-area');
+  if (!chatArea) return;
+  var msg = document.createElement('div');
+  msg.className = 'bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-2 mr-8';
+  msg.innerHTML = '<p class="text-sm text-gray-800 leading-relaxed mb-3">' + _escHtml(data.message || '需要我为您推荐几个吗？') + '</p>' +
+    '<div class="flex gap-2">' +
+    '<button class="trip-recommend-yes flex-1 bg-yellow-400 text-black font-bold py-2 rounded-xl text-sm hover:bg-yellow-500 transition">📋 推荐几个</button>' +
+    '<button class="trip-recommend-no flex-1 bg-gray-200 text-gray-600 font-bold py-2 rounded-xl text-sm hover:bg-gray-300 transition">取消</button>' +
+    '</div>';
+  chatArea.appendChild(msg);
+  requestAnimationFrame(function() { chatArea.scrollTop = chatArea.scrollHeight; });
+
+  var yesBtn = msg.querySelector('.trip-recommend-yes');
+  var noBtn = msg.querySelector('.trip-recommend-no');
+  var resolved = false;
+  yesBtn.addEventListener('click', function() {
+    if (resolved) return;
+    resolved = true;
+    msg.remove();
+    _showTripShopPanel(data);
+  });
+  noBtn.addEventListener('click', function() {
+    if (resolved) return;
+    resolved = true;
+    msg.style.opacity = '0.5';
+    setTimeout(function() { msg.remove(); }, 1000);
+  });
+}
+
+function _showTripShopPanel(data) {
+  var container = document.getElementById('trip-view-container');
+  if (!container) return;
+  var emoji = (typeof CATEGORY_EMOJI !== 'undefined' && CATEGORY_EMOJI[data.category]) ? CATEGORY_EMOJI[data.category] : '📍';
+  var label = data.label || data.category;
+  var shops = data.shops || [];
+
+  var html = '<div id="trip-shop-panel" class="bg-white rounded-[24px] p-4 mb-4 border-2 border-yellow-200 shadow-sm animate-fade-in">';
+  html += '<p class="text-xs font-bold text-gray-400 mb-3 tracking-widest">' + emoji + ' ' + _escHtml(label) + ' · 请选择店铺</p>';
+  html += '<div class="flex space-x-4 overflow-x-auto pb-2 scrollbar-hide shop-scroll">';
+
+  for (var i = 0; i < shops.length; i++) {
+    var shop = shops[i];
+    var selected = i === 0;
+    var borderClass = selected ? 'border-yellow-400 meituan-shadow' : 'border-transparent';
+    var opacityClass = selected ? '' : 'opacity-60';
+    var checkmark = selected ? '<div class="absolute top-3 right-3 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center"><svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></div>' : '';
+
+    html += '<div class="flex-shrink-0 w-44 bg-white p-4 rounded-3xl border-4 ' + borderClass + ' ' + opacityClass + ' shop-card relative cursor-pointer transition-all" data-shop-id="' + (shop.shop_id || '') + '" data-category="' + (data.category || '') + '" data-coord="' + (shop.coord || '') + '" onclick="toggleShopCard(this)">';
+    html += checkmark;
+    html += '<h3 class="font-bold text-sm">' + _escHtml(shop.name || '') + '</h3>';
+    html += '<div class="flex items-center mt-2"><span class="text-yellow-500 text-xs font-bold">★ ' + (shop.rating || '?') + '</span><span class="text-[10px] text-gray-400 ml-2">' + (shop.distance || '') + '</span></div>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  html += '<button id="trip-shop-confirm-btn" onclick="_confirmTripShopAdd(\'' + (data.category || '') + '\')" class="w-full bg-yellow-400 text-black font-black py-4 rounded-2xl hover:scale-95 transition-transform">✅ 确认选择，加入行程</button>';
+  html += '</div>';
+
+  var chatArea = document.getElementById('trip-chat-area');
+  if (chatArea) {
+    chatArea.insertAdjacentHTML('beforebegin', html);
+  } else {
+    container.insertAdjacentHTML('beforeend', html);
+  }
+  scrollToBottom();
+}
+
+function _confirmTripShopAdd(category) {
+  var panel = document.getElementById('trip-shop-panel');
+  var selectedCard = panel ? panel.querySelector('.shop-card.border-yellow-400') : null;
+  if (!selectedCard) return;
+  var shopId = selectedCard.getAttribute('data-shop-id');
+  var shopNameEl = selectedCard.querySelector('h3');
+  var shopName = shopNameEl ? shopNameEl.textContent : '新店铺';
+
+  if (panel) panel.remove();
+
+  fetch(API_BASE + '/api/add_stop_to_trip', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ category: category, shop_id: shopId })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.timeline) {
+      lastScheduleData = data;
+      _refreshTripView();
+    }
+    // 更新对话历史，让后续 LLM 调用知道新增了这家店
+    tripChatHistory.push({role: 'ai', text: '已添加 ' + shopName + ' 到行程 ✅'});
+    if (tripChatHistory.length > 6) tripChatHistory.shift();
+    appendTripNotification('已添加 <b>' + shopName + '</b> 到行程 ✅');
+  })
+  .catch(function() {
+    appendTripNotification('添加失败，请稍后重试。');
+  });
+}
+
+// --- 行程中换店：目标选择器（多目的地时追问换哪个） ---
+
+function _showSwapTargetPicker(data) {
+  var stops = data.stops || [];
+  var chatArea = document.getElementById('trip-chat-area');
+  if (!chatArea || !stops.length) return;
+
+  var html = '<div id="trip-swap-target-picker" class="bg-white rounded-[20px] p-4 mb-3 border-2 border-orange-200 animate-fade-in">';
+  html += '<p class="text-sm text-gray-700 mb-3 font-medium">' + _escHtml(data.message || '您想换哪一个？') + '</p>';
+  html += '<div class="flex flex-wrap gap-2">';
+
+  for (var i = 0; i < stops.length; i++) {
+    var s = stops[i];
+    var emoji = (typeof CATEGORY_EMOJI !== 'undefined' && CATEGORY_EMOJI[s.category]) ? CATEGORY_EMOJI[s.category] : '';
+    html += '<button onclick="_pickSwapTarget(\'' + s.shop_id + '\')" class="px-4 py-2.5 bg-orange-50 border border-orange-200 rounded-full text-sm font-medium text-orange-700 hover:bg-orange-100 active:scale-95 transition-all">';
+    html += emoji + ' ' + _escHtml(s.name) + ' <span class="text-xs text-gray-400 ml-1">(' + _escHtml(s.label) + ')</span>';
+    html += '</button>';
+  }
+
+  html += '</div></div>';
+  chatArea.innerHTML += html;
+  scrollToBottom();
+}
+
+function _pickSwapTarget(shopId) {
+  // 移除选择器
+  var picker = document.getElementById('trip-swap-target-picker');
+  if (picker) picker.remove();
+
+  // 直接调 API，传 target_shop_id
+  _doEditTripSwap(shopId);
+}
+
+function _doEditTripSwap(shopId) {
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+  var chatArea = document.getElementById('trip-chat-area');
+
+  // 构建上下文（与 sendTripMessage 一致）
+  var contextMessages = tripChatHistory.slice(0, -1).map(function(m) {
+    return (m.role === 'user' ? '用户: ' : 'AI: ') + m.text;
+  }).join('\n');
+
+  fetch(API_BASE + '/api/edit_trip', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ text: '换一家', context: contextMessages, swap_target_shop_id: shopId }),
+    signal: controller.signal
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    clearTimeout(timeoutId);
+    if (data.error) {
+      if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">' + _escHtml(data.error) + '</p></div>';
+      tripChatHistory.push({role: 'ai', text: data.error});
+    } else if (data.phase === 'swap_selection') {
+      tripChatHistory.push({role: 'ai', text: data.message || '为您找到以下替代店铺：'});
+      _showTripSwapPanel(data);
+    } else if (data.phase === 'clarify_swap_target') {
+      tripChatHistory.push({role: 'ai', text: data.message || '您想换哪一个目的地？'});
+      _showSwapTargetPicker(data);
+    } else if (data.timeline || data.phase === 'done') {
+      lastScheduleData = data.timeline ? data : Object.assign({}, lastScheduleData, data);
+      _refreshTripView();
+    }
+    scrollToBottom();
+  })
+  .catch(function(e) {
+    clearTimeout(timeoutId);
+    if (chatArea) chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-yellow-700">' + (e.name === 'AbortError' ? '响应超时，请稍后重试' : '网络错误，请检查连接') + '</p></div>';
+  });
+}
+
+// --- 行程中换店：候选店铺面板 ---
+
+function _showTripSwapPanel(data) {
+  var container = document.getElementById('trip-view-container');
+  if (!container) return;
+  var emoji = (typeof CATEGORY_EMOJI !== 'undefined' && CATEGORY_EMOJI[data.category]) ? CATEGORY_EMOJI[data.category] : '🔄';
+  var label = data.label || data.category || '店铺';
+  var candidates = data.candidates || [];
+  var currentShop = data.current_shop || {};
+  var message = data.message || '为您找到以下替代店铺：';
+
+  if (!candidates.length) {
+    appendTripNotification('未找到可替换的店铺。');
+    return;
+  }
+
+  // 在 trip-chat-area 上方或 trip-view-container 中插入面板
+  var html = '<div id="trip-swap-panel" class="bg-white rounded-[24px] p-4 mb-4 border-2 border-orange-200 shadow-sm animate-fade-in">';
+  html += '<p class="text-xs font-bold text-gray-400 mb-1 tracking-widest">' + emoji + ' 替换「' + _escHtml(currentShop.name || '') + '」</p>';
+  html += '<p class="text-sm text-gray-600 mb-3">' + _escHtml(message) + '</p>';
+  html += '<div class="flex space-x-4 overflow-x-auto pb-2 scrollbar-hide shop-scroll">';
+
+  for (var i = 0; i < candidates.length; i++) {
+    var shop = candidates[i];
+    var selected = i === 0;
+    var borderClass = selected ? 'border-orange-400 meituan-shadow' : 'border-transparent';
+    var opacityClass = selected ? '' : 'opacity-60';
+    var checkmark = selected ? '<div class="absolute top-3 right-3 w-5 h-5 bg-orange-400 rounded-full flex items-center justify-center"><svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></div>' : '';
+
+    html += '<div class="flex-shrink-0 w-44 bg-white p-4 rounded-3xl border-4 ' + borderClass + ' ' + opacityClass + ' shop-card relative cursor-pointer transition-all" data-shop-id="' + (shop.shop_id || '') + '" data-swap-category="' + (data.category || '') + '" data-coord="' + (shop.coord || '') + '" onclick="_toggleSwapCard(this)">';
+    html += checkmark;
+    html += '<h3 class="font-bold text-sm">' + _escHtml(shop.name || '') + '</h3>';
+    html += '<div class="flex items-center mt-2"><span class="text-yellow-500 text-xs font-bold">★ ' + (shop.rating || '?') + '</span><span class="text-[10px] text-gray-400 ml-2">' + (shop.distance || '') + '</span></div>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  html += '<button id="trip-swap-confirm-btn" onclick="_confirmTripSwap()" class="w-full bg-orange-400 text-white font-black py-4 rounded-2xl hover:scale-95 transition-transform">✅ 确认更换为此店</button>';
+  html += '</div>';
+
+  // 移除旧面板
+  var oldPanel = document.getElementById('trip-swap-panel');
+  if (oldPanel) oldPanel.remove();
+
+  var chatArea = document.getElementById('trip-chat-area');
+  if (chatArea) {
+    chatArea.insertAdjacentHTML('beforebegin', html);
+  } else {
+    container.insertAdjacentHTML('beforeend', html);
+  }
+  scrollToBottom();
+}
+
+function _confirmTripSwap() {
+  var panel = document.getElementById('trip-swap-panel');
+  var selectedCard = panel ? panel.querySelector('.shop-card.border-orange-400') : null;
+  if (!selectedCard) return;
+  var shopId = selectedCard.getAttribute('data-shop-id');
+  var shopNameEl = selectedCard.querySelector('h3');
+  var shopName = shopNameEl ? shopNameEl.textContent : '新店铺';
+
+  // 禁用按钮防重复点击
+  var btn = document.getElementById('trip-swap-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '执行中...'; }
+
+  if (panel) panel.style.opacity = '0.6';
+
+  fetch(API_BASE + '/api/swap_shop', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ new_shop_id: shopId, is_queue: false })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (panel) panel.remove();
+    if (data.timeline) {
+      lastScheduleData = data;
+      _refreshTripView();
+    }
+    appendTripNotification('已为您将目的地更换为 <b>' + shopName + '</b> ✅');
+  })
+  .catch(function() {
+    if (panel) { panel.style.opacity = '1'; }
+    if (btn) { btn.disabled = false; btn.textContent = '✅ 确认更换为此店'; }
+    appendTripNotification('替换店铺失败，请稍后重试。');
+  });
+}
+
+// --- 换店面板专用单选逻辑（与搜索面板的 toggleShopCard 隔离） ---
+function _toggleSwapCard(el) {
+  // 查找当前换店面板容器，只在同面板内互斥
+  var panel = el.closest('#trip-swap-panel');
+  if (!panel) return;
+
+  // 取消同面板内所有卡片的选中态
+  var allCards = panel.querySelectorAll('.shop-card');
+  for (var i = 0; i < allCards.length; i++) {
+    var c = allCards[i];
+    c.classList.remove('border-orange-400', 'meituan-shadow');
+    c.classList.add('border-transparent', 'opacity-60');
+    var check = c.querySelector('.absolute.top-3');
+    if (check) check.remove();
+  }
+
+  // 当前卡片选中
+  el.classList.remove('border-transparent', 'opacity-60');
+  el.classList.add('border-orange-400', 'meituan-shadow');
+  if (!el.querySelector('.absolute.top-3')) {
+    var div = document.createElement('div');
+    div.className = 'absolute top-3 right-3 w-5 h-5 bg-orange-400 rounded-full flex items-center justify-center';
+    div.innerHTML = '<svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path></svg>';
+    el.appendChild(div);
+  }
+  // 选店变更 → 重新计算交通时间
+  if (typeof updateTransportTimeLabels === 'function') updateTransportTimeLabels();
 }
 
 // ======================================================================
@@ -6952,6 +7395,406 @@ reminderRefreshList = function() {
   if (_origReminderRefresh) _origReminderRefresh();
   if (_butlerPageActive) butlerRenderContent();
 };
+
+// ======================================================================
+// 多日行程功能
+// ======================================================================
+
+// ---- 全局缓存 ----
+var _multiCachedAttractions = [];
+var _multiSearchCache = [];
+
+// ---- 设置面板 ----
+
+function toggleMultiDayMode() {
+  console.log('[MultiDay] toggleMultiDayMode called, current mode:', multiDayMode);
+  if (multiDayMode) {
+    if (confirm('确定要退出多日行程模式吗？')) { closeMultiDaySetup(); multiDayMode = false; updateTripModeBtnUI(); hideCandidateBar(); }
+    return;
+  }
+  openMultiDaySetup();
+}
+
+function openMultiDaySetup() {
+  console.log('[MultiDay] openMultiDaySetup');
+  multiDayCount = 2; multiDayTransport = '步行优先'; multiDayDestination = '北京'; multiCandidatePool = [];
+  var elDayCount = document.getElementById('multi-day-count');
+  var elDest = document.getElementById('multi-destination-input');
+  var elStep1 = document.getElementById('multi-setup-step1');
+  var elStep2 = document.getElementById('multi-setup-step2');
+  var elModal = document.getElementById('multi-day-setup-modal');
+  if (elDayCount) elDayCount.textContent = '2';
+  if (elDest) elDest.value = '北京';
+  if (elStep1) elStep1.classList.remove('hidden');
+  if (elStep2) elStep2.classList.add('hidden');
+  if (elModal) elModal.classList.remove('hidden');
+  // 重置交通按钮
+  var btns = document.querySelectorAll('.multi-transport-btn');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].className = btns[i].className.replace(/bg-yellow-400 text-black/g, 'bg-gray-100 text-gray-600');
+  }
+  if (btns.length > 0) btns[0].className = btns[0].className.replace(/bg-gray-100 text-gray-600/g, 'bg-yellow-400 text-black');
+}
+
+function closeMultiDaySetup() {
+  var el = document.getElementById('multi-day-setup-modal');
+  if (el) el.classList.add('hidden');
+}
+
+function changeTripDays(delta) {
+  multiDayCount = Math.max(1, Math.min(7, multiDayCount + delta));
+  var el = document.getElementById('multi-day-count');
+  if (el) el.textContent = multiDayCount;
+}
+
+function selectMultiTransport(mode, btn) {
+  multiDayTransport = mode;
+  var btns = document.querySelectorAll('.multi-transport-btn');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].className = btns[i].className.replace(/bg-yellow-400 text-black/g, 'bg-gray-100 text-gray-600');
+  }
+  if (btn) btn.className = btn.className.replace(/bg-gray-100 text-gray-600/g, 'bg-yellow-400 text-black');
+}
+
+function goToMultiSetupStep2() {
+  var destInput = document.getElementById('multi-destination-input');
+  multiDayDestination = (destInput && destInput.value.trim()) ? destInput.value.trim() : '北京';
+  var label = document.getElementById('multi-dest-label');
+  if (label) label.textContent = multiDayDestination;
+  var step1 = document.getElementById('multi-setup-step1');
+  var step2 = document.getElementById('multi-setup-step2');
+  if (step1) step1.classList.add('hidden');
+  if (step2) step2.classList.remove('hidden');
+  console.log('[MultiDay] goToStep2, destination=' + multiDayDestination);
+  fetchPopularAttractions();
+}
+
+function goBackToMultiSetupStep1() {
+  var step1 = document.getElementById('multi-setup-step1');
+  var step2 = document.getElementById('multi-setup-step2');
+  var searchInput = document.getElementById('multi-search-input');
+  var searchResults = document.getElementById('multi-search-results');
+  if (step1) step1.classList.remove('hidden');
+  if (step2) step2.classList.add('hidden');
+  if (searchInput) searchInput.value = '';
+  if (searchResults) { searchResults.classList.add('hidden'); searchResults.innerHTML = ''; }
+}
+
+// ---- 热门推荐 ----
+
+async function fetchPopularAttractions() {
+  console.log('[MultiDay] fetchPopularAttractions START');
+  var loadingEl = document.getElementById('multi-attractions-loading');
+  var listEl = document.getElementById('multi-attractions-list');
+  var statsEl = document.getElementById('multi-candidate-stats');
+  var badgeEl = document.getElementById('multi-cache-badge');
+  if (loadingEl) loadingEl.classList.remove('hidden');
+  if (listEl) { listEl.classList.add('hidden'); listEl.innerHTML = ''; }
+  if (statsEl) statsEl.classList.add('hidden');
+  if (badgeEl) badgeEl.classList.add('hidden');
+
+  try {
+    console.log('[MultiDay] calling /api/set_trip_config...');
+    var res = await fetch(API_BASE + '/api/set_trip_config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({days: multiDayCount, destination: multiDayDestination, transport: multiDayTransport})
+    });
+    console.log('[MultiDay] API response status:', res.status);
+    var data = await res.json();
+    console.log('[MultiDay] API data status:', data.status, 'attractions:', data.attractions ? data.attractions.length : 0, 'source:', data.attractions_source);
+
+    if (loadingEl) loadingEl.classList.add('hidden');
+
+    if (data.status === 'SUCCESS' && data.attractions && data.attractions.length > 0) {
+      _multiCachedAttractions = data.attractions;
+      renderAttractionsList(data.attractions);
+      multiDayMode = true;
+      updateTripModeBtnUI();
+      showCandidateBar();
+      if (badgeEl) {
+        if (data.attractions_source === 'cache') { badgeEl.textContent = '📦 预缓存'; badgeEl.classList.remove('hidden'); }
+        else { badgeEl.textContent = '🌐 实时搜索'; badgeEl.classList.remove('hidden'); }
+      }
+      console.log('[MultiDay] SUCCESS - rendered ' + data.attractions.length + ' attractions');
+    } else {
+      if (listEl) {
+        listEl.innerHTML = '<p class="text-center text-gray-400 text-sm py-4">暂无热门数据，请用上方搜索框添加</p>';
+        listEl.classList.remove('hidden');
+      }
+      multiDayMode = true;
+      updateTripModeBtnUI();
+      showCandidateBar();
+      console.log('[MultiDay] No attractions returned');
+    }
+  } catch (e) {
+    console.error('[MultiDay] fetchPopularAttractions ERROR:', e);
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (listEl) {
+      listEl.innerHTML = '<p class="text-center text-red-400 text-sm py-4">⚠️ 加载失败: ' + e.message + '</p>';
+      listEl.classList.remove('hidden');
+    }
+  }
+}
+
+function renderAttractionsList(attractions) {
+  console.log('[MultiDay] renderAttractionsList called with ' + attractions.length + ' items');
+  _multiCachedAttractions = attractions;
+  var listEl = document.getElementById('multi-attractions-list');
+  if (!listEl) { console.error('[MultiDay] multi-attractions-list not found!'); return; }
+
+  var html = '';
+  for (var i = 0; i < attractions.length; i++) {
+    var attr = attractions[i];
+    var inPool = false;
+    for (var j = 0; j < multiCandidatePool.length; j++) {
+      if (multiCandidatePool[j].shop_id === attr.shop_id) { inPool = true; break; }
+    }
+    var catEmoji = '📍';
+    if (attr.category === 'scenic') catEmoji = '🏛️';
+    else if (attr.category === 'restaurant') catEmoji = '🍽️';
+    else if (attr.category === 'hotpot') catEmoji = '🍲';
+    else if (attr.category === 'shopping') catEmoji = '🛍️';
+    else if (attr.category === 'cafe') catEmoji = '☕';
+    else if (attr.category === 'hotel') catEmoji = '🏨';
+    var rating = typeof attr.rating === 'number' ? attr.rating : parseFloat(attr.rating) || 0;
+    var stars = '';
+    for (var s = 0; s < Math.round(rating); s++) stars += '⭐';
+
+    html += '<div class="flex items-center justify-between bg-gray-50 rounded-2xl p-3' + (inPool ? ' border-2 border-yellow-400' : '') + '">';
+    html += '<div class="flex-1 min-w-0">';
+    html += '<span class="text-xs font-bold text-gray-400">' + catEmoji + ' ' + (attr.category_cn || attr.category || '') + '</span>';
+    html += '<p class="font-bold text-sm text-gray-900 truncate">' + attr.name + '</p>';
+    html += '<p class="text-xs text-gray-400">' + stars + ' ' + rating + '</p>';
+    html += '</div>';
+    html += '<button onclick="toggleCandidateByIndex(' + i + ', this)" class="flex-shrink-0 ml-2 w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition ' + (inPool ? 'bg-yellow-400 text-black' : 'bg-gray-200 text-gray-500') + '">' + (inPool ? '✓' : '+') + '</button>';
+    html += '</div>';
+  }
+  listEl.innerHTML = html;
+  listEl.classList.remove('hidden');
+  updateCandidateStats();
+  console.log('[MultiDay] renderAttractionsList DONE');
+}
+
+function toggleCandidateByIndex(idx, btn) {
+  var attr = _multiCachedAttractions[idx];
+  if (!attr) return;
+  var found = -1;
+  for (var i = 0; i < multiCandidatePool.length; i++) {
+    if (multiCandidatePool[i].shop_id === attr.shop_id) { found = i; break; }
+  }
+  if (found >= 0) {
+    multiCandidatePool.splice(found, 1);
+    if (btn) { btn.className = btn.className.replace(/bg-yellow-400 text-black/g, 'bg-gray-200 text-gray-500'); btn.textContent = '+'; }
+  } else {
+    multiCandidatePool.push(attr);
+    if (btn) { btn.className = btn.className.replace(/bg-gray-200 text-gray-500/g, 'bg-yellow-400 text-black'); btn.textContent = '✓'; }
+  }
+  updateCandidateStats();
+}
+
+// ---- 弹窗内搜索 ----
+
+async function searchInModal() {
+  var input = document.getElementById('multi-search-input');
+  if (!input) return;
+  var keywords = input.value.trim();
+  if (!keywords) return;
+  console.log('[MultiDay] searchInModal: ' + keywords);
+
+  var resultsEl = document.getElementById('multi-search-results');
+  if (resultsEl) { resultsEl.classList.remove('hidden'); resultsEl.innerHTML = '<div class="text-center py-2 text-xs text-gray-400">搜索中...</div>'; }
+
+  try {
+    var res = await fetch(API_BASE + '/api/search_attraction', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({keywords: keywords, city: multiDayDestination})
+    });
+    var data = await res.json();
+    console.log('[MultiDay] search result:', data.status, data.total);
+
+    if (!resultsEl) return;
+    if (data.status === 'SUCCESS' && data.results && data.results.length > 0) {
+      _multiSearchCache = data.results;
+      var html = '<p class="text-xs text-gray-400 mb-1">搜索结果（点击+添加）：</p>';
+      for (var i = 0; i < data.results.length; i++) {
+        var shop = data.results[i];
+        var inPool = false;
+        for (var j = 0; j < multiCandidatePool.length; j++) {
+          if (multiCandidatePool[j].shop_id === shop.shop_id) { inPool = true; break; }
+        }
+        html += '<div class="flex items-center justify-between bg-white rounded-xl p-2 ' + (inPool ? 'border border-yellow-400' : 'border border-gray-100') + '">';
+        html += '<div class="flex-1 min-w-0"><p class="text-sm font-medium text-gray-900 truncate">' + shop.name + '</p><p class="text-xs text-gray-400">' + (shop.category_cn || '') + ' ' + (shop.address || '') + '</p></div>';
+        html += '<button onclick="addSearchResultToPoolByIndex(' + i + ', this)" class="flex-shrink-0 ml-2 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ' + (inPool ? 'bg-yellow-400 text-black' : 'bg-gray-100 text-gray-500') + '">' + (inPool ? '✓' : '+') + '</button>';
+        html += '</div>';
+      }
+      resultsEl.innerHTML = html;
+    } else {
+      resultsEl.innerHTML = '<p class="text-center text-gray-400 text-xs py-2">未找到相关地点</p>';
+    }
+  } catch (e) {
+    console.error('[MultiDay] searchInModal ERROR:', e);
+    if (resultsEl) resultsEl.innerHTML = '<p class="text-center text-red-400 text-xs py-2">搜索失败: ' + e.message + '</p>';
+  }
+}
+
+function addSearchResultToPoolByIndex(idx, btn) {
+  var shop = _multiSearchCache[idx];
+  if (!shop) return;
+  var found = -1;
+  for (var i = 0; i < multiCandidatePool.length; i++) {
+    if (multiCandidatePool[i].shop_id === shop.shop_id) { found = i; break; }
+  }
+  if (found >= 0) {
+    multiCandidatePool.splice(found, 1);
+    if (btn) { btn.className = btn.className.replace(/bg-yellow-400 text-black/g, 'bg-gray-100 text-gray-500'); btn.textContent = '+'; }
+  } else {
+    multiCandidatePool.push(shop);
+    if (btn) { btn.className = btn.className.replace(/bg-gray-100 text-gray-500/g, 'bg-yellow-400 text-black'); btn.textContent = '✓'; }
+  }
+  updateCandidateStats();
+}
+
+// ---- 候选池统计 ----
+
+function updateCandidateStats() {
+  var count = multiCandidatePool.length;
+  var elCount = document.getElementById('multi-candidate-count');
+  var elBarCount = document.getElementById('multi-candidate-bar-count');
+  var elStats = document.getElementById('multi-candidate-stats');
+  var elScheduleBtn = document.getElementById('multi-schedule-btn');
+  var elBarScheduleBtn = document.getElementById('multi-candidate-bar-schedule-btn');
+  if (elCount) elCount.textContent = count;
+  if (elBarCount) elBarCount.textContent = count;
+  if (elStats) { if (count === 0) elStats.classList.add('hidden'); else elStats.classList.remove('hidden'); }
+  if (elScheduleBtn) elScheduleBtn.disabled = (count === 0);
+  if (elBarScheduleBtn) elBarScheduleBtn.disabled = (count === 0);
+}
+
+function showCandidateBar() {
+  var bar = document.getElementById('multi-candidate-bar');
+  if (bar) bar.classList.remove('hidden');
+}
+
+function hideCandidateBar() {
+  var bar = document.getElementById('multi-candidate-bar');
+  if (bar) bar.classList.add('hidden');
+}
+
+// ---- 搜索框回车支持 ----
+(function() {
+  var si = document.getElementById('multi-search-input');
+  if (si) {
+    si.onkeydown = function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); searchInModal(); }
+    };
+  }
+})();
+
+// ---- 智能排程 ----
+
+async function executeSmartSchedule() {
+  if (multiCandidatePool.length === 0) { alert('请先选择至少一个想去的地方'); return; }
+  closeMultiDaySetup();
+  var dc = document.getElementById('dynamic-content');
+  if (dc) dc.innerHTML = '<div class="text-center py-12"><p class="text-sm text-gray-500">🪄 正在智能排程...</p></div>';
+  if (typeof scrollToBottom === 'function') scrollToBottom();
+
+  try {
+    var res = await fetch(API_BASE + '/api/smart_schedule', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({start_time: '09:00', candidates: multiCandidatePool})
+    });
+    var data = await res.json();
+    if (data.status === 'SUCCESS') {
+      multiDayScheduleResult = data; multiActiveDayIndex = 0;
+      renderMultiDayCards(data);
+      isInTripMode = true;
+      if (typeof switchBottomBarToTripMode === 'function') switchBottomBarToTripMode();
+      hideCandidateBar();
+      currentPhase = 'trip_active';
+    } else if (dc) {
+      dc.innerHTML = '<div class="bg-red-50 rounded-3xl p-6 text-center"><p class="text-red-500 font-bold">排程失败</p><p class="text-sm">' + (data.message || '') + '</p></div>';
+    }
+  } catch (e) {
+    console.error('[MultiDay] executeSmartSchedule ERROR:', e);
+    if (dc) dc.innerHTML = '<div class="bg-red-50 rounded-3xl p-6 text-center"><p class="text-red-500 font-bold">请求失败</p></div>';
+  }
+}
+
+// ---- 日卡片 ----
+
+function renderMultiDayCards(data) {
+  var dc = document.getElementById('dynamic-content');
+  if (!dc) return;
+  var days = data.days || [];
+  var meta = data.algorithm_metadata || {};
+  var html = '<div id="multi-day-container" class="space-y-4">';
+  html += '<div class="bg-gray-50 rounded-2xl p-3 text-xs text-gray-500 text-center">🧠 ' + (meta.cluster_method || '') + ' · ' + days.length + '天 · ' + (meta.num_shops || 0) + '店 · ≈' + (meta.total_cost_km || 0) + 'km</div>';
+  html += '<div id="multi-day-cards-wrapper" class="overflow-x-auto" style="scrollbar-width:none;-ms-overflow-style:none;scroll-snap-type:x mandatory"><div class="flex gap-4" style="width:max-content">';
+
+  for (var i = 0; i < days.length; i++) {
+    var day = days[i];
+    html += '<div class="multi-day-card flex-shrink-0 bg-white rounded-3xl border-2 shadow-sm p-5" style="width:280px;scroll-snap-align:start;border-color:' + (i === 0 ? '#fbbf24' : '#e5e7eb') + '">';
+    html += '<div class="flex justify-between mb-3"><h3 class="font-black text-gray-900">' + day.label + '</h3><span class="text-xs text-gray-400">⏱' + Math.round((day.total_duration_minutes || 0) / 60) + 'h</span></div>';
+    var timeline = day.timeline || [];
+    if (timeline.length > 0) {
+      html += '<div class="space-y-2">';
+      for (var t = 0; t < timeline.length; t++) {
+        var node = timeline[t];
+        html += '<div class="flex gap-2"><span class="text-xs text-gray-400 w-10">' + (node.time || '') + '</span><span class="text-sm">📍 <span class="font-medium">' + (node.memo || '') + '</span></span></div>';
+      }
+      html += '</div>';
+    }
+    html += '<div class="mt-3 pt-3 border-t border-gray-100 flex justify-between text-xs text-gray-400"><span>🚶' + (day.total_travel_minutes || 0) + 'min</span><span>📍' + (day.pairs ? day.pairs.length : 0) + '站</span></div>';
+    html += '</div>';
+  }
+  html += '</div></div>';
+  html += '<div class="flex justify-center gap-2 my-2">';
+  for (var d = 0; d < days.length; d++) {
+    html += '<button onclick="switchMultiDay(' + d + ')" class="multi-day-dot w-3 h-3 rounded-full ' + (d === 0 ? 'bg-yellow-400 w-6' : 'bg-gray-300') + '"></button>';
+  }
+  html += '</div>';
+  html += '<p class="text-center text-xs text-gray-400">💬 在下方聊天框修改行程</p></div>';
+  dc.innerHTML = html;
+  if (typeof scrollToBottom === 'function') scrollToBottom();
+}
+
+function switchMultiDay(dayIndex) {
+  multiActiveDayIndex = dayIndex;
+  var dots = document.querySelectorAll('.multi-day-dot');
+  for (var i = 0; i < dots.length; i++) {
+    dots[i].className = 'multi-day-dot w-3 h-3 rounded-full ' + (i === dayIndex ? 'bg-yellow-400 w-6' : 'bg-gray-300');
+  }
+  var cards = document.querySelectorAll('.multi-day-card');
+  for (var j = 0; j < cards.length; j++) {
+    cards[j].style.borderColor = (j === dayIndex ? '#fbbf24' : '#e5e7eb');
+  }
+  if (cards[dayIndex]) cards[dayIndex].scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
+  fetch(API_BASE + '/api/switch_day', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({day_index: dayIndex})
+  }).catch(function(){});
+}
+
+// ---- 按钮UI ----
+
+function updateTripModeBtnUI() {
+  var btn = document.getElementById('trip-mode-btn');
+  if (!btn) return;
+  if (multiDayMode) {
+    btn.style.background = '#fef9c3';
+    btn.title = '多日行程 · ' + multiDayCount + '天 (' + multiDayDestination + ')';
+  } else {
+    btn.style.background = '';
+    btn.title = '多日行程';
+  }
+}
+
+
+
 </script>
 
 </body>
