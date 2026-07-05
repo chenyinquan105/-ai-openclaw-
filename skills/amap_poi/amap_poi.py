@@ -392,6 +392,13 @@ class AmapPOIClient:
         except (ValueError, TypeError):
             distance = 0
 
+        # ── 营业时间（deep_info.opentime）──
+        deep_info = poi.get("deep_info", {}) or {}
+        opentime = deep_info.get("opentime", "") or ""
+        # 常见格式: "10:00-22:00", "周一至周五 09:00-18:00; 周六,周日 10:00-20:00"
+        if not opentime:
+            opentime = "未知"
+
         return {
             "shop_id": poi.get("id", ""),
             "name": poi.get("name", ""),
@@ -414,6 +421,7 @@ class AmapPOIClient:
             "adname": poi.get("adname", ""),       # 区县
             "business_area": poi.get("business_area", ""),
             "photos": photos,
+            "opentime": opentime,                   # 营业时间
         }
 
     def _map_amap_type_to_category(self, amap_type: str) -> tuple:
@@ -664,6 +672,7 @@ def search_poi_matrix(
                 "distance": shop.get("distance", 0),
                 "signature_dishes": shop.get("signature_dishes", []),
                 "top_comments": shop.get("top_comments", []),
+                "opentime": shop.get("opentime", "未知"),
             }
             result_map[cat].append(entry)
 

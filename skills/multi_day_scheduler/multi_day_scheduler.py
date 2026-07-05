@@ -78,6 +78,8 @@ CATEGORY_DURATIONS = {
 }
 
 MEAL_CATEGORIES = {"restaurant", "hotpot", "japanese", "cafe", "breakfast"}
+MAIN_MEAL_CATEGORIES = {"restaurant", "hotpot", "japanese"}  # 正餐：只排午/晚餐，不进入VISIT循环
+SNACK_CATEGORIES = {"cafe"}  # 小吃/饮品：可作VISIT节点，但需间隔≥90min
 
 
 def _get_duration(category: str) -> int:
@@ -198,10 +200,20 @@ def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0) -> list:
     max_iter = 50
 
     for _ in range(max_iter):
-        # 计算每天预估总时间
+        # 计算每天预估总时间（正餐每天最多计入2家=1午+1晚）
         day_times = []
         for cluster in clusters:
-            total = sum(_get_duration(s.get("category", "")) for s in cluster)
+            meal_count = 0
+            total = 0
+            for s in cluster:
+                cat = s.get("category", "")
+                if cat in MAIN_MEAL_CATEGORIES:
+                    meal_count += 1
+                    if meal_count <= 2:
+                        total += _get_duration(cat)  # 最多计入2家正餐
+                    # 超过2家的正餐不计入（不会出现在VISIT中）
+                else:
+                    total += _get_duration(cat)
             # 粗略估计旅行时间 = 点数 × 15min
             total += len(cluster) * 15
             day_times.append(total)
@@ -387,25 +399,33 @@ DINNER_WINDOW = (17 * 60 + 30, 19 * 60 + 30)  # 17:30-19:30
 
 
 def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
-                    weather: dict = None) -> list:
+                    weather: dict = None, wake_time_str: str = "07:30",
+                    bedtime_str: str = "22:00", week_day: int = 0) -> dict:
     """
-    智能时间线构建：就近用餐 + 休息缓冲 + 天气标记。
-    按照 TSP 优化后的路线顺序排列活动，在合适位置插入用餐和休息。
-    返回 timeline: [{time, action, memo, category, ...}]
+    智能时间线构建：就近用餐 + 休息缓冲 + 天气标记 + 营业时间感知。
+
+    返回:
+      {"timeline": [...], "closed_conflicts": [...], "unknown_hours_shops": [...]}
     """
     start_h, start_m = map(int, start_time_str.split(":"))
     current_minutes = start_h * 60 + start_m
 
-    route = day_plan.get("route", [])
-    # 按路线顺序排列 shops（路线[1:-1] 对应 shops）
     ordered_shops = list(shops)  # 保持原顺序（TSP已优化）
 
-    timeline = []
-    MEAL_CATS = MEAL_CATEGORIES
-    # 餐饮类 POI 的索引 {shop_id: shop}
-    meal_map = {s.get("shop_id"): s for s in shops if s.get("category", "") in MEAL_CATS}
+    # ── 品类分流：正餐不入VISIT循环，小吃需间隔控制 ──
+    main_meal_shops = [s for s in ordered_shops if s.get("category", "") in MAIN_MEAL_CATEGORIES]
+    snack_shops = [s for s in ordered_shops if s.get("category", "") in SNACK_CATEGORIES]
+    # 非餐类 + 小吃 = VISIT循环遍历对象（正餐排除在外）
+    visitable_shops = [s for s in ordered_shops if s.get("category", "") not in MAIN_MEAL_CATEGORIES]
 
-    # 天气信息
+    timeline = []
+    closed_conflicts = []
+    unknown_hours_shops = []
+    MEAL_CATS = MEAL_CATEGORIES
+    meal_map = {s.get("shop_id"): s for s in shops if s.get("category", "") in MEAL_CATS}
+    _last_food_end_minutes = None  # 追踪上一次进食结束时间（用于小吃间隔控制）
+
+    # ── 天气信息 ──
     weather_alert = None
     if weather:
         if not weather.get("outdoor_suitable", True):
@@ -413,26 +433,88 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
         if weather.get("day_temp", 25) > 35:
             weather_alert = (weather_alert or "") + " 🔥 高温，注意防暑"
 
-    # 按路线顺序遍历
+    # ── 智能起床时间（基于当天首个景点开门时间）──
+    earliest_open = None
+    earliest_open_name = ""
+    for shop in visitable_shops:
+        opentime_str = shop.get("opentime", "未知")
+        hours = _parse_opentime(opentime_str, week_day)
+        if hours:
+            if earliest_open is None or hours["open"] < earliest_open:
+                earliest_open = hours["open"]
+                earliest_open_name = shop.get("name", "")
+        else:
+            if opentime_str not in ("", "未知") or shop.get("category", "") not in MEAL_CATS:
+                unknown_hours_shops.append(shop.get("name", ""))
+
+    if earliest_open is not None:
+        # 起床 = 最早开门 - 60min（洗漱+早餐+交通），但不早于 06:30
+        wake_minutes = max(6 * 60 + 30, earliest_open - 60)
+        wake_memo = f"⏰ 起床（{earliest_open_name}{earliest_open//60:02d}:{earliest_open%60:02d}开门）"
+    else:
+        wh, wm = map(int, wake_time_str.split(":"))
+        wake_minutes = wh * 60 + wm
+        wake_memo = "⏰ 起床"
+
+    timeline.append({
+        "time": f"{wake_minutes // 60:02d}:{wake_minutes % 60:02d}",
+        "action": "WAKE_UP",
+        "memo": wake_memo,
+        "category": "wake_up",
+        "shop_id": "",
+        "duration_minutes": 0,
+    })
+
+    # ── 早餐插入（07:00-09:00）──
+    bf_meal = None
+    for mid, m in meal_map.items():
+        if _is_breakfast(m):
+            bf_meal = m
+            break
+    bf_time = max(7 * 60, wake_minutes + 20)
+    if bf_meal:
+        timeline.append({
+            "time": f"{bf_time // 60:02d}:{bf_time % 60:02d}",
+            "action": "BREAKFAST",
+            "memo": f"🥐 {bf_meal.get('name', '早餐')}",
+            "category": bf_meal.get("category", "breakfast"),
+            "shop_id": bf_meal.get("shop_id", ""),
+            "duration_minutes": 45,
+        })
+    else:
+        timeline.append({
+            "time": f"{bf_time // 60:02d}:{bf_time % 60:02d}",
+            "action": "BREAKFAST_NEEDED",
+            "memo": "🥐 早餐（待搜索）",
+            "category": "breakfast",
+            "shop_id": "",
+            "duration_minutes": 45,
+        })
+    current_minutes = max(current_minutes, bf_time + 45 + 15)  # 推进到 09:00+
+    _last_food_end_minutes = bf_time + 45  # 早餐结束时间
+
+    # ── 按路线顺序遍历（正餐不参与VISIT循环）──
     last_shop_lat, last_shop_lng = None, None
-    for idx, shop in enumerate(ordered_shops):
+    for idx, shop in enumerate(visitable_shops):
         cat = shop.get("category", "")
+        # 跳过已用作早餐的店铺
+        if bf_meal and shop.get("shop_id") == bf_meal.get("shop_id"):
+            continue
         dur = _get_duration(cat)
         s_lat = shop.get("lat", 0)
         s_lng = shop.get("lng", 0)
 
-        # ── 午餐插入（11:30-13:30）──
-        lunch_time = 11 * 60 + 30
-        if current_minutes < lunch_time and idx > 0:
-            # 检查是否有餐厅需要安排在午餐时段
-            remaining_meals = [m for mid, m in meal_map.items()
-                              if mid not in {t.get("shop_id") for t in timeline}]
-            if remaining_meals and current_minutes + _get_duration(ordered_shops[idx].get("category", "")) > lunch_time - 30:
-                # 在当前位置之前插入最近的餐厅作为午餐
-                nearest_meal = min(remaining_meals, key=lambda m:
+        # ── 午餐插入（11:00-14:00）：从正餐池中选1家最近的 ──
+        lunch_start = 11 * 60
+        lunch_end = 14 * 60
+        if main_meal_shops and current_minutes < lunch_end and not any(t.get("action") == "LUNCH" for t in timeline):
+            # 如果当前时间在午餐窗口内或即将进入
+            if idx == 0 or current_minutes > lunch_start - 60:
+                # 选离当前位置最近的正餐
+                nearest_meal = min(main_meal_shops, key=lambda m:
                     _haversine_m(s_lat, s_lng, m.get("lat", s_lat), m.get("lng", s_lng)))
-                if current_minutes < lunch_time:
-                    current_minutes = lunch_time
+                if current_minutes < lunch_start:
+                    current_minutes = lunch_start
                 meal_dur = _get_duration(nearest_meal.get("category", ""))
                 time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
                 timeline.append({
@@ -441,36 +523,94 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                     "category": nearest_meal.get("category", ""),
                     "shop_id": nearest_meal.get("shop_id", ""),
                     "duration_minutes": meal_dur,
+                    "opentime": nearest_meal.get("opentime", "未知"),
                 })
-                current_minutes += meal_dur
-                # 午餐后休息
-                current_minutes += 30
+                current_minutes += meal_dur + 30  # 午餐后休息
+                _last_food_end_minutes = current_minutes
+                main_meal_shops.remove(nearest_meal)  # 用过的不复用
                 timeline.append({
                     "time": f"{current_minutes // 60:02d}:{current_minutes % 60:02d}",
                     "action": "REST", "memo": "☕ 午休片刻", "category": "rest",
                     "shop_id": "", "duration_minutes": 0,
                 })
 
-        # ── 活动间缓冲（非第一个活动）──
+        # ── 晚餐插入（17:00-19:30）：在活动推过晚饭时间前插入 ──
+        dinner_start = 17 * 60
+        dinner_end = 19 * 60 + 30
+        if main_meal_shops and current_minutes + dur > dinner_start and current_minutes < dinner_end \
+                and not any(t.get("action") == "DINNER" for t in timeline):
+            d_time = max(dinner_start, current_minutes)
+            # 距上次进食至少90min
+            if _last_food_end_minutes is not None:
+                d_time = max(d_time, _last_food_end_minutes + 90)
+            if d_time < dinner_end:
+                nearest_d = min(main_meal_shops, key=lambda m:
+                    _haversine_m(s_lat, s_lng, m.get("lat", s_lat), m.get("lng", s_lng)))
+                d_dur = _get_duration(nearest_d.get("category", ""))
+                timeline.append({
+                    "time": f"{d_time // 60:02d}:{d_time % 60:02d}",
+                    "action": "DINNER",
+                    "memo": f"🍽️ {nearest_d.get('name', '')}",
+                    "category": nearest_d.get("category", ""),
+                    "shop_id": nearest_d.get("shop_id", ""),
+                    "duration_minutes": d_dur,
+                    "opentime": nearest_d.get("opentime", "未知"),
+                })
+                current_minutes = d_time + d_dur + 30
+                _last_food_end_minutes = current_minutes
+                main_meal_shops.remove(nearest_d)
+
+        # ── 小吃间隔检查（café类距上次进食≥90min）──
+        if cat in SNACK_CATEGORIES and _last_food_end_minutes is not None:
+            gap_needed = _last_food_end_minutes + 90
+            if current_minutes < gap_needed:
+                current_minutes = gap_needed
+
+        # ── 活动间缓冲 ──
         if len(timeline) > 0:
-            # 计算到下一个地点的交通时间
             if last_shop_lat and last_shop_lng:
                 travel_m = _haversine_m(last_shop_lat, last_shop_lng, s_lat, s_lng)
                 travel_min = max(5, round(travel_m / _get_speed("步行优先")))
                 current_minutes += travel_min
             else:
-                current_minutes += 15  # 默认15分钟缓冲
+                current_minutes += 15
 
-        # ── 跳过夜间 ──
-        if current_minutes >= 21 * 60:
+        # ── 夜间截止（由 bedtime 决定）──
+        bed_h, bed_m = map(int, bedtime_str.split(":"))
+        night_cutoff = bed_h * 60 + bed_m - 60  # 就寝前1小时不再排活动
+        if current_minutes >= night_cutoff:
             continue
+
+        # ── 营业时间检查 ──
+        opentime_str = shop.get("opentime", "未知")
+        hours = _parse_opentime(opentime_str, week_day)
+        open_check = _check_open(hours, current_minutes, dur)
+
+        if open_check["status"] == "after_close":
+            closed_conflicts.append({
+                "shop_name": shop.get("name", ""),
+                "shop_id": shop.get("shop_id", ""),
+                "category": cat,
+                "visit_time": f"{current_minutes // 60:02d}:{current_minutes % 60:02d}",
+                "opentime": opentime_str,
+                "reason": open_check["message"],
+            })
+            continue  # 跳过此 POI
+
+        if open_check["status"] == "before_open":
+            # 推迟到开门时间
+            suggested = open_check.get("suggested_time", current_minutes)
+            if suggested <= night_cutoff:
+                current_minutes = suggested
 
         time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
 
-        # ── 天气标记 ──
+        # ── 构建 memo ──
         memo = shop.get("name", "")
         if weather_alert and cat == "scenic":
             memo = f"{memo} {weather_alert}"
+        if open_check["status"] != "ok":
+            memo = f"{memo} {open_check['message']}"
 
         timeline.append({
             "time": time_str,
@@ -479,30 +619,96 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
             "category": cat,
             "shop_id": shop.get("shop_id", ""),
             "duration_minutes": dur,
+            "opentime": opentime_str,
         })
-        current_minutes += dur + 10  # 活动后缓冲
+        current_minutes += dur + 10
         last_shop_lat, last_shop_lng = s_lat, s_lng
+        # 小吃/饮品结束时间记录（用于后续间隔控制）
+        if cat in SNACK_CATEGORIES:
+            _last_food_end_minutes = current_minutes
 
-    # ── 晚餐插入（17:30-19:30）──
-    # 找到尚未安排的餐厅，放在最后
-    used_ids = {t.get("shop_id") for t in timeline}
-    remaining_meals = [m for mid, m in meal_map.items() if mid not in used_ids]
-    if remaining_meals and current_minutes < 20 * 60:
-        dinner_time = max(17 * 60 + 30, current_minutes)
-        current_minutes = dinner_time
-        for meal in remaining_meals:
-            time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+    # ── 兜底午餐：主循环未插入时补插 ──
+    if main_meal_shops and not any(t.get("action") in ("LUNCH", "LUNCH_NEEDED") for t in timeline):
+        fb_lunch = max(11*60+30, min(14*60, current_minutes))
+        if fb_lunch < 19 * 60:
+            nearest = min(main_meal_shops, key=lambda m:
+                _haversine_m(last_shop_lat or 0, last_shop_lng or 0,
+                             m.get("lat", last_shop_lat or 0), m.get("lng", last_shop_lng or 0)))
             timeline.append({
-                "time": time_str, "action": "DINNER",
-                "memo": f"🍽️ {meal.get('name', '')}",
-                "category": meal.get("category", ""),
-                "shop_id": meal.get("shop_id", ""),
-                "duration_minutes": _get_duration(meal.get("category", "")),
+                "time": f"{fb_lunch // 60:02d}:{fb_lunch % 60:02d}",
+                "action": "LUNCH", "memo": f"🍽️ {nearest.get('name', '')}",
+                "category": nearest.get("category", ""),
+                "shop_id": nearest.get("shop_id", ""),
+                "duration_minutes": _get_duration(nearest.get("category", "")),
+                "opentime": nearest.get("opentime", "未知"),
             })
-            current_minutes += _get_duration(meal.get("category", "")) + 10
+            _last_food_end_minutes = fb_lunch + _get_duration(nearest.get("category", ""))
+            main_meal_shops.remove(nearest)
 
-    # ── 收尾：保证至少有一个结果 ──
-    if not timeline:
+    # ── 兜底晚餐：主循环未插入时补插（所有活动在17:00前结束的罕见情况）──
+    if main_meal_shops and not any(t.get("action") == "DINNER" for t in timeline) and current_minutes < 20 * 60:
+        dinner_time = max(17 * 60 + 30, current_minutes)
+        # 距上次进食至少90min（避免吃完小吃立刻吃正餐）
+        if _last_food_end_minutes is not None:
+            dinner_time = max(dinner_time, _last_food_end_minutes + 90)
+        current_minutes = dinner_time
+        # 选离最后位置最近的1家正餐（不是全部！）
+        ref_lat = last_shop_lat or 0
+        ref_lng = last_shop_lng or 0
+        nearest_dinner = min(main_meal_shops, key=lambda m:
+            _haversine_m(ref_lat, ref_lng, m.get("lat", ref_lat), m.get("lng", ref_lng)))
+        time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+        opentime_str = nearest_dinner.get("opentime", "未知")
+        dinner_dur = _get_duration(nearest_dinner.get("category", ""))
+        timeline.append({
+            "time": time_str, "action": "DINNER",
+            "memo": f"🍽️ {nearest_dinner.get('name', '')}",
+            "category": nearest_dinner.get("category", ""),
+            "shop_id": nearest_dinner.get("shop_id", ""),
+            "duration_minutes": dinner_dur,
+            "opentime": opentime_str,
+        })
+        current_minutes += dinner_dur + 10
+        _last_food_end_minutes = current_minutes
+        main_meal_shops.remove(nearest_dinner)
+
+    # ── 兜底：无餐厅时插入占位节点（确保三餐始终可见）──
+    has_lunch = any(t.get("action") == "LUNCH" for t in timeline)
+    has_dinner = any(t.get("action") == "DINNER" for t in timeline)
+    if not has_lunch:
+        timeline.append({
+            "time": "12:00", "action": "LUNCH_NEEDED",
+            "memo": "🍽️ 午餐（待搜索）", "category": "lunch_needed",
+            "shop_id": "", "duration_minutes": 60, "opentime": "未知",
+        })
+    if not has_dinner:
+        timeline.append({
+            "time": "18:00", "action": "DINNER_NEEDED",
+            "memo": "🍽️ 晚餐（待搜索）", "category": "dinner_needed",
+            "shop_id": "", "duration_minutes": 60, "opentime": "未知",
+        })
+
+    # ── 智能就寝时间 ──
+    bed_h, bed_m = map(int, bedtime_str.split(":"))
+    default_bedtime = bed_h * 60 + bed_m
+    # 最后活动结束后 90min 就寝，约束在 21:00-23:30
+    bedtime_minutes = max(21 * 60, min(23 * 60 + 30, current_minutes + 90))
+    # 如果默认就寝时间更合理（用户偏好），用默认值
+    if bedtime_minutes > default_bedtime + 60:
+        bedtime_minutes = default_bedtime
+
+    timeline.append({
+        "time": f"{bedtime_minutes // 60:02d}:{bedtime_minutes % 60:02d}",
+        "action": "BEDTIME",
+        "memo": "🌙 就寝",
+        "category": "bedtime",
+        "shop_id": "",
+        "duration_minutes": 0,
+    })
+
+    # ── 收尾：保证至少有一个 VISIT ──
+    has_visit = any(t.get("action") == "VISIT" for t in timeline)
+    if not has_visit:
         current_minutes = start_h * 60 + start_m
         for shop in ordered_shops:
             cat = shop.get("category", "")
@@ -514,10 +720,27 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                 "category": cat,
                 "shop_id": shop.get("shop_id", ""),
                 "duration_minutes": dur,
+                "opentime": shop.get("opentime", "未知"),
             })
             current_minutes += dur + 10
 
-    return timeline
+    # 按时间排序
+    timeline.sort(key=lambda t: _time_to_minutes(t.get("time", "00:00")))
+
+    return {
+        "timeline": timeline,
+        "closed_conflicts": closed_conflicts,
+        "unknown_hours_shops": unknown_hours_shops,
+    }
+
+
+def _time_to_minutes(time_str: str) -> int:
+    """ "HH:MM" → 分钟数 """
+    try:
+        h, m = map(int, time_str.split(":"))
+        return h * 60 + m
+    except (ValueError, TypeError):
+        return 0
 
 
 def _is_breakfast(shop: dict) -> bool:
@@ -529,6 +752,118 @@ def _is_breakfast(shop: dict) -> bool:
     if any(kw in name for kw in ["早餐", "早点", "豆浆", "油条", "包子", "粥"]):
         return True
     return False
+
+
+# ======================================================================
+# 营业时间解析工具
+# ======================================================================
+
+def _parse_opentime(opentime_str: str, week_day: int = 0) -> dict | None:
+    """
+    解析 Amap deep_info.opentime 字符串为分钟数。
+
+    支持格式:
+      - "10:00-22:00" → {open: 600, close: 1320}
+      - "周一至周五 09:00-18:00; 周六,周日 10:00-20:00" → 根据 week_day 匹配
+      - "未知" / "" / None / 无法解析 → None
+
+    week_day: 0=周一, 6=周日 (Python datetime.weekday())
+    """
+    import re as _re
+    if not opentime_str or opentime_str == "未知":
+        return None
+
+    time_pattern = _re.compile(r'(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})')
+
+    # 尝试按分号拆分为多段（如 "周一至周五 09:00-18:00; 周六,周日 10:00-20:00"）
+    segments = opentime_str.split(";")
+
+    # 如果有多段，尝试匹配星期
+    weekday_map = {0: "一", 1: "二", 2: "三", 3: "四", 4: "五", 5: "六", 6: "日"}
+    today_cn = weekday_map.get(week_day, "一")
+
+    if len(segments) > 1:
+        for seg in segments:
+            seg = seg.strip()
+            # 检查是否匹配今天
+            # 模式: "周一至周五", "周六,周日", "周一至周日", "工作日", "周末"
+            if any(kw in seg for kw in ["周一至周日", "每天", "全天"]):
+                m = time_pattern.search(seg)
+                if m:
+                    return _make_hours(m)
+                continue
+            if ("周" + today_cn) in seg:
+                m = time_pattern.search(seg)
+                if m:
+                    return _make_hours(m)
+                continue
+            if today_cn <= 4 and "周一至周五" in seg:
+                m = time_pattern.search(seg)
+                if m:
+                    return _make_hours(m)
+                continue
+            if today_cn >= 5 and ("周六" in seg or "周日" in seg or "周末" in seg):
+                m = time_pattern.search(seg)
+                if m:
+                    return _make_hours(m)
+                continue
+        # 多段中无匹配 → 尝试第一段的时间
+        m = time_pattern.search(segments[0])
+        if m:
+            return _make_hours(m)
+        return None
+
+    # 单段模式：直接提取时间范围
+    m = time_pattern.search(opentime_str)
+    if m:
+        return _make_hours(m)
+
+    return None
+
+
+def _make_hours(m) -> dict:
+    """从正则匹配结果构建 {open, close} 分钟数"""
+    open_h, open_m = int(m.group(1)), int(m.group(2))
+    close_h, close_m = int(m.group(3)), int(m.group(4))
+    return {
+        "open": open_h * 60 + open_m,
+        "close": close_h * 60 + close_m,
+    }
+
+
+def _check_open(hours: dict | None, visit_start_minutes: int,
+                visit_duration: int = 60) -> dict:
+    """
+    检查 visit_start_minutes 是否在营业时间范围内。
+
+    返回: {status, message}
+      status: "ok" | "before_open" | "after_close" | "unknown"
+    """
+    if hours is None:
+        return {"status": "unknown", "message": "🕐 营业时间未知"}
+
+    open_t = hours["open"]
+    close_t = hours["close"]
+    visit_end = visit_start_minutes + visit_duration
+
+    if visit_start_minutes < open_t:
+        return {
+            "status": "before_open",
+            "message": f"⚠️ 尚未开门（{open_t//60:02d}:{open_t%60:02d}开门），已推迟",
+            "suggested_time": open_t,
+        }
+    if visit_start_minutes >= close_t:
+        return {
+            "status": "after_close",
+            "message": f"🚫 到达时已关门（{close_t//60:02d}:{close_t%60:02d}关门）",
+        }
+    if visit_end > close_t:
+        return {
+            "status": "close_soon",
+            "message": f"⏰ 注意：需在{close_t//60:02d}:{close_t%60:02d}前离开",
+        }
+
+    return {"status": "ok", "message": ""}
 
 
 # ======================================================================
@@ -699,8 +1034,13 @@ def solve_multi_day(
 
         route_result = _route_one_day(cluster, checkin_lat, checkin_lng, transport_preference, day_weather)
 
-        # ── 阶段 4: 智能时间线构建（就近用餐 + 休息缓冲 + 天气标记）──
-        timeline = _build_timeline(route_result, cluster, start_time_str, day_weather)
+        # ── 阶段 4: 智能时间线构建（就近用餐 + 休息缓冲 + 天气标记 + 营业时间感知）──
+        tl_result = _build_timeline(route_result, cluster, start_time_str, day_weather,
+                                     wake_time_str="07:30", bedtime_str="22:00",
+                                     week_day=(i % 7))
+        timeline = tl_result["timeline"]
+        closed_conflicts_day = tl_result.get("closed_conflicts", [])
+        unknown_hours_day = tl_result.get("unknown_hours_shops", [])
 
         # 构建 selected_pairs 格式
         pairs = []
@@ -756,11 +1096,60 @@ def solve_multi_day(
             "route": route_result.get("route", []),
             "task_list": task_list,
             "spatial_matrix": spatial_matrix,
+            "closed_conflicts": closed_conflicts_day,
+            "unknown_hours_shops": unknown_hours_day,
         })
 
     # ── 阶段 5: 全局微调（在聚类结果上） ──
     # （这一阶段改变聚类，但我们已经基于原始聚类生成了 day_results）
     # 作为简化，我们在最终统计中计算优化效果
+
+    # ── 生成排程解释（schedule_reasoning）──
+    reasoning = []
+
+    # 1. 聚类解释：相近景点分到同一天
+    for i, cluster in enumerate(clusters):
+        scenic_names = [s.get("name", "") for s in cluster
+                       if s.get("category", "") not in MEAL_CATEGORIES]
+        if len(scenic_names) >= 2:
+            reasoning.append(
+                f"第{i+1}天：{'、'.join(scenic_names[:3])}{'等' if len(scenic_names) > 3 else ''}"
+                f"地理位置相近，安排在同一天游览"
+            )
+        elif len(scenic_names) == 1:
+            # 单独一个景点也说明
+            reasoning.append(f"第{i+1}天：{scenic_names[0]}作为当天主要游览目的地")
+
+    # 2. 天气决策
+    sorted_wkeys = sorted(wdata.keys()) if wdata else []
+    for i, dr in enumerate(day_results):
+        if i < len(sorted_wkeys) and wdata:
+            dw = wdata.get(sorted_wkeys[i], {})
+            if dw and not dw.get("outdoor_suitable", True):
+                reasoning.append(f"第{i+1}天天气{dw.get('day_weather', '不佳')}，优先安排室内景点")
+
+    # 3. 起床时间依据
+    for dr in day_results:
+        for n in dr.get("timeline", []):
+            if n.get("action") == "WAKE_UP" and "开门" in n.get("memo", ""):
+                reasoning.append(f"{dr['label']}：{n['memo']}")
+                break
+
+    # 4. 餐厅安排说明
+    total_meals = sum(
+        1 for dr in day_results
+        for n in dr.get("timeline", [])
+        if n.get("action") in ("BREAKFAST", "LUNCH", "DINNER")
+    )
+    total_needed = sum(
+        1 for dr in day_results
+        for n in dr.get("timeline", [])
+        if n.get("action") in ("BREAKFAST_NEEDED", "LUNCH_NEEDED", "DINNER_NEEDED")
+    )
+    if total_meals > 0:
+        reasoning.append(f"已为您规划每日三餐共{total_meals}顿，优先选择高评分餐厅（评分≥4.0）")
+    if total_needed > 0:
+        reasoning.append(f"有{total_needed}餐待搜索补充，可点击展开详情查看")
 
     # 计算算法元数据
     total_travel_m = 0
@@ -774,6 +1163,17 @@ def solve_multi_day(
         mean_t = sum(all_times) / len(all_times)
         balance_variance = round(sum((t - mean_t) ** 2 for t in all_times) / len(all_times), 1)
 
+    # 汇总闭店冲突和未知营业时间
+    all_closed_conflicts = []
+    all_unknown_hours = []
+    for dr in day_results:
+        for cc in dr.get("closed_conflicts", []):
+            cc["day_index"] = dr["day_index"]
+            all_closed_conflicts.append(cc)
+        for uh in dr.get("unknown_hours_shops", []):
+            if uh not in all_unknown_hours:
+                all_unknown_hours.append(uh)
+
     return {
         "days": day_results,
         "unassigned": [],
@@ -783,7 +1183,10 @@ def solve_multi_day(
             "total_cost_km": round(total_travel_m / 1000, 1),
             "num_shops": len(candidate_shops),
             "num_days": num_days,
+            "schedule_reasoning": reasoning,
         },
+        "closed_conflicts": all_closed_conflicts,
+        "unknown_hours_shops": all_unknown_hours,
     }
 
 

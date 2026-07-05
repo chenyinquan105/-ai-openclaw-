@@ -487,17 +487,9 @@
               <h3 class="text-xl font-black text-gray-900">多日行程规划</h3>
               <p class="text-xs text-gray-500 mt-1">告诉我您的旅行计划</p>
             </div>
+            <!-- 📅 行程日期选择（天数自动按日期范围计算）-->
             <div class="mb-4">
-              <label class="text-sm font-bold text-gray-600 mb-2 block">计划玩几天？</label>
-              <div class="flex items-center justify-center gap-3">
-                <button onclick="changeTripDays(-1)" class="w-10 h-10 rounded-full bg-gray-100 text-xl font-bold hover:bg-gray-200 transition">−</button>
-                <span id="multi-day-count" class="text-2xl font-black text-gray-900 w-8 text-center">2</span>
-                <button onclick="changeTripDays(1)" class="w-10 h-10 rounded-full bg-gray-100 text-xl font-bold hover:bg-gray-200 transition">+</button>
-              </div>
-            </div>
-            <!-- 📅 出行日期选择 -->
-            <div class="mb-4">
-              <label class="text-sm font-bold text-gray-600 mb-2 block">📅 什么时候出发？</label>
+              <label class="text-sm font-bold text-gray-600 mb-2 block">📅 选择行程日期</label>
               <div id="multi-date-display" onclick="openDatePicker()" class="bg-gray-100 rounded-2xl px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-200 transition">
                 <span id="multi-date-text" class="text-sm font-bold text-gray-900">7月4日 周六 → 7月5日 周日</span>
                 <span class="text-gray-400 text-xs">📅</span>
@@ -967,6 +959,7 @@ let multiDayDestination = '北京';
 let multiCandidatePool = [];       // [{shop_id, name, category, lat, lng, coord, rating, ...}]
 let multiDayScheduleResult = null; // 排程结果缓存
 let multiActiveDayIndex = 0;
+let multiDayChatHistory = [];     // 多日聊天历史
 // --- 日期选择状态 ---
 let multiStartDate = null;   // 出发日期（null=未选，显示时兜底今天）
 let multiEndDate = null;     // 结束日期（null=未选）
@@ -2243,6 +2236,10 @@ function switchBottomBarToSearchMode() {
 }
 
 async function sendTripMessage() {
+  // ── 多日模式 → 委托给 sendMultiDayMessage ──
+  if (multiDayMode && multiDayScheduleResult) {
+    return sendMultiDayMessage();
+  }
   var input = document.getElementById('bottom-search-input');
   if (!input || !input.value.trim()) return;
   var msg = input.value.trim();
@@ -2327,6 +2324,109 @@ async function sendTripMessage() {
       if (chatArea) chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-yellow-700">⏱️ 响应超时，请稍后重试</p></div>';
     } else {
       if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">网络错误，请重试</p></div>';
+    }
+  }
+  input.disabled = false;
+  input.focus();
+}
+
+async function sendMultiDayMessage() {
+  var input = document.getElementById('bottom-search-input');
+  if (!input || !input.value.trim()) return;
+  var msg = input.value.trim();
+  input.value = '';
+  input.disabled = true;
+
+  // 维护多日聊天历史
+  multiDayChatHistory.push({role: 'user', text: msg});
+  if (multiDayChatHistory.length > 6) multiDayChatHistory.shift();
+
+  var contextMessages = multiDayChatHistory.slice(0, -1).map(function(m) {
+    return (m.role === 'user' ? '用户: ' : 'AI: ') + m.text;
+  }).join('\n');
+
+  var dc = document.getElementById('dynamic-content');
+  if (dc) {
+    // 添加加载提示
+    var loadDiv = document.createElement('div');
+    loadDiv.id = 'multi-chat-loading';
+    loadDiv.className = 'bg-gray-50 rounded-2xl p-3 mb-2';
+    loadDiv.innerHTML = '<span class="typing-dots-inline"><span></span><span></span><span></span></span>';
+    var chatArea = document.getElementById('multi-day-chat-area');
+    if (chatArea) {
+      chatArea.appendChild(loadDiv);
+    } else if (dc) {
+      dc.appendChild(loadDiv);
+    }
+  }
+
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() { controller.abort(); }, 20000);
+
+  try {
+    // 构建轻量 schedule（只发送 days 中的关键字段，避免 spatial_matrix 等大对象）
+    var lightDays = (multiDayScheduleResult && multiDayScheduleResult.days || []).map(function(d) {
+      return {
+        day_index: d.day_index,
+        label: d.label,
+        timeline: (d.timeline || []).map(function(n) {
+          return {time: n.time, action: n.action, memo: n.memo, shop_id: n.shop_id || '', opentime: n.opentime || '未知', duration_minutes: n.duration_minutes || 0};
+        })
+      };
+    });
+    var res = await fetch(API_BASE + '/api/multi_day_edit', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        text: msg,
+        day_index: multiActiveDayIndex,
+        schedule: {days: lightDays},
+        context: contextMessages,
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    var lb = document.getElementById('multi-chat-loading');
+    if (lb) lb.remove();
+
+    var data = await res.json();
+    var chatArea = document.getElementById('multi-day-chat-area');
+
+    // 添加 AI 回复气泡
+    var aiMsg = data.message || '';
+    if (data.phase === 'clarify') {
+      aiMsg = '🤔 ' + aiMsg;
+    } else if (data.phase === 'done') {
+      aiMsg = '✅ ' + aiMsg;
+    } else if (data.phase === 'no_change') {
+      aiMsg = '💬 ' + aiMsg;
+    }
+
+    if (chatArea && aiMsg) {
+      chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-gray-800">' + _escHtml(aiMsg) + '</div>';
+    }
+
+    multiDayChatHistory.push({role: 'ai', text: aiMsg});
+    if (multiDayChatHistory.length > 6) multiDayChatHistory = multiDayChatHistory.slice(-6);
+
+    // 更新行程
+    if (data.phase === 'done' && data.days) {
+      multiDayScheduleResult.days = data.days;
+      renderMultiDayCards(multiDayScheduleResult);
+    }
+
+    if (typeof scrollToBottom === 'function') scrollToBottom();
+  } catch(e) {
+    clearTimeout(timeoutId);
+    var lb2 = document.getElementById('multi-chat-loading');
+    if (lb2) lb2.remove();
+    var chatArea = document.getElementById('multi-day-chat-area');
+    if (chatArea) {
+      if (e.name === 'AbortError') {
+        chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-yellow-700">⏱️ 响应超时，请稍后重试</div>';
+      } else {
+        chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-red-700">网络错误，请重试</div>';
+      }
     }
   }
   input.disabled = false;
@@ -7449,17 +7549,18 @@ function toggleMultiDayMode() {
 
 function openMultiDaySetup() {
   console.log('[MultiDay] openMultiDaySetup');
-  multiDayCount = 2; multiDayTransport = '步行优先'; multiDayDestination = '北京'; multiCandidatePool = [];
-  // 初始化日期为空（用户自行选择）
-  multiStartDate = null; multiEndDate = null;
+  multiDayTransport = '步行优先'; multiDayDestination = '北京'; multiCandidatePool = [];
+  // 默认日期：今天 → 明天（2天）
+  var today = new Date(); today.setHours(0,0,0,0);
+  var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  multiStartDate = today; multiEndDate = tomorrow;
+  multiDayCount = 2;
   multiPickerYear = new Date().getFullYear(); multiPickerMonth = new Date().getMonth();
   updateDateDisplay();
-  var elDayCount = document.getElementById('multi-day-count');
   var elDest = document.getElementById('multi-destination-input');
   var elStep1 = document.getElementById('multi-setup-step1');
   var elStep2 = document.getElementById('multi-setup-step2');
   var elModal = document.getElementById('multi-day-setup-modal');
-  if (elDayCount) elDayCount.textContent = '2';
   if (elDest) elDest.value = '北京';
   if (elStep1) elStep1.classList.remove('hidden');
   if (elStep2) elStep2.classList.add('hidden');
@@ -7683,10 +7784,18 @@ function renderWeatherSummary(weather) {
   var keys = Object.keys(weather).sort();
   for (var i = 0; i < keys.length; i++) {
     var w = weather[keys[i]];
-    if (!w || w.confidence === 'low' && !w.day_weather) { html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-lg">❓</div><div class="text-[10px] text-gray-400">暂无</div></div>'; continue; }
+    // 解析日期
+    var dateLabel = '';
+    try {
+      var d = new Date(keys[i] + 'T00:00:00');
+      if (!isNaN(d.getTime())) {
+        dateLabel = (d.getMonth()+1) + '/' + d.getDate() + ' ' + _WEEKDAYS_CN[d.getDay()];
+      }
+    } catch(e) { dateLabel = keys[i]; }
+    if (!w || w.confidence === 'low' && !w.day_weather) { html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-[9px] text-gray-400 font-medium">' + (dateLabel || '暂无') + '</div><div class="text-lg">❓</div><div class="text-[10px] text-gray-400">暂无</div></div>'; continue; }
     var icon = _WEATHER_ICON[w.day_weather] || '🌤️';
     var conf = w.confidence === 'low' ? ' ⚠️' : '';
-    html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-lg">' + icon + '</div><div class="text-[10px] text-gray-500">' + w.day_weather + ' ' + w.day_temp + '°C</div><div class="text-[9px] ' + (w.outdoor_suitable ? 'text-green-500' : 'text-orange-500') + '">' + (w.outdoor_suitable ? '宜户外' : '宜室内') + conf + '</div></div>';
+    html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-[9px] text-gray-400 font-medium">' + (dateLabel || '') + '</div><div class="text-lg">' + icon + '</div><div class="text-[10px] text-gray-500">' + w.day_weather + ' ' + w.day_temp + '°C</div><div class="text-[9px] ' + (w.outdoor_suitable ? 'text-green-500' : 'text-orange-500') + '">' + (w.outdoor_suitable ? '宜户外' : '宜室内') + conf + '</div></div>';
   }
   daysEl.innerHTML = html;
 }
@@ -7934,10 +8043,16 @@ async function executeSmartSchedule() {
       hideCandidateBar();
       currentPhase = 'trip_active';
 
-      // LLM 审查：如果有问题需要用户回答
+      // LLM 审查：有问题需要用户选择 → 弹出调查卡片
       var review = data.review;
       if (review && review.phase === 'schedule_review' && review.questions && review.questions.length > 0) {
         _showScheduleReviewQuestion(data, review, 0);
+      }
+      // 风险提示
+      if (review && review.risk_flags && review.risk_flags.length > 0) {
+        var rfHTML = '<div class="bg-yellow-50 rounded-2xl p-3 mt-3 text-xs text-yellow-700">⚠️ ' + review.risk_flags.join('；') + '</div>';
+        var container = document.getElementById('multi-day-container');
+        if (container) container.insertAdjacentHTML('afterend', rfHTML);
       }
     } else if (dc) {
       dc.innerHTML = '<div class="bg-red-50 rounded-3xl p-6 text-center"><p class="text-red-500 font-bold">排程失败</p><p class="text-sm">' + (data.message || '') + '</p></div>';
@@ -7948,7 +8063,7 @@ async function executeSmartSchedule() {
   }
 }
 
-// ---- LLM 审查问答卡片 ----
+// ---- LLM 审查调查卡 ----
 
 var _reviewQAIndex = 0;
 var _reviewAnswers = {};
@@ -7956,30 +8071,29 @@ var _reviewAnswers = {};
 function _showScheduleReviewQuestion(scheduleData, review, qIndex) {
   var questions = review.questions || [];
   if (qIndex >= questions.length) {
-    // 所有问题回答完毕，提交
     _submitReviewAnswers(scheduleData);
     return;
   }
   _reviewQAIndex = qIndex;
   var q = questions[qIndex];
+  // 跳过无效问题（question_text 缺失）
+  if (!q || !q.question_text) {
+    _showScheduleReviewQuestion(scheduleData, review, qIndex + 1);
+    return;
+  }
   var dc = document.getElementById('dynamic-content');
   if (!dc) return;
 
-  // 在日卡片下方追加问答卡片
-  var qaHTML = '<div id="review-qa-card" class="bg-yellow-50 rounded-3xl border-2 border-yellow-300 p-5 mt-4 animate-fade-in">';
-  qaHTML += '<div class="flex items-center gap-2 mb-3"><span class="text-lg">🤔</span><span class="text-xs text-yellow-600 font-bold">智能审查 · ' + (qIndex+1) + '/' + questions.length + '</span></div>';
-  qaHTML += '<p class="text-sm font-bold text-gray-900 mb-3">' + q.question_text + '</p>';
-  qaHTML += '<div class="space-y-2">';
+  var qaHTML = '<div id="review-qa-card" class="bg-yellow-50 rounded-3xl border-2 border-yellow-300 p-4 mt-3 animate-fade-in">';
+  qaHTML += '<p class="text-sm font-bold text-gray-900 mb-2">' + (qIndex+1) + '/' + questions.length + ' ' + q.question_text + '</p>';
+  qaHTML += '<div class="space-y-1.5">';
   if (q.options && q.options.length > 0) {
     for (var oi = 0; oi < q.options.length; oi++) {
-      qaHTML += '<button onclick="_answerReviewQuestion(\'' + q.question_id + '\', \'' + q.options[oi].replace(/'/g, "\\'") + '\')" class="w-full bg-white rounded-2xl px-4 py-3 text-sm font-medium text-gray-700 hover:bg-yellow-100 transition text-left border border-gray-100">' + q.options[oi] + '</button>';
+      qaHTML += '<button onclick="_answerReviewQuestion(\'' + q.question_id + '\', \'' + q.options[oi].replace(/'/g, "\\'") + '\')" class="w-full bg-white rounded-2xl px-3 py-2 text-sm text-gray-700 hover:bg-yellow-100 transition text-left border border-gray-100">' + q.options[oi] + '</button>';
     }
   }
-  // 自定义输入
-  qaHTML += '<div class="flex gap-2 mt-2"><input id="review-custom-answer" type="text" placeholder="或输入自定义回答..." class="flex-1 bg-white rounded-2xl px-3 py-2 text-sm border border-gray-200 outline-none focus:ring-2 focus:ring-yellow-400"><button onclick="_answerReviewCustom(\'' + q.question_id + '\')" class="bg-yellow-400 text-black font-bold text-sm px-4 py-2 rounded-2xl">发送</button></div>';
   qaHTML += '</div></div>';
 
-  // 插入到日卡片后面
   var container = document.getElementById('multi-day-container');
   if (container) {
     var existingQA = document.getElementById('review-qa-card');
@@ -7996,18 +8110,10 @@ function _answerReviewQuestion(qid, answer) {
   _showScheduleReviewQuestion(multiDayScheduleResult, multiDayScheduleResult.review, _reviewQAIndex + 1);
 }
 
-function _answerReviewCustom(qid) {
-  var input = document.getElementById('review-custom-answer');
-  var answer = input ? input.value.trim() : '';
-  if (!answer) return;
-  _reviewAnswers[qid] = answer;
-  _showScheduleReviewQuestion(multiDayScheduleResult, multiDayScheduleResult.review, _reviewQAIndex + 1);
-}
-
 async function _submitReviewAnswers(scheduleData) {
   var dc = document.getElementById('dynamic-content');
   var qaCard = document.getElementById('review-qa-card');
-  if (qaCard) qaCard.innerHTML = '<div class="text-center py-4"><p class="text-sm text-gray-500">🪄 正在应用你的选择...</p></div>';
+  if (qaCard) qaCard.innerHTML = '<div class="text-center py-3"><p class="text-sm text-gray-500">正在应用...</p></div>';
 
   try {
     var res = await fetch(API_BASE + '/api/schedule_review_answer', {
@@ -8016,19 +8122,17 @@ async function _submitReviewAnswers(scheduleData) {
       body: JSON.stringify({answers: _reviewAnswers})
     });
     var data = await res.json();
-
     if (qaCard) qaCard.remove();
 
     if (data.phase === 'schedule_review' && data.questions && data.questions.length > 0) {
-      // 还有跟进问题
-      multiDayScheduleResult.days = data.days;
+      if (data.days) multiDayScheduleResult.days = data.days;
       multiDayScheduleResult.review = {phase: 'schedule_review', questions: data.questions};
       _reviewAnswers = {}; _reviewQAIndex = 0;
       renderMultiDayCards(multiDayScheduleResult);
       _showScheduleReviewQuestion(multiDayScheduleResult, multiDayScheduleResult.review, 0);
     } else {
-      // 完成
-      multiDayScheduleResult.days = data.days;
+      if (data.days) multiDayScheduleResult.days = data.days;
+      multiDayScheduleResult.review = null;  // 清理审查状态
       renderMultiDayCards(multiDayScheduleResult);
       var changes = data.changes || [];
       if (changes.length > 0 && dc) {
@@ -8049,44 +8153,172 @@ function renderMultiDayCards(data) {
   var dc = document.getElementById('dynamic-content');
   if (!dc) return;
   var days = data.days || [];
+  if (days.length === 0) return;  // 不覆盖现有内容
   var meta = data.algorithm_metadata || {};
   var html = '<div id="multi-day-container" class="space-y-4">';
   html += '<div class="bg-gray-50 rounded-2xl p-3 text-xs text-gray-500 text-center">🧠 ' + (meta.cluster_method || '') + ' · ' + days.length + '天 · ' + (meta.num_shops || 0) + '店 · ≈' + (meta.total_cost_km || 0) + 'km</div>';
+
+  // ── 排程说明 ──
+  var reasoning = meta.schedule_reasoning || [];
+  if (reasoning.length > 0) {
+    html += '<div class="bg-blue-50 rounded-2xl p-4 text-sm"><p class="font-bold text-blue-800 mb-2">💡 排程说明</p><ul class="space-y-1.5 text-xs text-blue-700">';
+    for (var ri = 0; ri < reasoning.length; ri++) {
+      html += '<li>• ' + _escHtml(reasoning[ri]) + '</li>';
+    }
+    html += '</ul></div>';
+  }
+
   html += '<div id="multi-day-cards-wrapper" class="overflow-x-auto" style="scrollbar-width:none;-ms-overflow-style:none;scroll-snap-type:x mandatory"><div class="flex gap-4" style="width:max-content">';
+
+  // 图标映射（紧凑视图）
+  var ICON_MAP = {
+    'WAKE_UP': '⏰', 'BEDTIME': '🌙', 'BREAKFAST': '🥐', 'BREAKFAST_NEEDED': '🥐',
+    'LUNCH': '🍽️', 'LUNCH_NEEDED': '🍽️', 'DINNER': '🍽️', 'DINNER_NEEDED': '🍽️', 'REST': '☕', 'VISIT': '📍'
+  };
+  var KEY_ACTIONS = ['WAKE_UP', 'BEDTIME', 'BREAKFAST', 'BREAKFAST_NEEDED', 'LUNCH', 'LUNCH_NEEDED', 'DINNER', 'DINNER_NEEDED', 'VISIT'];
 
   for (var i = 0; i < days.length; i++) {
     var day = days[i];
-    html += '<div class="multi-day-card flex-shrink-0 bg-white rounded-3xl border-2 shadow-sm p-5" style="width:280px;scroll-snap-align:start;border-color:' + (i === 0 ? '#fbbf24' : '#e5e7eb') + '">';
-    html += '<div class="flex justify-between mb-3"><h3 class="font-black text-gray-900">' + day.label + '</h3><span class="text-xs text-gray-400">⏱' + Math.round((day.total_duration_minutes || 0) / 60) + 'h</span></div>';
+    html += '<div class="multi-day-card flex-shrink-0 bg-white rounded-3xl border-2 shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow" style="width:280px;scroll-snap-align:start;border-color:' + (i === 0 ? '#fbbf24' : '#e5e7eb') + '" onclick="expandDayDetail(' + i + ')">';
+    html += '<div class="flex justify-between mb-3"><h3 class="font-black text-gray-900 text-sm">' + day.label + '</h3><span class="text-xs text-gray-400">⏱' + Math.round((day.total_duration_minutes || 0) / 60) + 'h</span></div>';
     var timeline = day.timeline || [];
-    if (timeline.length > 0) {
-      html += '<div class="space-y-2">';
-      for (var t = 0; t < timeline.length; t++) {
-        var node = timeline[t];
-        html += '<div class="flex gap-2"><span class="text-xs text-gray-400 w-10">' + (node.time || '') + '</span><span class="text-sm">📍 <span class="font-medium">' + (node.memo || '') + '</span></span></div>';
+    // 只显示关键节点
+    var keyNodes = timeline.filter(function(n) { return KEY_ACTIONS.indexOf(n.action) >= 0; });
+    if (keyNodes.length > 0) {
+      html += '<div class="space-y-1">';
+      for (var t = 0; t < keyNodes.length; t++) {
+        var node = keyNodes[t];
+        var icon = ICON_MAP[node.action] || '📍';
+        var name = (node.memo || '').replace(/^(⏰|🌙|🥐|🍽️|☕|📍|⚠️|🚫)\s*/, '').substring(0, 15);
+        html += '<div class="flex gap-1.5 items-center"><span class="text-[10px] text-gray-400 w-9 flex-shrink-0">' + (node.time || '') + '</span><span class="text-xs text-gray-700 truncate">' + icon + ' ' + _escHtml(name) + '</span></div>';
       }
       html += '</div>';
     }
-    html += '<div class="mt-3 pt-3 border-t border-gray-100 flex justify-between text-xs text-gray-400"><span>🚶' + (day.total_travel_minutes || 0) + 'min</span><span>📍' + (day.pairs ? day.pairs.length : 0) + '站</span></div>';
+    html += '<div class="mt-3 pt-3 border-t border-gray-100 flex justify-between text-xs text-gray-400"><span>🚶' + (day.total_travel_minutes || 0) + 'min</span><span>📍' + (day.pairs ? day.pairs.length : 0) + '站</span><span class="text-yellow-500">详情 →</span></div>';
     html += '</div>';
   }
   html += '</div></div>';
-  html += '<div class="flex justify-center gap-2 my-2">';
-  for (var d = 0; d < days.length; d++) {
-    html += '<button onclick="switchMultiDay(' + d + ')" class="multi-day-dot w-3 h-3 rounded-full ' + (d === 0 ? 'bg-yellow-400 w-6' : 'bg-gray-300') + '"></button>';
-  }
-  html += '</div>';
-  html += '<p class="text-center text-xs text-gray-400">💬 在下方聊天框修改行程</p></div>';
+  html += '<div id="multi-day-chat-area" class="space-y-2"></div>';
+  html += '<p class="text-center text-xs text-gray-400 mt-2">💬 在下方聊天框修改行程</p></div>';
   dc.innerHTML = html;
   if (typeof scrollToBottom === 'function') scrollToBottom();
 }
 
+function expandDayDetail(dayIndex) {
+  var days = multiDayScheduleResult ? multiDayScheduleResult.days : [];
+  var day = days[dayIndex];
+  if (!day) return;
+  var dc = document.getElementById('dynamic-content');
+  if (!dc) return;
+
+  var timeline = day.timeline || [];
+
+  // 节点样式映射
+  function _nodeStyle(node) {
+    switch (node.action) {
+      case 'WAKE_UP': return {bg: 'bg-blue-50 border-blue-200', icon: '⏰'};
+      case 'BEDTIME': return {bg: 'bg-indigo-50 border-indigo-200', icon: '🌙'};
+      case 'BREAKFAST': case 'BREAKFAST_NEEDED': return {bg: 'bg-orange-50 border-orange-200', icon: '🥐'};
+      case 'LUNCH': case 'LUNCH_NEEDED': case 'DINNER': case 'DINNER_NEEDED': return {bg: 'bg-orange-50 border-orange-200', icon: '🍽️'};
+      case 'REST': return {bg: 'bg-gray-50 border-gray-200', icon: '☕'};
+      default: return {bg: 'bg-white border-gray-100', icon: '📍'};
+    }
+  }
+
+  var html = '<div id="day-detail-view" class="animate-fade-in flex flex-col" style="height:100%">';
+
+  // ── 顶部栏 ──
+  html += '<div class="flex items-center justify-between mb-4 flex-shrink-0">';
+  html += '<button onclick="closeDayDetail()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition text-base">←</button>';
+  html += '<h3 class="text-lg font-black text-gray-900">' + _escHtml(day.label || ('第' + (dayIndex+1) + '天')) + '</h3>';
+  html += '<div class="w-8"></div>';
+  html += '</div>';
+
+  // ── 统计条 ──
+  html += '<div class="flex gap-3 mb-4 text-xs text-gray-500 flex-shrink-0 bg-gray-50 rounded-2xl p-3">';
+  html += '<span>⏱ ' + Math.round((day.total_duration_minutes || 0) / 60) + 'h</span>';
+  html += '<span>🚶 ' + (day.total_travel_minutes || 0) + 'min</span>';
+  html += '<span>📍 ' + (day.pairs ? day.pairs.length : 0) + '站</span>';
+  html += '</div>';
+
+  // ── 时间线（可滚动）──
+  html += '<div class="flex-1 overflow-y-auto space-y-2" style="padding-bottom:4px">';
+  if (timeline.length > 0) {
+    for (var t = 0; t < timeline.length; t++) {
+      var node = timeline[t];
+      var style = _nodeStyle(node);
+      var hasConflict = (node.memo || '').indexOf('⚠️') >= 0 || (node.memo || '').indexOf('🚫') >= 0;
+      var borderClass = hasConflict ? 'border-red-300 border-2' : 'border border-gray-100';
+
+      html += '<div class="' + style.bg + ' ' + borderClass + ' rounded-2xl p-3 flex gap-3 items-start">';
+      html += '<span class="text-sm font-bold text-gray-500 w-12 flex-shrink-0">' + (node.time || '') + '</span>';
+      html += '<span class="text-lg flex-shrink-0">' + style.icon + '</span>';
+      html += '<div class="flex-1 min-w-0">';
+      html += '<p class="text-sm font-medium text-gray-900 leading-snug">' + _escHtml(node.memo || node.action || '') + '</p>';
+      if (node.opentime && node.opentime !== '未知') {
+        html += '<p class="text-xs text-gray-400 mt-0.5">🕐 ' + _escHtml(node.opentime) + '</p>';
+      } else if (node.opentime === '未知' && node.action === 'VISIT') {
+        html += '<p class="text-xs text-gray-400 mt-0.5">🕐 营业时间未知</p>';
+      }
+      if (node.duration_minutes) {
+        html += '<p class="text-xs text-gray-400">约' + node.duration_minutes + '分钟</p>';
+      }
+      html += '</div></div>';
+    }
+  } else {
+    html += '<p class="text-center text-gray-400 text-sm py-8">暂无详细计划</p>';
+  }
+  html += '</div>';
+
+  // ── 冲突和未知营业时间提示 ──
+  if ((day.closed_conflicts && day.closed_conflicts.length > 0) || (day.unknown_hours_shops && day.unknown_hours_shops.length > 0)) {
+    html += '<div class="flex-shrink-0 mt-3 space-y-1">';
+    if (day.closed_conflicts && day.closed_conflicts.length > 0) {
+      for (var cc = 0; cc < day.closed_conflicts.length; cc++) {
+        var c = day.closed_conflicts[cc];
+        html += '<div class="bg-red-50 border border-red-200 rounded-2xl p-2 text-xs text-red-700">🚫 ' + _escHtml(c.shop_name || '') + ': ' + _escHtml(c.reason || '') + '</div>';
+      }
+    }
+    if (day.unknown_hours_shops && day.unknown_hours_shops.length > 0) {
+      html += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-2 text-xs text-yellow-700">🕐 以下地点营业时间未知: ' + day.unknown_hours_shops.map(_escHtml).join(', ') + '</div>';
+    }
+    html += '</div>';
+  }
+
+  // ── 底部导航 ──
+  html += '<div class="flex justify-between mt-4 pt-3 border-t border-gray-100 flex-shrink-0">';
+  if (dayIndex > 0) {
+    html += '<button onclick="expandDayDetail(' + (dayIndex - 1) + ')" class="text-sm text-yellow-600 font-medium px-4 py-2 bg-yellow-50 rounded-2xl hover:bg-yellow-100 transition">← ' + _escHtml((days[dayIndex-1] || {}).label || '前一天') + '</button>';
+  } else {
+    html += '<div></div>';
+  }
+  if (dayIndex < days.length - 1) {
+    html += '<button onclick="expandDayDetail(' + (dayIndex + 1) + ')" class="text-sm text-yellow-600 font-medium px-4 py-2 bg-yellow-50 rounded-2xl hover:bg-yellow-100 transition">' + _escHtml((days[dayIndex+1] || {}).label || '后一天') + ' →</button>';
+  } else {
+    html += '<div></div>';
+  }
+  html += '</div>';
+
+  html += '</div>'; // close day-detail-view
+
+  dc.innerHTML = html;
+  dc.scrollTop = 0;
+  multiActiveDayIndex = dayIndex;
+}
+
+function closeDayDetail() {
+  if (multiDayScheduleResult) {
+    renderMultiDayCards(multiDayScheduleResult);
+    // 恢复审查问题卡片（展开详情前如果正在进行审查）
+    var review = multiDayScheduleResult.review;
+    if (review && review.phase === 'schedule_review' && review.questions && review.questions.length > 0) {
+      _showScheduleReviewQuestion(multiDayScheduleResult, review, _reviewQAIndex);
+    }
+  }
+}
+
 function switchMultiDay(dayIndex) {
   multiActiveDayIndex = dayIndex;
-  var dots = document.querySelectorAll('.multi-day-dot');
-  for (var i = 0; i < dots.length; i++) {
-    dots[i].className = 'multi-day-dot w-3 h-3 rounded-full ' + (i === dayIndex ? 'bg-yellow-400 w-6' : 'bg-gray-300');
-  }
   var cards = document.querySelectorAll('.multi-day-card');
   for (var j = 0; j < cards.length; j++) {
     cards[j].style.borderColor = (j === dayIndex ? '#fbbf24' : '#e5e7eb');
