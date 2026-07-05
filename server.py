@@ -876,6 +876,10 @@ def _try_fast_category_match(user_text: str) -> list:
         "干洗": "laundry", "洗衣服": "laundry", "洗衣": "laundry",
         "健身": "gym", "瑜伽": "gym", "游泳": "gym", "锻炼": "gym",
         "电影": "cinema", "影院": "cinema", "电影院": "cinema", "看电影": "cinema",
+        # ── 菜市场 (market) ──
+        "菜市场": "market", "买菜": "market", "菜场": "market",
+        "农贸市场": "market", "生鲜": "market", "菜市": "market",
+        "赶集": "market", "农贸": "market",
     }
 
     # 虚词过滤：去掉「不想洗澡」「不要辣的」这类否定+无意义词
@@ -1486,6 +1490,8 @@ def _fallback_parse_edit(edit_text, selected_pairs=None):
         '电影': 'cinema', '看片': 'cinema',
         '干洗': 'laundry', '洗衣': 'laundry',
         '餐饮': 'restaurant', '吃饭': 'restaurant', '美食': 'restaurant',
+        '菜市场': 'market', '买菜': 'market', '菜场': 'market',
+        '农贸市场': 'market', '生鲜': 'market',
     }
 
     # ── 跨品类替换（"把火锅改成理发"）──
@@ -1605,6 +1611,33 @@ def _fallback_parse_edit(edit_text, selected_pairs=None):
         if 0 <= int(parts[0]) <= 23 and 0 <= int(parts[1]) <= 59:
             return {"action": "change_time", "params": {"time": t}}
 
+    # ── 提醒（优先级高于新增/换店，因为"提醒我去XX"是提醒意图而非搜索意图）──
+    _reminder_time = None
+    m1 = re.search(r'(?:上午|下午|晚上|早上|中午)?\s*(\d{1,2})\s*[:：点]\s*(?:(\d{0,2})\s*)?(?:分\s*)?(?:提醒|记得|别忘了)', text)
+    if m1:
+        hour = int(m1.group(1))
+        minute = int(m1.group(2)) if m1.group(2) else 0
+        _reminder_time = f"{hour:02d}:{minute:02d}"
+    m2 = re.search(r'(?:提醒|记得|别忘了)\s*(?:我\s*)?(?:在\s*)?(?:上午|下午|晚上|早上|中午)?\s*(\d{1,2})\s*[:：点]\s*(?:(\d{0,2})\s*)?(?:分\s*)?', text)
+    if m2 and not _reminder_time:
+        hour = int(m2.group(1))
+        minute = int(m2.group(2)) if m2.group(2) else 0
+        _reminder_time = f"{hour:02d}:{minute:02d}"
+    if _reminder_time or (('提醒' in text or '记得' in text or '别忘了' in text) and not any(kw in text for kw in ['换', '改', '删', '不去', '交通', '打车', '地铁', '走路', '步行', '开车', '路线', '高速'])):
+        _reminder_label = "提醒"
+        _label_match = re.search(r'(?:提醒|记得|别忘了)(?:我\s*)?(?:在?\s*\d{1,2}[:：点]\s*(?:\d{0,2})?\s*(?:分\s*)?)?(?:去\s*)?(.{1,6}?)(?:$|[，。！？、…\s])', text)
+        if _label_match:
+            candidate = _label_match.group(1).strip()
+            if candidate and len(candidate) >= 1 and candidate not in ('了', '吧', '吗', '啊', '呢', '呀'):
+                _reminder_label = candidate
+        return {"action": "add_reminder", "params": {
+            "type": "CUSTOM",
+            "time": _reminder_time or "12:00",
+            "label": _reminder_label,
+            "repeat": "once",
+            "note": edit_text
+        }}
+
     # ── 新增（品类关键词，复用函数顶部的 _CAT_KEYWORDS） ──
     for kw, cat in _CAT_KEYWORDS.items():
         if kw in text:
@@ -1679,13 +1712,19 @@ def api_edit_trip():
 4. replace_stop: 用户想把某个目的地换成不同品类（跨品类替换）。⚠️ 与 swap_current 的区别：replace_stop 是新老品类不同！如"把火锅改成理发"=跨品类替换，不是同品类换店。
    params: {remove_name: 要去掉的目的地名称或品类, remove_category: 要去掉的品类代码或空, add_keywords: 新品类搜索关键词, add_category: 新品类代码或空}
    示例："把火锅改成理发"→ remove_name="火锅", add_keywords="理发", add_category="hair"
-5. add_stop: 新增目的地。params: {keywords: 搜索关键词, category: 品类代码或空字符串, shop_name: 用户明确提到的店名，没提则为空字符串}
-   品类代码: hair=理发, pet=宠物, cafe=咖啡, gym=健身, restaurant=餐饮, cinema=电影, laundry=干洗, hotpot=火锅, japanese=日料
+5. add_stop: 新增目的地。⚠️ 注意：如果用户输入以"提醒"/"记得"/"别忘了"开头或为主意图，应识别为 add_reminder 而非 add_stop。
+   params: {keywords: 搜索关键词, category: 品类代码或空字符串, shop_name: 用户明确提到的店名，没提则为空字符串}
+   品类代码: hair=理发, pet=宠物, cafe=咖啡, gym=健身, restaurant=餐饮, cinema=电影, laundry=干洗, hotpot=火锅, japanese=日料, market=菜市场
 6. remove_stop: 删除目的地。params: {name: 要删的店名关键词，至少2个字}
 7. change_time: 调整时间。params: {time: HH:MM 或 "now" 或 "+30"（推迟30分钟）或 "-15"（提前15分钟）}
 8. change_transport: 切换交通方式。params: {mode: WALK|TAXI|METRO|DRIVE}
 9. reroute: 修改路线偏好。params: {preference: fast|short|scenic|avoid_highway}
 10. 格式要求：只返回 JSON，不要任何解释文字、markdown 代码块标记或前后缀
+11. add_reminder: 用户要求设置提醒（不是修改行程）。⚠️ 识别要点：含"提醒"、"记得"、"别忘了"等关键词的输入，即使其中包含"去"字，也优先识别为提醒而非新增目的地。
+    params: {type: "CUSTOM"或"MED"或"WATER", time: "HH:MM"格式的时间, label: 提醒内容标签, repeat: "once"或"daily"}
+    示例："下午三点提醒我去"→ type="CUSTOM", time="15:00", label="去"
+    示例："记得8点提醒我买菜"→ type="CUSTOM", time="08:00", label="买菜"
+    示例："提醒我吃药"→ type="MED", time="当前时间", label="吃药"
 
 ## 指代消解规则
 - 利用对话历史理解"这家"、"那个"、"它"等代词
@@ -1746,6 +1785,15 @@ def api_edit_trip():
 当前行程有[咖啡:星巴克] / 用户: "不想喝咖啡了改成奶茶"
 → {"action": "replace_stop", "params": {"remove_name": "咖啡", "remove_category": "cafe", "add_keywords": "奶茶", "add_category": "cafe"}}
 
+用户: "下午三点提醒我去"
+→ {"action": "add_reminder", "params": {"type": "CUSTOM", "time": "15:00", "label": "去"}}
+
+用户: "提醒我8点买菜"
+→ {"action": "add_reminder", "params": {"type": "CUSTOM", "time": "08:00", "label": "买菜"}}
+
+用户: "记得下午两点提醒我接孩子"
+→ {"action": "add_reminder", "params": {"type": "CUSTOM", "time": "14:00", "label": "接孩子"}}
+
 只返回 JSON，不要其他文字。"""},
         {"role": "user", "content": edit_prompt}
     ]
@@ -1753,7 +1801,8 @@ def api_edit_trip():
     # ── 三层兜底：L1 规则 → L2 LLM → L3 默认 clarify ──
     ALLOWED_ACTIONS = {
         "add_stop", "remove_stop", "reroute", "change_time",
-        "change_transport", "swap_current", "no_change", "clarify", "replace_stop"
+        "change_transport", "swap_current", "no_change", "clarify", "replace_stop",
+        "add_reminder"
     }
 
     # L1: 规则优先解析（高置信度模式直接用规则，避免 LLM 误判）
@@ -1805,6 +1854,46 @@ def api_edit_trip():
     # 无需重跑排程的 action
     if action == "no_change":
         return jsonify({"phase": "no_change", "message": "好的，行程保持不变 ✅"})
+
+    if action == "add_reminder":
+        rtype = params.get("type", "CUSTOM")
+        rtime = params.get("time", "12:00")
+        label = params.get("label", "提醒")
+        repeat = params.get("repeat", "once")
+        note = params.get("note", "")
+        task_id = f"{rtype.lower()}_{int(_time.time())}"
+        task = {
+            "task_id": task_id,
+            "type": rtype,
+            "time": rtime,
+            "label": label,
+            "repeat": repeat,
+            "note": note,
+            "status": "active"
+        }
+        existing = session_state.get("_reminder_tasks", [])
+        existing.append(task)
+        session_state["_reminder_tasks"] = existing
+
+        # 智能追问：检测提醒标签是否暗示了目的地品类
+        follow_up = ""
+        combined_text = label + edit_text
+        # 买菜/菜市场 → 追问菜市场
+        if any(kw in combined_text for kw in ["买菜", "菜市场", "菜场", "菜", "农贸", "生鲜"]):
+            follow_up = "你有没有常去的菜市场？要不要我推荐几个？"
+        # 吃饭/饭店 → 追问餐饮
+        elif any(kw in combined_text for kw in ["吃饭", "饭店", "餐厅", "下馆子", "美食"]):
+            follow_up = "你有没有常去的饭店？要我推荐几家吗？"
+        # 喝咖啡/奶茶 → 追问咖啡
+        elif any(kw in combined_text for kw in ["咖啡", "奶茶", "喝杯", "茶饮"]):
+            follow_up = "你平时喜欢去哪家咖啡店？要我推荐几家吗？"
+
+        return jsonify({
+            "phase": "reminder_added",
+            "message": f"已为你设置{rtime}的提醒「{label}」✅",
+            "follow_up": follow_up,
+            "reminder": task
+        })
 
     if action == "clarify":
         # 如果用户输入看起来像换店意图但无法确定目标，返回 clarify_swap_target

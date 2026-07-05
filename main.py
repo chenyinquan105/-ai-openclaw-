@@ -48,6 +48,7 @@ CATEGORY_NAME_CN = {
     "scenic": "景点",
     "breakfast": "早餐",
     "shopping": "购物",
+    "market": "菜市场",
 }
 
 def find_best_match(query_name: str, poi_cache: dict) -> str:
