@@ -711,17 +711,20 @@ def _inject_multi_day_reminders(schedule_result: dict) -> dict:
         return {"status": "ERROR", "error": str(e), "count": 0}
 
 
-def _llm_review_schedule(schedule_result: dict, weather_data: dict) -> dict:
+def _llm_review_schedule(schedule_result: dict, weather_data: dict, overcrowded_warning: dict = None) -> dict:
     """LLM 审查排程结果，返回 {phase, auto_fixes, questions, risk_flags}。
     如果 LLM 调用失败，返回空审查（不阻塞用户）。
     """
     try:
-        # 构建审查 prompt
+        # 构建审查 prompt —— 含每天 POI 统计
         days_text = ""
         for day in schedule_result.get("days", []):
-            days_text += f"\n### {day.get('label', '')}\n"
-            for node in day.get("timeline", []):
-                days_text += f"  {node.get('time', '')} {node.get('memo', '')} ({node.get('category', '')})\n"
+            tl = day.get("timeline", [])
+            visit_count = sum(1 for n in tl if n.get("action") == "VISIT")
+            total_min = sum(n.get("duration_minutes", 0) for n in tl)
+            days_text += f"\n### {day.get('label', '')} （景点{visit_count}个，活动总时长约{total_min//60}h{total_min%60}min）\n"
+            for node in tl[:10]:
+                days_text += f"  {node.get('time', '')} {node.get('action', '')} {node.get('memo', '')} ({node.get('category', '')})\n"
 
         weather_text = ""
         for date_key, w in sorted((weather_data or {}).items()):
@@ -732,8 +735,12 @@ def _llm_review_schedule(schedule_result: dict, weather_data: dict) -> dict:
 检查维度：
 1. 路线合理：同一天 POI 距离是否合理？有没有跨城的情况？
 2. 用餐安排：午餐(11:30-13:30)/晚餐(17:30-19:30)是否在合理位置？是否就近？
-3. 天气影响：雨天户外景点是否需要提醒或调整？
-4. 体力消耗：每天时长是否超过 10 小时？是否连续高强度活动？
+3. 天气影响：雨天户外景点是否需要提醒或调整？**重要：如果建议改期，必须先确认目标日天气是否更好——不要建议从雨天改到另一个雨天，也不要建议改到同样不适宜户外活动的日子。如果多天都有雨，建议换成室内活动或提醒带雨具即可。**
+4. 体力消耗：
+   - 每天景点数是否超过 4-5 个？（超过则体验差，应建议分散到其他天）
+   - 每天总活动时长是否超过 10 小时？
+   - 是否有连续高强度活动（如连续爬山/户外暴走）？
+   - 如果某天太满而某天太空，建议重新分配，让每天节奏均匀
 5. 偏好匹配：餐厅类型是否符合用户口味？
 6. 时间冲突：POI 时间是否合理？
 
@@ -742,7 +749,8 @@ def _llm_review_schedule(schedule_result: dict, weather_data: dict) -> dict:
 没有问题时返回空数组。
 
 严格按以下 JSON 格式输出（不要包含其他文字）：
-{"auto_fixes":[{"day_index":0,"detail":"建议将故宫安排在上午，避开下午高温"}],"questions":[{"question_id":"q1","question_text":"明天有雷阵雨，是否把长城改到后天？","options":["改到后天","坚持明天去，带雨具","换成室内活动"]}],"risk_flags":["第2天体力消耗较大"]}"""
+{"auto_fixes":[{"day_index":0,"detail":"建议将故宫安排在上午，避开下午高温"}],"questions":[{"question_id":"q1","question_text":"第1天有雷阵雨，长城是户外景点，但第2天天气晴朗，是否把长城改到第2天？","options":["改到第2天","坚持第1天去，带雨具","换成室内活动"]}],"risk_flags":["第2天体力消耗较大"]}
+注意：如果目标日天气同样不好，不要建议改期，改为建议带雨具或换室内活动。"""
 
         user_prompt = f"""请审查以下多日行程：
 
@@ -756,6 +764,9 @@ def _llm_review_schedule(schedule_result: dict, weather_data: dict) -> dict:
 目的地: {session_state.get('trip_destination', '')}
 出行方式: {session_state.get('trip_transport', '')}
 """
+        # 如果有事前超载警告，注入到 prompt 让 LLM 重点关注
+        if overcrowded_warning and overcrowded_warning.get("overcrowded"):
+            user_prompt = f"⚠️ **前置警告**：{overcrowded_warning.get('message', '')}\n\n" + user_prompt
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -1798,49 +1809,38 @@ def api_edit_trip():
         {"role": "user", "content": edit_prompt}
     ]
 
-    # ── 三层兜底：L1 规则 → L2 LLM → L3 默认 clarify ──
+    # ── LLM 解析（LLM-first，不设规则拦截）──
     ALLOWED_ACTIONS = {
         "add_stop", "remove_stop", "reroute", "change_time",
         "change_transport", "swap_current", "no_change", "clarify", "replace_stop",
         "add_reminder"
     }
 
-    # L1: 规则优先解析（高置信度模式直接用规则，避免 LLM 误判）
-    intent = _fallback_parse_edit(edit_text, session_state.get("selected_pairs", []))
-    rule_action = intent.get("action", "clarify")
-
-    if rule_action != "clarify":
-        print(f"[edit_trip] L1-rule 命中: {rule_action}")
-    else:
-        # L2: LLM 解析（规则无法判定时才调用）
-        print(f"[edit_trip] L1-rule 未匹配，进入 L2-LLM 解析: {edit_text}")
-        llm_success = False
-        try:
-            edit_resp = agent._call_llm(edit_messages, max_tokens=500)
-            raw = (edit_resp.content or "").strip()
-            # 严格 JSON 提取：优先找含 action 键的紧凑对象
-            json_match = re.search(r'\{[^{}]*"action"\s*:\s*"[a-z_]+"[^{}]*\}', raw, re.DOTALL)
-            if not json_match:
-                json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-            if json_match:
-                llm_intent = json.loads(json_match.group(0))
-                action_val = llm_intent.get("action", "")
-                # L3: 验证 LLM 输出的 action 是否合法
-                if action_val in ALLOWED_ACTIONS:
-                    intent = llm_intent
-                    llm_success = True
-                    print(f"[edit_trip] L2-LLM 解析成功: action={action_val}")
-                else:
-                    print(f"[edit_trip] L3-validate 拒绝无效 action: '{action_val}', 回退为 clarify")
+    intent = {"action": "clarify", "params": {}}
+    llm_success = False
+    try:
+        edit_resp = agent._call_llm(edit_messages, max_tokens=500)
+        raw = (edit_resp.content or "").strip()
+        json_match = re.search(r'\{[^{}]*"action"\s*:\s*"[a-z_]+"[^{}]*\}', raw, re.DOTALL)
+        if not json_match:
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if json_match:
+            llm_intent = json.loads(json_match.group(0))
+            action_val = llm_intent.get("action", "")
+            if action_val in ALLOWED_ACTIONS:
+                intent = llm_intent
+                llm_success = True
+                print(f"[edit_trip] LLM 解析成功: action={action_val}")
             else:
-                print(f"[edit_trip] L2-LLM 返回无法解析的 JSON, 回退为 clarify")
-        except json.JSONDecodeError as e:
-            print(f"[edit_trip] L2-LLM JSON 解析失败: {e}, 回退为 clarify")
-        except Exception as e:
-            print(f"[edit_trip] L2-LLM 调用异常: {e}, 回退为 clarify")
-        # L3 fallback: intent 保持为 _fallback_parse_edit 返回的 clarify
-        if not llm_success:
-            print(f"[edit_trip] L3-fallback: 最终回退为 clarify")
+                print(f"[edit_trip] 拒绝无效 action: '{action_val}', 回退为 clarify")
+        else:
+            print(f"[edit_trip] LLM 返回无法解析的 JSON, 回退为 clarify")
+    except json.JSONDecodeError as e:
+        print(f"[edit_trip] LLM JSON 解析失败: {e}, 回退为 clarify")
+    except Exception as e:
+        print(f"[edit_trip] LLM 调用异常: {e}, 回退为 clarify")
+    if not llm_success:
+        print(f"[edit_trip] 最终回退为 clarify")
 
     action = intent.get("action", "clarify")
     params = intent.get("params", {})
@@ -4980,24 +4980,11 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
             if session_state.get("phase") != "done" and not session_state.get("selected_pairs"):
                 return {"status": "ERROR", "message": "没有活跃行程"}
 
-            # ── 规则优先验证：用规则引擎检查 LLM 决定的 action 是否合理 ──
-            user_msg = session_state.get("_last_user_message", "")
-            if user_msg:
-                rule_intent = _fallback_parse_edit(user_msg, session_state.get("selected_pairs", []))
-                rule_action = rule_intent.get("action", "clarify")
-                # 如果规则给了高置信度结果且与 LLM 不同，优先用规则的
-                if rule_action != "clarify" and rule_action != action:
-                    print(f"[chat-tool edit_trip] 规则覆盖: LLM={action} -> rule={rule_action} (用户消息: {user_msg[:60]})")
-                    action = rule_action
-                    # 合并参数：规则参数优先，LLM 参数作为补充
-                    merged_params = dict(params)
-                    merged_params.update(rule_intent.get("params", {}))
-                    params = merged_params
-
-            # 验证 action 是否合法
+            # ── 验证 action 是否合法 ──
             _CHAT_ALLOWED_ACTIONS = {
                 "add_stop", "remove_stop", "change_time", "change_transport",
-                "reroute", "swap_current", "no_change", "clarify", "replace_stop"
+                "reroute", "swap_current", "no_change", "clarify", "replace_stop",
+                "add_reminder"
             }
             if action not in _CHAT_ALLOWED_ACTIONS:
                 print(f"[chat-tool edit_trip] 拒绝无效 action: {action}")
@@ -5354,131 +5341,7 @@ def chat_stream():
             yield f"event: message\ndata: {json.dumps({'role': 'user', 'content': message}, ensure_ascii=False)}\n\n"
 
             # ═══════════════════════════════════════════════════════════════
-            # ★ 快路径：用户消息含明确品类关键词 → 跳过 LLM 工具调用，直接搜索
-            # ═══════════════════════════════════════════════════════════════
-            _fast_cats = _try_fast_category_match(message)
-            if _fast_cats:
-                print(f"[chat-fast-path] 命中品类: {_fast_cats}，直接搜索", flush=True)
-                try:
-                    search_result = _search_poi(agent, message, profile)
-                    if "error" not in search_result:
-                        categories = _build_categories_for_frontend(agent, profile)
-                        if categories:
-                            session_state["searched_categories"] = search_result.get("categories", [])
-                            session_state["_profile"] = profile
-                            session_state["phase"] = "choose_shop"
-                            total_shops = sum(len(c.get("shops", [])) for c in categories)
-
-                            # 模拟 tool_call 事件（前端需要）
-                            fake_tc_id = f"fast_{int(_time.time()*1000)}"
-                            yield f"event: tool_call\ndata: {json.dumps({'id': fake_tc_id, 'name': 'search_poi', 'arguments': {'keywords': message, 'category': _fast_cats[0]}, 'status': 'started'}, ensure_ascii=False)}\n\n"
-
-                            # 模拟搜索等待，让用户看到"正在检索..."过程
-                            _time.sleep(1.0)
-
-                            # 保存 assistant tool_calls 到历史
-                            _append_chat_message("assistant", content=None, tool_calls=[{
-                                "id": fake_tc_id, "type": "function",
-                                "function": {"name": "search_poi", "arguments": json.dumps({"keywords": message, "category": _fast_cats[0]}, ensure_ascii=False)}
-                            }])
-
-                            # 发送 tool_result 事件（含品类数据，前端渲染面板）
-                            result_data = {
-                                "status": "SUCCESS",
-                                "data": {"categories": categories},
-                                "message": f"为你找到{len(categories)}个品类共{total_shops}家店铺，请在面板中选择～"
-                            }
-                            yield f"event: tool_result\ndata: {json.dumps({'id': fake_tc_id, 'name': 'search_poi', 'status': 'completed', 'result': result_data}, ensure_ascii=False)}\n\n"
-
-                            # 将工具结果加入 messages
-                            messages.append({
-                                "role": "assistant",
-                                "content": None,
-                                "tool_calls": [{
-                                    "id": fake_tc_id, "type": "function",
-                                    "function": {"name": "search_poi", "arguments": json.dumps({"keywords": message, "category": _fast_cats[0]}, ensure_ascii=False)}
-                                }]
-                            })
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": fake_tc_id,
-                                "name": "search_poi",
-                                "content": json.dumps(result_data, ensure_ascii=False)
-                            })
-                            _append_chat_message("tool", tool_call_id=fake_tc_id, name="search_poi", content=json.dumps(result_data, ensure_ascii=False))
-
-                            # 固定简短引导语，不再调 LLM（面板已展示全部信息）
-                            guide_msg = "帮你找到了几家，在下方面板里挑挑看～"
-                            yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': guide_msg}, ensure_ascii=False)}\n\n"
-                            _save_chat_history(history_db)
-                            _append_chat_message("assistant", content=guide_msg)
-                            yield f"event: done\ndata: {json.dumps({'status': 'complete'}, ensure_ascii=False)}\n\n"
-                            return
-                except Exception as e:
-                    print(f"[chat-fast-path] 搜索失败: {e}，回退到LLM路径", flush=True)
-                    # 快路径失败 → 回退到正常 LLM 路径
-
-            # ═══════════════════════════════════════════════════════════════
-            # 搜索意图检测：快路径未命中，但消息仍像搜索请求 → 走高德API
-            # ═══════════════════════════════════════════════════════════════
-            _search_intent_kw = ["找", "搜", "附近", "有没有", "哪里有", "帮我", "推荐",
-                                 "想去", "想吃", "想喝", "想买", "求", "查一下", "看看"]
-            _non_search_patterns = ["你好", "嗨", "早", "在吗", "再见", "谢谢", "你能",
-                                    "你是谁", "叫什么", "干嘛", "功能", "能力"]
-            _is_search = any(kw in message for kw in _search_intent_kw)
-            _is_chat = any(kw in message for kw in _non_search_patterns)
-
-            if _is_search and not _is_chat:
-                print(f"[chat-search-intent] 检测到搜索意图: {message[:50]}，走高德API", flush=True)
-                try:
-                    search_result = _search_poi(agent, message, profile)
-                    if "error" not in search_result:
-                        categories = _build_categories_for_frontend(agent, profile)
-                        if categories:
-                            session_state["searched_categories"] = search_result.get("categories", [])
-                            session_state["_profile"] = profile
-                            session_state["phase"] = "choose_shop"
-                            total_shops = sum(len(c.get("shops", [])) for c in categories)
-
-                            fake_tc_id = f"search_{int(_time.time()*1000)}"
-                            yield f"event: tool_call\ndata: {json.dumps({'id': fake_tc_id, 'name': 'search_poi', 'arguments': {'keywords': message}, 'status': 'started'}, ensure_ascii=False)}\n\n"
-
-                            # 模拟搜索等待，让用户看到"正在检索..."过程
-                            _time.sleep(1.0)
-
-                            _append_chat_message("assistant", content=None, tool_calls=[{
-                                "id": fake_tc_id, "type": "function",
-                                "function": {"name": "search_poi", "arguments": json.dumps({"keywords": message}, ensure_ascii=False)}
-                            }])
-
-                            result_data = {
-                                "status": "SUCCESS",
-                                "data": {"categories": categories},
-                                "message": f"为你找到{len(categories)}个品类共{total_shops}家店铺，请在面板中选择～"
-                            }
-                            yield f"event: tool_result\ndata: {json.dumps({'id': fake_tc_id, 'name': 'search_poi', 'status': 'completed', 'result': result_data}, ensure_ascii=False)}\n\n"
-
-                            messages.append({
-                                "role": "assistant", "content": None,
-                                "tool_calls": [{"id": fake_tc_id, "type": "function",
-                                    "function": {"name": "search_poi", "arguments": json.dumps({"keywords": message}, ensure_ascii=False)}}]
-                            })
-                            messages.append({"role": "tool", "tool_call_id": fake_tc_id, "name": "search_poi",
-                                "content": json.dumps(result_data, ensure_ascii=False)})
-                            _append_chat_message("tool", tool_call_id=fake_tc_id, name="search_poi",
-                                content=json.dumps(result_data, ensure_ascii=False))
-
-                            guide_msg = "帮你找到了几家，在下方面板里挑挑看～"
-                            yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': guide_msg}, ensure_ascii=False)}\n\n"
-                            _save_chat_history(history_db)
-                            _append_chat_message("assistant", content=guide_msg)
-                            yield f"event: done\ndata: {json.dumps({'status': 'complete'}, ensure_ascii=False)}\n\n"
-                            return
-                except Exception as e:
-                    print(f"[chat-search-intent] 搜索失败: {e}，回退到LLM路径", flush=True)
-
-            # ═══════════════════════════════════════════════════════════════
-            # 正常路径：LLM 处理（非搜索意图的闲聊/问候/情绪等）
+            # LLM 路径：所有消息统一由 LLM 决定是聊天还是调工具
             # ═══════════════════════════════════════════════════════════════
 
             # 第一轮：调用LLM流式
@@ -6024,6 +5887,20 @@ def smart_schedule():
     if trip_days < 1:
         return jsonify({"status": "ERROR", "message": "天数必须 >= 1"}), 400
 
+    # ── 事前检查：POI 数量 vs 天数是否合理 ──
+    MAX_PER_DAY = 5  # 每天合理上限（含景点+餐厅等）
+    total_pois = len(candidate_pool)
+    overcrowded_warning = None
+    if total_pois > trip_days * MAX_PER_DAY:
+        recommended = max(1, int(__import__('math').ceil(total_pois / MAX_PER_DAY)))
+        overcrowded_warning = {
+            "overcrowded": True,
+            "total_pois": total_pois,
+            "current_days": trip_days,
+            "suggested_days": recommended,
+            "message": f"您选了{total_pois}个地点，{trip_days}天可能玩不过来，建议增至{recommended}天体验更好"
+        }
+
     # 如果没有酒店坐标，用第一个POI的坐标作为参考
     if not checkin_lat or not checkin_lng:
         first = candidate_pool[0]
@@ -6063,7 +5940,7 @@ def smart_schedule():
     trip_weather = session_state.get("trip_weather", {})
 
     # ── LLM 审查（阶段 2）──
-    review_result = _llm_review_schedule(result, trip_weather)
+    review_result = _llm_review_schedule(result, trip_weather, overcrowded_warning)
 
     # ── 提醒注入（阶段 3）：起床/就寝 → 持续响铃 ──
     reminders_injected = _inject_multi_day_reminders(result)
@@ -6079,6 +5956,7 @@ def smart_schedule():
         "closed_conflicts": result.get("closed_conflicts", []),
         "unknown_hours_shops": result.get("unknown_hours_shops", []),
         "reminders_injected": reminders_injected,
+        "overcrowded_warning": overcrowded_warning,  # 事前检查：POI过多警告
     })
 
 
@@ -6116,6 +5994,7 @@ def schedule_review_answer():
         system_prompt = """你是旅行规划专家。用户回答了你的问题，请根据回答修改排程。
 只输出 JSON 格式：
 {"updated_days":[{"day_index":0,"changes":"修改说明","timeline_updates":[{"time":"09:00","action":"VISIT","memo":"故宫","category":"scenic"}]}],"follow_up_questions":[]}
+timeline_updates 只需要包含你**新增或修改**的节点，不需要包含整个时间线。起床、就寝、三餐等结构节点会自动保留。
 如果无需进一步问题，follow_up_questions 为空数组。最多再提 1 个跟进问题。
 follow_up_questions 格式: [{"question_id":"q_f1","question_text":"问题文本","options":["选项1","选项2"]}]"""
 
@@ -6148,14 +6027,27 @@ follow_up_questions 格式: [{"question_id":"q_f1","question_text":"问题文本
             updated = parsed.get("updated_days", [])
             follow_up = parsed.get("follow_up_questions", [])
 
-            # 应用 LLM 的修改到 schedule
+            # 应用 LLM 的修改到 schedule（智能合并，不完全替换）
             sched_days = schedule.get("days", [])
+            # 结构节点：起床/就寝/三餐/休息，必须保留不能被 LLM 误删
+            STRUCT_ACTIONS = {"WAKE_UP", "BEDTIME", "BREAKFAST", "BREAKFAST_NEEDED",
+                            "LUNCH", "LUNCH_NEEDED", "DINNER", "DINNER_NEEDED", "REST"}
             for upd in updated:
                 di = upd.get("day_index", -1)
                 if 0 <= di < len(sched_days):
                     t_updates = upd.get("timeline_updates")
                     if t_updates:
-                        sched_days[di]["timeline"] = t_updates
+                        original_tl = sched_days[di].get("timeline", [])
+                        # 从原始 timeline 保留结构节点
+                        preserved = [n for n in original_tl if n.get("action") in STRUCT_ACTIONS]
+                        # LLM 返回的节点（去重：如果 LLM 返回了结构节点，用 LLM 的版本覆盖原始）
+                        llm_struct_actions = {n.get("action") for n in t_updates if n.get("action") in STRUCT_ACTIONS}
+                        kept_preserved = [n for n in preserved if n.get("action") not in llm_struct_actions]
+                        # 合并：保留的结构节点 + LLM 返回的所有节点
+                        merged = kept_preserved + t_updates
+                        # 按时间排序
+                        merged.sort(key=lambda n: _time_str_to_minutes(n.get("time", "")) if n.get("time", "") else 9999)
+                        sched_days[di]["timeline"] = merged
 
             # 更新缓存
             session_state["_review_state"]["schedule_snapshot"] = schedule
@@ -6205,12 +6097,21 @@ def api_multi_day_edit():
 
 支持的操作:
 - swap_day_activity: 替换某天的活动 → {"action":"swap_day_activity","day_index":0,"target_name":"故宫","new_keywords":"颐和园"}
-- move_to_day: 移动活动到另一天 → {"action":"move_to_day","target_name":"故宫","to_day":1}
+- move_to_day: 移动活动到另一天（可指定时间，不指定则追加到末尾） → {"action":"move_to_day","target_name":"故宫","to_day":1,"to_time":"14:00"}
 - add_to_day: 添加到某天 → {"action":"add_to_day","day_index":0,"keywords":"咖啡厅"}
 - remove_from_day: 删除某天活动 → {"action":"remove_from_day","day_index":0,"target_name":"故宫"}
-- adjust_time: 调整某天时间 → {"action":"adjust_time","day_index":0,"new_start":"08:00"}
+- adjust_time: 调整某活动时间 → {"action":"adjust_time","day_index":0,"target_name":"故宫","new_time":"15:00"}
+- adjust_time: 调整当天出发时间 → {"action":"adjust_time","day_index":0,"new_start":"08:00"}
 - clarify: 意图不明确 → {"action":"clarify","message":"您想调整哪一天的活动？"}
 - no_change: 无实际操作 → {"action":"no_change","message":"好的"}
+
+规则：
+1. target_name 必须从当前行程的 memo 中匹配（用活动名称）
+2. to_time/new_time 格式为 HH:MM（24小时制）
+3. 用户说"上午/下午/晚上+时间"，转为24小时制（下午2点→14:00，上午9点→09:00，晚上8点→20:00）
+4. 用户说"明天/后天/第X天"→转为对应的 day_index（从0开始）
+5. 如果用户没指定具体时间，to_time 可省略（追加到目标天末尾）
+6. 移动活动时如果用户说了时间段，必须带上 to_time
 
 只返回 JSON，不要其他文字。"""
 
@@ -6272,29 +6173,54 @@ def api_multi_day_edit():
         if action == "move_to_day":
             target = parsed.get("target_name", "")
             to_di = parsed.get("to_day", day_index)
+            to_time = parsed.get("to_time", "")
             moved_node = None
             for d in days:
                 tl = d.get("timeline", [])
                 for node in list(tl):
                     if target and target in (node.get("memo", "")):
-                        moved_node = node
+                        moved_node = dict(node)
                         tl.remove(node)
                         break
                 if moved_node: break
             if moved_node and to_di < len(days):
-                days[to_di].setdefault("timeline", []).append(moved_node)
+                if to_time:
+                    moved_node["time"] = to_time
+                # 按时间顺序插入（用分钟数比较，避免字符串比较的零填充问题）
+                target_tl = days[to_di].setdefault("timeline", [])
+                insert_idx = len(target_tl)
+                raw_time = moved_node.get("time", "")
+                node_min = _time_str_to_minutes(raw_time) if raw_time else 9999
+                for i, n in enumerate(target_tl):
+                    nt = n.get("time", "")
+                    n_min = _time_str_to_minutes(nt) if nt else 9999
+                    if node_min < n_min:
+                        insert_idx = i
+                        break
+                target_tl.insert(insert_idx, moved_node)
             return jsonify({"phase": "done", "days": days,
-                           "message": f"已将{target}移到第{to_di+1}天"})
+                           "message": f"已将{target}移到第{to_di+1}天" + (f" {to_time}" if to_time else "")})
 
         if action == "add_to_day":
             di = parsed.get("day_index", day_index)
             keywords = parsed.get("keywords", "")
             if di < len(days):
-                days[di].setdefault("timeline", []).append({
+                new_node = {
                     "time": "12:00", "action": "VISIT",
                     "memo": f"📌 {keywords}（待搜索）", "category": "",
                     "shop_id": "", "duration_minutes": 60,
-                })
+                }
+                target_tl = days[di].setdefault("timeline", [])
+                # 按时间顺序插入
+                insert_idx = len(target_tl)
+                new_min = 12 * 60  # 12:00
+                for i, n in enumerate(target_tl):
+                    nt = n.get("time", "")
+                    n_min = _time_str_to_minutes(nt) if nt else 9999
+                    if new_min < n_min:
+                        insert_idx = i
+                        break
+                target_tl.insert(insert_idx, new_node)
             return jsonify({"phase": "done", "days": days,
                            "message": f"已添加{keywords}到第{di+1}天"})
 
@@ -6312,9 +6238,34 @@ def api_multi_day_edit():
 
         if action == "adjust_time":
             di = parsed.get("day_index", day_index)
-            new_start = parsed.get("new_start", "09:00")
+            target = parsed.get("target_name", "")
+            new_time = parsed.get("new_time", "")
+            new_start = parsed.get("new_start", "")
+            time_to_set = new_time or new_start
+
+            if di < len(days) and time_to_set:
+                tl = days[di].get("timeline", [])
+                if target:
+                    # 修改特定活动时间
+                    for node in tl:
+                        if target and target in (node.get("memo", "")):
+                            node["time"] = time_to_set
+                            break
+                    # 按时间重排（用分钟数排序，避免字符串比较的零填充问题）
+                    tl.sort(key=lambda n: _time_str_to_minutes(n.get("time", "")) if n.get("time", "") else 9999)
+                    return jsonify({"phase": "done", "days": days,
+                                   "message": f"已将{target}时间调整为{time_to_set}"})
+                elif new_start:
+                    # 修改当天起始时间（第一个 WAKE_UP 节点）
+                    for node in tl:
+                        if node.get("action") == "WAKE_UP":
+                            node["time"] = new_start
+                            break
+                    tl.sort(key=lambda n: _time_str_to_minutes(n.get("time", "")) if n.get("time", "") else 9999)
+                    return jsonify({"phase": "done", "days": days,
+                                   "message": f"第{di+1}天出发时间调整为{new_start}"})
             return jsonify({"phase": "done", "days": days,
-                           "message": f"第{di+1}天起始时间调整为{new_start}"})
+                           "message": f"第{di+1}天时间已调整"})
 
         return jsonify({"phase": "done", "days": days, "message": "已更新行程 ✅"})
 

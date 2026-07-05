@@ -2384,6 +2384,12 @@ async function sendMultiDayMessage() {
   multiDayChatHistory.push({role: 'user', text: msg});
   if (multiDayChatHistory.length > 6) multiDayChatHistory.shift();
 
+  // 渲染用户消息气泡到聊天区
+  var chatArea = document.getElementById('multi-day-chat-area');
+  if (chatArea) {
+    chatArea.innerHTML += '<div class="flex justify-end mb-2"><div class="bg-yellow-100 rounded-2xl px-4 py-2 max-w-xs text-sm text-gray-800">' + _escHtml(msg) + '</div></div>';
+  }
+
   var contextMessages = multiDayChatHistory.slice(0, -1).map(function(m) {
     return (m.role === 'user' ? '用户: ' : 'AI: ') + m.text;
   }).join('\n');
@@ -2455,7 +2461,15 @@ async function sendMultiDayMessage() {
     // 更新行程
     if (data.phase === 'done' && data.days) {
       multiDayScheduleResult.days = data.days;
+      // 保存聊天记录，防止 renderMultiDayCards 清空
+      var _savedChat = '';
+      var _mcArea = document.getElementById('multi-day-chat-area');
+      if (_mcArea) _savedChat = _mcArea.innerHTML;
       renderMultiDayCards(multiDayScheduleResult);
+      if (_savedChat) {
+        var _newMcArea = document.getElementById('multi-day-chat-area');
+        if (_newMcArea) _newMcArea.innerHTML = _savedChat;
+      }
     }
 
     if (typeof scrollToBottom === 'function') scrollToBottom();
@@ -2746,6 +2760,15 @@ function _confirmTripSwap() {
   .then(function(data) {
     if (panel) panel.remove();
     if (data.timeline) {
+      // 保留旧的防坑指南数据（swap_shop 不返回防坑内容，避免被空数组覆盖）
+      if (lastScheduleData) {
+        data.pitfall_reminders = data.pitfall_reminders && data.pitfall_reminders.length > 0
+          ? data.pitfall_reminders : (lastScheduleData.pitfall_reminders || []);
+        data.pitfall_insights = data.pitfall_insights && data.pitfall_insights.length > 0
+          ? data.pitfall_insights : (lastScheduleData.pitfall_insights || []);
+        data.pitfall_triggers = data.pitfall_triggers && data.pitfall_triggers.length > 0
+          ? data.pitfall_triggers : (lastScheduleData.pitfall_triggers || []);
+      }
       lastScheduleData = data;
       _refreshTripView();
     }
@@ -8351,7 +8374,15 @@ function expandDayDetail(dayIndex) {
 
 function closeDayDetail() {
   if (multiDayScheduleResult) {
+    // 保存聊天记录，防止 renderMultiDayCards 清空
+    var _savedChat = '';
+    var _mcArea = document.getElementById('multi-day-chat-area');
+    if (_mcArea) _savedChat = _mcArea.innerHTML;
     renderMultiDayCards(multiDayScheduleResult);
+    if (_savedChat) {
+      var _newMcArea = document.getElementById('multi-day-chat-area');
+      if (_newMcArea) _newMcArea.innerHTML = _savedChat;
+    }
     // 恢复审查问题卡片（展开详情前如果正在进行审查）
     var review = multiDayScheduleResult.review;
     if (review && review.phase === 'schedule_review' && review.questions && review.questions.length > 0) {

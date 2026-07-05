@@ -191,14 +191,16 @@ def _simple_kmeans(shops: list, coords: list, k: int, max_iter: int = 100) -> li
 # 阶段 2: 负载均衡 —— 贪心重分配
 # ======================================================================
 
-def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0) -> list:
+def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0, max_shops_per_day: int = 5) -> list:
     """
-    贪心迭代重分配，使每天总时间接近目标。
-    目标: 每天活动 + 旅行时间在 max_hours 的 ±15% 内。
+    贪心迭代重分配，使每天总时间接近目标，且每天 POI 数不超标。
+    第一遍：时间均衡（目标: 每天活动 + 旅行时间在 max_hours 的 +-15% 内）。
+    第二遍：数量均衡（确保每天不超过 max_shops_per_day 个 POI）。
     """
     target_minutes = max_hours_per_day * 60
     max_iter = 50
 
+    # ── 第一遍：时间均衡 ──
     for _ in range(max_iter):
         # 计算每天预估总时间（正餐每天最多计入2家=1午+1晚）
         day_times = []
@@ -233,7 +235,7 @@ def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0) -> list:
         if overloaded_time <= target_minutes * 1.15:
             break
 
-        # 从超载天移一个最远的点到轻载天
+        # 从超载天移一个最近的店到轻载天
         if not clusters[overloaded_idx]:
             break
 
@@ -255,6 +257,40 @@ def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0) -> list:
         if best_shop:
             clusters[overloaded_idx].remove(best_shop)
             clusters[underloaded_idx].append(best_shop)
+        else:
+            break
+
+    # ── 第二遍：数量均衡 —— 每天 POI 数不超上限 ──
+    for _ in range(max_iter):
+        counts = [len(c) for c in clusters]
+        max_count = max(counts)
+        min_count = min(counts)
+
+        # 最多天未超标 → 停止
+        if max_count <= max_shops_per_day:
+            break
+
+        max_idx = counts.index(max_count)
+        min_idx = counts.index(min_count)
+
+        # 从最多天选一个离最少天质心最近的点搬过去
+        target_centroid = _cluster_centroid(clusters[min_idx])
+        if target_centroid is None:
+            break
+
+        best_shop = None
+        best_dist = float("inf")
+        for s in clusters[max_idx]:
+            lat = float(s.get("lat", 0))
+            lng = float(s.get("lng", 0))
+            d = _haversine_m(lat, lng, target_centroid[0], target_centroid[1])
+            if d < best_dist:
+                best_dist = d
+                best_shop = s
+
+        if best_shop:
+            clusters[max_idx].remove(best_shop)
+            clusters[min_idx].append(best_shop)
         else:
             break
 
@@ -1014,7 +1050,7 @@ def solve_multi_day(
     clusters = _cluster_by_geo(candidate_shops, num_days)
 
     # ── 阶段 2: 负载均衡 ──
-    clusters = _balance_clusters(clusters, max_hours_per_day)
+    clusters = _balance_clusters(clusters, max_hours_per_day, max_shops_per_day=5)
 
     # 准备天气和偏好数据
     wdata = weather_data or {}
