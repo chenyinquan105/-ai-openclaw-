@@ -119,7 +119,7 @@ class AmapWeatherClient:
             resp = requests.get(
                 f"{self.BASE_URL}/{endpoint}",
                 params=params,
-                timeout=10,
+                timeout=15,
                 headers={"User-Agent": "MeituanSpatialButler/1.0"}
             )
             resp.raise_for_status()
@@ -251,7 +251,7 @@ class AmapWeatherClient:
         params = {"key": api_key, "city": adcode, "extensions": "all", "output": "JSON"}
 
         try:
-            resp = requests.get(url, params=params, timeout=8)
+            resp = requests.get(url, params=params, timeout=15)
             resp.raise_for_status()
             data = resp.json()
             if data.get("status") != "1" or data.get("info") != "OK":

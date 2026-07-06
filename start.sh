@@ -16,4 +16,4 @@ gunicorn -w 1 \
   server:app 2>&1 &
 
 sleep 2
-echo "✅ 服务已启动: http://127.0.0.1:5000"
+echo "✅ 服务已启动: http://localhost:5000"

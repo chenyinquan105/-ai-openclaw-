@@ -1049,6 +1049,9 @@ def solve_multi_day(
     # ── 阶段 1: 地理聚类 ──
     clusters = _cluster_by_geo(candidate_shops, num_days)
 
+    # ── 阶段 1.5: 全局微调（跨天边界交换，修正聚类边界错误）──
+    clusters = _global_fine_tune(clusters, checkin_lat, checkin_lng)
+
     # ── 阶段 2: 负载均衡 ──
     clusters = _balance_clusters(clusters, max_hours_per_day, max_shops_per_day=5)
 
@@ -1136,9 +1139,8 @@ def solve_multi_day(
             "unknown_hours_shops": unknown_hours_day,
         })
 
-    # ── 阶段 5: 全局微调（在聚类结果上） ──
-    # （这一阶段改变聚类，但我们已经基于原始聚类生成了 day_results）
-    # 作为简化，我们在最终统计中计算优化效果
+    # ── 阶段 5: 全局微调已在阶段 1.5 执行（_global_fine_tune）──
+    # 聚类边界已在路由前修正，此处保留统计信息收集
 
     # ── 生成排程解释（schedule_reasoning）──
     reasoning = []

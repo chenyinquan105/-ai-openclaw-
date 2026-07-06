@@ -2110,3 +2110,300 @@ ValueError: too many values to unpack (expected 2, got 3)
 [2026-07-02 10:52:46 +0800] [8532] [INFO] Handling signal: term
 [2026-07-02 10:53:16 +0800] [8536] [INFO] Worker exiting (pid: 8536)
 [2026-07-02 10:53:16 +0800] [8532] [INFO] Shutting down: Master
+[2026-07-05 17:31:55 +0800] [45260] [INFO] Starting gunicorn 26.0.0
+[2026-07-05 17:31:55 +0800] [45260] [INFO] Listening at: http://0.0.0.0:5000 (45260)
+[2026-07-05 17:31:55 +0800] [45260] [INFO] Using worker: gthread
+[2026-07-05 17:31:55 +0800] [45266] [INFO] Booting worker with pid: 45266
+[2026-07-05 17:31:56 +0800] [45260] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-07-05 17:46:45 +0800] [45734] [INFO] Starting gunicorn 26.0.0
+[2026-07-05 17:46:45 +0800] [45734] [INFO] Listening at: http://0.0.0.0:5000 (45734)
+[2026-07-05 17:46:45 +0800] [45734] [INFO] Using worker: gthread
+[2026-07-05 17:46:45 +0800] [45736] [INFO] Booting worker with pid: 45736
+[2026-07-05 17:46:45 +0800] [45734] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[LLM审查] 失败，退回纯算法结果: 'NoneType' object has no attribute '_call_llm'
+[multi_day_edit] LLM 调用失败: 'NoneType' object has no attribute '_call_llm'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[LLM审查] 失败，退回纯算法结果: 'NoneType' object has no attribute '_call_llm'
+[multi_day_edit] LLM 调用失败: 'NoneType' object has no attribute '_call_llm'
+[multi_day_edit] LLM 调用失败: 'NoneType' object has no attribute '_call_llm'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[LLM审查] 失败，退回纯算法结果: 'NoneType' object has no attribute '_call_llm'
+[multi_day_edit] LLM 调用失败: 'NoneType' object has no attribute '_call_llm'
+[2026-07-06 11:41:22 +0800] [51030] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 11:41:22 +0800] [51030] [INFO] Listening at: http://0.0.0.0:5000 (51030)
+[2026-07-06 11:41:22 +0800] [51030] [INFO] Using worker: gthread
+[2026-07-06 11:41:22 +0800] [51040] [INFO] Booting worker with pid: 51040
+[2026-07-06 11:41:22 +0800] [51030] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[multi_day_edit] 用户确认执行: action=remove_from_day
+[multi_day_edit] 用户确认执行: action=remove_from_day
+[multi_day_edit] 用户确认执行: action=remove_from_day
+[2026-07-06 11:43:00 +0800] [51136] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 11:43:00 +0800] [51136] [INFO] Listening at: http://0.0.0.0:5000 (51136)
+[2026-07-06 11:43:00 +0800] [51136] [INFO] Using worker: gthread
+[2026-07-06 11:43:00 +0800] [51138] [INFO] Booting worker with pid: 51138
+[2026-07-06 11:43:00 +0800] [51136] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[multi_day_edit] 用户确认执行: action=remove_from_day
+[2026-07-06 11:43:20 +0800] [51179] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 11:43:20 +0800] [51179] [INFO] Listening at: http://0.0.0.0:5000 (51179)
+[2026-07-06 11:43:20 +0800] [51179] [INFO] Using worker: gthread
+[2026-07-06 11:43:20 +0800] [51181] [INFO] Booting worker with pid: 51181
+[2026-07-06 11:43:20 +0800] [51179] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[multi_day_edit] 用户确认执行: action=remove_from_day
+[2026-07-06 11:44:07 +0800] [51239] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 11:44:07 +0800] [51239] [INFO] Listening at: http://0.0.0.0:5000 (51239)
+[2026-07-06 11:44:07 +0800] [51239] [INFO] Using worker: gthread
+[2026-07-06 11:44:07 +0800] [51241] [INFO] Booting worker with pid: 51241
+[2026-07-06 11:44:07 +0800] [51239] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[DEBUG multi_day] confirm_action=None, pending_exists=False, pending_action=N/A
+[DEBUG multi_day] confirm_action='execute', pending_exists=True, pending_action=remove_from_day
+[multi_day_edit] 用户确认执行: action=remove_from_day
+[2026-07-06 11:44:45 +0800] [51286] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 11:44:45 +0800] [51286] [INFO] Listening at: http://0.0.0.0:5000 (51286)
+[2026-07-06 11:44:45 +0800] [51286] [INFO] Using worker: gthread
+[2026-07-06 11:44:45 +0800] [51288] [INFO] Booting worker with pid: 51288
+[2026-07-06 11:44:45 +0800] [51286] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[DEBUG multi_day] confirm_action=None, pending_exists=False, pending_action=N/A
+[DEBUG multi_day] confirm_action='execute', pending_exists=True, pending_action=remove_from_day
+[multi_day_edit] 用户确认执行: action=remove_from_day, params_keys=['day_index', 'target_name']
+[2026-07-06 11:45:17 +0800] [51334] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 11:45:17 +0800] [51334] [INFO] Listening at: http://0.0.0.0:5000 (51334)
+[2026-07-06 11:45:17 +0800] [51334] [INFO] Using worker: gthread
+[2026-07-06 11:45:17 +0800] [51336] [INFO] Booting worker with pid: 51336
+[2026-07-06 11:45:17 +0800] [51334] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[DEBUG multi_day] confirm_action=None, pending_exists=False, pending_action=N/A
+[DEBUG multi_day] confirm_action='execute', pending_exists=True, pending_action=remove_from_day
+[multi_day_edit] 用户确认执行: action=remove_from_day, params_keys=['day_index', 'target_name']
+[DEBUG multi_day] 执行块: action='clarify', parsed_keys=None, skip_llm=True, llm_failed=False
+[2026-07-06 11:45:55 +0800] [51420] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 11:45:55 +0800] [51420] [INFO] Listening at: http://0.0.0.0:5000 (51420)
+[2026-07-06 11:45:55 +0800] [51420] [INFO] Using worker: gthread
+[2026-07-06 11:45:55 +0800] [51422] [INFO] Booting worker with pid: 51422
+[2026-07-06 11:45:55 +0800] [51420] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[multi_day_edit] 用户确认执行: action=remove_from_day
+[2026-07-06 11:45:58,709] ERROR in app: Exception on /api/multi_day_edit [POST]
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ~^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 6751, in api_multi_day_edit
+    if llm_failed:
+       ^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'llm_failed' where it is not associated with a value
+[2026-07-06 11:46:23 +0800] [51470] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 11:46:23 +0800] [51470] [INFO] Listening at: http://0.0.0.0:5000 (51470)
+[2026-07-06 11:46:23 +0800] [51470] [INFO] Using worker: gthread
+[2026-07-06 11:46:23 +0800] [51472] [INFO] Booting worker with pid: 51472
+[2026-07-06 11:46:23 +0800] [51470] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[multi_day_edit] 用户确认执行: action=remove_from_day
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[auto_search_restaurants] 失败: AmapPOIClient.search_nearby() got an unexpected keyword argument 'city'
+[2026-07-06 12:18:03 +0800] [51470] [INFO] Handling signal: term
+[2026-07-06 12:18:04 +0800] [53438] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 12:18:04 +0800] [53438] [ERROR] Connection in use: ('0.0.0.0', 5000)
+[2026-07-06 12:18:04 +0800] [53438] [ERROR] connection to ('0.0.0.0', 5000) failed: [Errno 48] Address already in use
+[2026-07-06 12:18:05 +0800] [53438] [ERROR] Connection in use: ('0.0.0.0', 5000)
+[2026-07-06 12:18:05 +0800] [53438] [ERROR] connection to ('0.0.0.0', 5000) failed: [Errno 48] Address already in use
+[2026-07-06 12:18:06 +0800] [53438] [ERROR] Connection in use: ('0.0.0.0', 5000)
+[2026-07-06 12:18:06 +0800] [53438] [ERROR] connection to ('0.0.0.0', 5000) failed: [Errno 48] Address already in use
+[2026-07-06 12:18:07 +0800] [53438] [ERROR] Connection in use: ('0.0.0.0', 5000)
+[2026-07-06 12:18:07 +0800] [53438] [ERROR] connection to ('0.0.0.0', 5000) failed: [Errno 48] Address already in use
+[2026-07-06 12:18:08 +0800] [53438] [ERROR] Connection in use: ('0.0.0.0', 5000)
+[2026-07-06 12:18:08 +0800] [53438] [ERROR] connection to ('0.0.0.0', 5000) failed: [Errno 48] Address already in use
+[2026-07-06 12:18:09 +0800] [53438] [ERROR] Can't connect to ('0.0.0.0', 5000)
+[2026-07-06 12:18:33 +0800] [51472] [INFO] Worker exiting (pid: 51472)
+[2026-07-06 12:18:33 +0800] [51470] [INFO] Shutting down: Master
+[2026-07-06 12:19:10 +0800] [53490] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 12:19:10 +0800] [53490] [INFO] Listening at: http://0.0.0.0:5000 (53490)
+[2026-07-06 12:19:10 +0800] [53490] [INFO] Using worker: sync
+[2026-07-06 12:19:10 +0800] [53492] [INFO] Booting worker with pid: 53492
+[2026-07-06 12:19:10 +0800] [53490] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-07-06 12:21:51 +0800] [53568] [DEBUG] Current configuration:
+  config: ./gunicorn.conf.py
+  wsgi_app: None
+  bind: ['0.0.0.0:5000']
+  backlog: 2048
+  workers: 1
+  worker_class: sync
+  threads: 1
+  worker_connections: 1000
+  max_requests: 0
+  max_requests_jitter: 0
+  timeout: 300
+  graceful_timeout: 30
+  keepalive: 2
+  limit_request_line: 4094
+  limit_request_fields: 100
+  limit_request_field_size: 8190
+  reload: False
+  reload_engine: auto
+  reload_extra_files: []
+  spew: False
+  check_config: False
+  print_config: False
+  preload_app: False
+  sendfile: None
+  reuse_port: False
+  chdir: /Users/kaijimima1234/项目/美团ai openclaw版本
+  daemon: False
+  raw_env: []
+  pidfile: None
+  worker_tmp_dir: None
+  user: 501
+  group: 20
+  umask: 0
+  initgroups: False
+  tmp_upload_dir: None
+  secure_scheme_headers: {'X-FORWARDED-PROTOCOL': 'ssl', 'X-FORWARDED-PROTO': 'https', 'X-FORWARDED-SSL': 'on'}
+  forwarded_allow_ips: ['127.0.0.1', '::1']
+  accesslog: gunicorn_access.log
+  disable_redirect_access_to_syslog: False
+  access_log_format: %(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"
+  errorlog: gunicorn_error.log
+  loglevel: debug
+  capture_output: True
+  logger_class: gunicorn.glogging.Logger
+  logconfig: None
+  logconfig_dict: {}
+  logconfig_json: None
+  syslog_addr: unix:///var/run/syslog
+  syslog: False
+  syslog_prefix: None
+  syslog_facility: user
+  enable_stdio_inheritance: False
+  statsd_host: None
+  dogstatsd_tags: 
+  statsd_prefix: 
+  enable_backlog_metric: False
+  proc_name: None
+  default_proc_name: server:app
+  pythonpath: None
+  paste: None
+  on_starting: <function OnStarting.on_starting at 0x10a896400>
+  on_reload: <function OnReload.on_reload at 0x10a896610>
+  when_ready: <function WhenReady.when_ready at 0x10a896820>
+  pre_fork: <function Prefork.pre_fork at 0x10a896980>
+  post_fork: <function Postfork.post_fork at 0x10a896b90>
+  post_worker_init: <function PostWorkerInit.post_worker_init at 0x10a896da0>
+  worker_int: <function WorkerInt.worker_int at 0x10a896f00>
+  worker_abort: <function WorkerAbort.worker_abort at 0x10a897110>
+  pre_exec: <function PreExec.pre_exec at 0x10a897270>
+  pre_request: <function PreRequest.pre_request at 0x10a897480>
+  post_request: <function PostRequest.post_request at 0x10a8975e0>
+  child_exit: <function ChildExit.child_exit at 0x10a897740>
+  worker_exit: <function WorkerExit.worker_exit at 0x10a8978a0>
+  nworkers_changed: <function NumWorkersChanged.nworkers_changed at 0x10a897a00>
+  on_exit: <function OnExit.on_exit at 0x10a897b60>
+  ssl_context: <function NewSSLContext.ssl_context at 0x10a897cc0>
+  proxy_protocol: off
+  proxy_allow_ips: ['127.0.0.1', '::1']
+  protocol: http
+  uwsgi_allow_ips: ['127.0.0.1', '::1']
+  keyfile: None
+  certfile: None
+  ssl_version: 2
+  cert_reqs: 0
+  ca_certs: None
+  suppress_ragged_eofs: True
+  do_handshake_on_connect: False
+  ciphers: None
+  http_protocols: ['h1']
+  http2_max_concurrent_streams: 100
+  http2_initial_window_size: 65535
+  http2_max_frame_size: 16384
+  http2_max_header_list_size: 65536
+  raw_paste_global_conf: []
+  permit_obsolete_folding: False
+  strip_header_spaces: False
+  permit_unconventional_http_method: False
+  permit_unconventional_http_version: False
+  casefold_http_method: False
+  forwarder_headers: ['SCRIPT_NAME', 'PATH_INFO']
+  header_map: drop
+  asgi_loop: auto
+  asgi_lifespan: auto
+  asgi_disconnect_grace_period: 3
+  http_parser: auto
+  root_path: 
+  dirty_apps: []
+  dirty_workers: 0
+  dirty_timeout: 300
+  dirty_threads: 1
+  dirty_graceful_timeout: 30
+  on_dirty_starting: <function OnDirtyStarting.on_dirty_starting at 0x10a8bc300>
+  dirty_post_fork: <function DirtyPostFork.dirty_post_fork at 0x10a8bc460>
+  dirty_worker_init: <function DirtyWorkerInit.dirty_worker_init at 0x10a8bc5c0>
+  dirty_worker_exit: <function DirtyWorkerExit.dirty_worker_exit at 0x10a8bc720>
+  control_socket: /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+  control_socket_mode: 384
+  control_socket_disable: False
+[2026-07-06 12:21:51 +0800] [53568] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 12:21:51 +0800] [53568] [DEBUG] Arbiter booted
+[2026-07-06 12:21:51 +0800] [53568] [INFO] Listening at: http://0.0.0.0:5000 (53568)
+[2026-07-06 12:21:51 +0800] [53568] [INFO] Using worker: sync
+[2026-07-06 12:21:51 +0800] [53570] [INFO] Booting worker with pid: 53570
+[2026-07-06 12:21:51 +0800] [53568] [DEBUG] 1 workers
+[2026-07-06 12:21:51 +0800] [53568] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-07-06 12:21:52 +0800] [53570] [DEBUG] GET /api/sse/events
+[2026-07-06 12:22:10 +0800] [53597] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 12:22:10 +0800] [53597] [INFO] Listening at: http://0.0.0.0:5000 (53597)
+[2026-07-06 12:22:10 +0800] [53597] [INFO] Using worker: gthread
+[2026-07-06 12:22:10 +0800] [53599] [INFO] Booting worker with pid: 53599
+[2026-07-06 12:22:10 +0800] [53597] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[2026-07-06 12:22:53 +0800] [53654] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 12:22:53 +0800] [53654] [INFO] Listening at: http://0.0.0.0:5000 (53654)
+[2026-07-06 12:22:53 +0800] [53654] [INFO] Using worker: gthread
+[2026-07-06 12:22:53 +0800] [53656] [INFO] Booting worker with pid: 53656
+[2026-07-06 12:22:53 +0800] [53654] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[天气校验] ⚠️ 问题建议改到第1天，但该天户外不宜，替换为室内建议
+[auto_fix] move_to_day: 八达岭长城 D2→D1
+[auto_fix] 共应用 1 个自动修正: ['已将「八达岭长城」从第2天移至第1天']
+[审查问答] 快照校验: days=2, 总节点=14
+[审查问答] LLM 原始返回 (51 chars): {
+  "operations": [],
+  "follow_up_questions": []
+}...
+[审查问答] 操作前各天节点数: [8, 6]
+[审查问答] 操作后各天节点数: [8, 6], 变更: []
+[2026-07-06 17:02:04 +0800] [54458] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 17:02:04 +0800] [54458] [INFO] Listening at: http://0.0.0.0:5000 (54458)
+[2026-07-06 17:02:04 +0800] [54458] [INFO] Using worker: gthread
+[2026-07-06 17:02:04 +0800] [54464] [INFO] Booting worker with pid: 54464
+[2026-07-06 17:02:05 +0800] [54458] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[amap_weather] 预报API异常: HTTPSConnectionPool(host='restapi.amap.com', port=443): Read timed out. (read timeout=8)
+[2026-07-06 17:09:53 +0800] [54737] [INFO] Starting gunicorn 26.0.0
+[2026-07-06 17:09:53 +0800] [54737] [INFO] Listening at: http://0.0.0.0:5000 (54737)
+[2026-07-06 17:09:53 +0800] [54737] [INFO] Using worker: gthread
+[2026-07-06 17:09:53 +0800] [54739] [INFO] Booting worker with pid: 54739
+[2026-07-06 17:09:53 +0800] [54737] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl

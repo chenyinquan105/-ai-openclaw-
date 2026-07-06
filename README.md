@@ -160,7 +160,7 @@ chmod +x start.sh
 
 `start.sh` 自动清理 5000 端口占用，以 `gunicorn -w 4` 启动 Flask 服务。
 
-控制台输出 `✅ 服务已启动: http://127.0.0.1:5000` 即表示后端就绪。
+控制台输出 `✅ 服务已启动: http://localhost:5000` 即表示后端就绪。
 
 ### 3. 部署 OpenClaw 桥接插件
 

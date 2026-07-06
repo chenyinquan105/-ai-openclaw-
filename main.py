@@ -102,8 +102,8 @@ class MeituanAgent:
         self.context_memory = []
         self.poi_cache = {}
 
-    def _call_llm(self, messages: list, tools: list = None, max_tokens: int = 300000):
-        response = self.client.chat.completions.create(
+    def _call_llm(self, messages: list, tools: list = None, max_tokens: int = 300000, response_format: dict = None):
+        kwargs = dict(
             model=self.model,
             messages=messages,
             max_tokens=max_tokens,
@@ -111,6 +111,9 @@ class MeituanAgent:
             tool_choice="auto" if tools else None,
             timeout=8.0
         )
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+        response = self.client.chat.completions.create(**kwargs)
         return response.choices[0].message
 
     def _show_category_top3_and_choose(self, category: str, top3_text: str) -> str:
@@ -648,7 +651,7 @@ class MeituanAgent:
     # 通用LLM聊天流 — chat_stream()
     # ======================================================================
 
-    def chat_stream(self, messages: list, tools: list = None, max_tool_rounds: int = 5):
+    def chat_stream(self, messages: list, tools: list = None, max_tool_rounds: int = 5, response_format: dict = None):
         """
         流式LLM聊天生成器，支持工具调用循环。
 
@@ -656,6 +659,7 @@ class MeituanAgent:
             messages: 完整对话历史（含system prompt）
             tools: OpenAI格式工具定义列表
             max_tool_rounds: 最大工具调用轮次（防止死循环）
+            response_format: 结构化输出格式，如 {"type": "json_object"}
 
         Yields:
             dict: SSE事件 {event, data}
@@ -667,7 +671,7 @@ class MeituanAgent:
             tool_round += 1
 
             try:
-                response = self.client.chat.completions.create(
+                kwargs = dict(
                     model=self.model,
                     messages=current_messages,
                     max_tokens=4096,
@@ -676,6 +680,9 @@ class MeituanAgent:
                     stream=True,
                     timeout=120.0
                 )
+                if response_format is not None:
+                    kwargs["response_format"] = response_format
+                response = self.client.chat.completions.create(**kwargs)
             except Exception as e:
                 yield {"event": "error", "data": {"message": f"LLM调用失败: {str(e)}"}}
                 return
@@ -786,12 +793,12 @@ class MeituanAgent:
         # 超过最大轮次
         yield {"event": "error", "data": {"message": "工具调用轮次超限，请简化请求"}}
 
-    def chat_stream_continue(self, messages: list, tools: list = None, max_tool_rounds: int = 5):
+    def chat_stream_continue(self, messages: list, tools: list = None, max_tool_rounds: int = 5, response_format: dict = None):
         """
         工具调用完成后的继续流式生成。与chat_stream相同逻辑，
         但messages中已包含tool_call和tool结果。
         """
-        return self.chat_stream(messages, tools, max_tool_rounds)
+        return self.chat_stream(messages, tools, max_tool_rounds, response_format=response_format)
 
 
 if __name__ == "__main__":
