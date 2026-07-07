@@ -528,10 +528,7 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
         timeline = day.get("timeline", [])
         day_idx = day.get("day_index", 0)
 
-        # 检查是否有 BREAKFAST_NEEDED
-        has_bf_need = any(n.get("action") == "BREAKFAST_NEEDED" for n in timeline)
         # 统计已有的餐次
-        has_breakfast = any(n.get("action") == "BREAKFAST" for n in timeline)
         has_lunch = any(n.get("action") == "LUNCH" for n in timeline)
         has_dinner = any(n.get("action") == "DINNER" for n in timeline)
 
@@ -545,40 +542,14 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
             centroid_lat, centroid_lng = float(checkin_lat), float(checkin_lng)
 
         meals_added_today = []
-        meal_used_ids = set()  # 追踪当天已用于正餐的 shop_id，防午餐/晚餐重复
+        # 预填 scheduler 已分配的餐厅 ID（含 BREAKFAST/LUNCH/DINNER），防止 auto-complete 复用
+        meal_used_ids = set()
+        for node in timeline:
+            sid = node.get("shop_id", "")
+            if sid and node.get("action") in ("BREAKFAST", "LUNCH", "DINNER"):
+                meal_used_ids.add(sid)
 
-        # 补全早餐
-        if has_bf_need or not has_breakfast:
-            bf_shops = _auto_search_restaurants_for_day(
-                centroid_lat, centroid_lng, cuisine_prefs, max(float(rating_cutoff), 4.0),
-                destination, meal_type="breakfast"
-            )
-            if bf_shops:
-                bf = bf_shops[0]
-                # 替换 BREAKFAST_NEEDED 或插入早餐节点
-                replaced = False
-                for node in timeline:
-                    if node.get("action") == "BREAKFAST_NEEDED":
-                        node["action"] = "BREAKFAST"
-                        node["memo"] = f"🥐 {bf.get('name', '早餐')}"
-                        node["shop_id"] = bf.get("shop_id", "")
-                        node["category"] = "breakfast"
-                        node["opentime"] = bf.get("opentime", "未知")
-                        replaced = True
-                        break
-                if not replaced and not has_breakfast:
-                    # 没有早餐节点，插入到最前面（WAKE_UP 之后）
-                    insert_idx = 1 if timeline and timeline[0].get("action") == "WAKE_UP" else 0
-                    timeline.insert(insert_idx, {
-                        "time": "07:30",
-                        "action": "BREAKFAST",
-                        "memo": f"🥐 {bf.get('name', '早餐')}",
-                        "category": "breakfast",
-                        "shop_id": bf.get("shop_id", ""),
-                        "duration_minutes": 45,
-                        "opentime": bf.get("opentime", "未知"),
-                    })
-                meals_added_today.append({"meal": "breakfast", "shop": bf.get("name", "")})
+        # 早餐：不再自动补全，保留 BREAKFAST_NEEDED 供用户手动添加
 
         # 补全午餐
         if not has_lunch:
@@ -589,7 +560,9 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
                 destination, meal_type="restaurant"
             )
             if lunch_shops:
-                lunch = lunch_shops[0]
+                # 排除已用于其他餐次的店铺，避免复用
+                available_lunches = [s for s in lunch_shops if s.get("shop_id", "") not in meal_used_ids]
+                lunch = available_lunches[0] if available_lunches else lunch_shops[0]
                 lunch_time = "12:00"
                 # 找到上午最后一个 VISIT 之后插入
                 insert_idx = len(timeline)
@@ -608,7 +581,7 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
                     timeline.insert(insert_idx, {
                         "time": lunch_time,
                         "action": "LUNCH",
-                        "memo": f"🍽️ {lunch.get('name', '午餐')}",
+                        "memo": f"🍽️ 午餐：{lunch.get('name', '午餐')}",
                         "category": lunch.get("category", "restaurant"),
                         "shop_id": lunch.get("shop_id", ""),
                         "duration_minutes": 60,
@@ -626,20 +599,33 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
                 destination, meal_type="restaurant"
             )
             if dinner_shops:
-                # 排除已用于午餐的店铺，避免同一餐厅午餐+晚餐复用
+                # 排除已用于其他餐次的店铺，避免复用
                 available_dinners = [s for s in dinner_shops if s.get("shop_id", "") not in meal_used_ids]
                 dinner = available_dinners[0] if available_dinners else dinner_shops[0]
                 dinner_time = "18:00"
-                timeline.append({
+                # 找到正确的插入位置（在下午活动之后、BEDTIME 之前）
+                insert_idx = len(timeline)
+                for ti, node in enumerate(timeline):
+                    if node.get("action") == "BEDTIME":
+                        insert_idx = ti
+                        break
+                    t = _time_str_to_minutes(node.get("time", "00:00"))
+                    if t > 17 * 60:
+                        insert_idx = ti
+                        break
+                timeline.insert(insert_idx, {
                     "time": dinner_time,
                     "action": "DINNER",
-                    "memo": f"🍽️ {dinner.get('name', '晚餐')}",
+                    "memo": f"🍽️ 晚餐：{dinner.get('name', '晚餐')}",
                     "category": dinner.get("category", "restaurant"),
                     "shop_id": dinner.get("shop_id", ""),
                     "duration_minutes": 60,
                     "opentime": dinner.get("opentime", "未知"),
                 })
                 meals_added_today.append({"meal": "dinner", "shop": dinner.get("name", "")})
+
+        # 重新排序 timeline（server 端 insert 操作可能打乱顺序）
+        timeline.sort(key=lambda n: _time_str_to_minutes(n.get("time", "00:00")))
 
         if meals_added_today:
             auto_meals_added.append({"day_index": day_idx, "meals": meals_added_today})

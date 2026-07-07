@@ -8136,6 +8136,9 @@ function renderAttractionsList(attractions) {
   var listEl = document.getElementById('multi-attractions-list');
   if (!listEl) { console.error('[MultiDay] multi-attractions-list not found!'); return; }
 
+  var MAIN_MEAL_CATS = ['restaurant', 'hotpot', 'japanese', 'food', 'dining', 'buffet', 'barbecue'];
+
+  // 分组：早餐店单独展示（带提示），正餐店和景点正常展示
   var html = '';
   for (var i = 0; i < attractions.length; i++) {
     var attr = attractions[i];
@@ -8151,13 +8154,26 @@ function renderAttractionsList(attractions) {
     else if (attr.category === 'cafe') catEmoji = '☕';
     else if (attr.category === 'breakfast') catEmoji = '🥐';
     else if (attr.category === 'hotel') catEmoji = '🏨';
+    else if (attr.category === 'japanese') catEmoji = '🍣';
+    else if (attr.category === 'barbecue') catEmoji = '🥩';
+    else if (attr.category === 'buffet') catEmoji = '🍴';
     var rating = typeof attr.rating === 'number' ? attr.rating : parseFloat(attr.rating) || 0;
     var stars = '';
     for (var s = 0; s < Math.round(rating); s++) stars += '⭐';
 
-    html += '<div class="flex items-center justify-between bg-gray-50 rounded-2xl p-3' + (inPool ? ' border-2 border-yellow-400' : '') + '">';
+    // 判断店铺类型标签
+    var mealBadge = '';
+    var borderStyle = inPool ? ' border-2 border-yellow-400' : '';
+    if (attr.category === 'breakfast') {
+      mealBadge = '<span class="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full ml-1">早餐·需手动添加</span>';
+      if (!inPool) borderStyle = ' border border-dashed border-gray-300';
+    } else if (MAIN_MEAL_CATS.indexOf(attr.category) >= 0) {
+      mealBadge = '<span class="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full ml-1">正餐</span>';
+    }
+
+    html += '<div class="flex items-center justify-between bg-gray-50 rounded-2xl p-3' + borderStyle + '">';
     html += '<div class="flex-1 min-w-0">';
-    html += '<span class="text-xs font-bold text-gray-400">' + catEmoji + ' ' + (attr.category_cn || attr.category || '') + '</span>';
+    html += '<span class="text-xs font-bold text-gray-400">' + catEmoji + ' ' + (attr.category_cn || attr.category || '') + mealBadge + '</span>';
     html += '<p class="font-bold text-sm text-gray-900 truncate">' + attr.name + '</p>';
     html += '<p class="text-xs text-gray-400">' + stars + ' ' + rating + '</p>';
     html += '</div>';
@@ -8471,6 +8487,8 @@ function renderMultiDayCards(data) {
     html += '<div class="multi-day-card flex-shrink-0 bg-white rounded-3xl border-2 shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow" style="width:280px;scroll-snap-align:start;border-color:' + (i === 0 ? '#fbbf24' : '#e5e7eb') + '" onclick="expandDayDetail(' + i + ')">';
     html += '<div class="flex justify-between mb-3"><h3 class="font-black text-gray-900 text-sm">' + day.label + '</h3><span class="text-xs text-gray-400">⏱' + Math.round((day.total_duration_minutes || 0) / 60) + 'h</span></div>';
     var timeline = day.timeline || [];
+    // 按时间排序（防御 server 端排序遗漏）
+    timeline.sort(function(a, b) { return (a.time || '').localeCompare(b.time || ''); });
     // 只显示关键节点
     var keyNodes = timeline.filter(function(n) { return KEY_ACTIONS.indexOf(n.action) >= 0; });
     if (keyNodes.length > 0) {
@@ -8501,6 +8519,8 @@ function expandDayDetail(dayIndex) {
   if (!dc) return;
 
   var timeline = day.timeline || [];
+  // 按时间排序（防御 server 端排序遗漏）
+  timeline.sort(function(a, b) { return (a.time || '').localeCompare(b.time || ''); });
 
   // 节点样式映射
   function _nodeStyle(node) {
@@ -8570,6 +8590,24 @@ function expandDayDetail(dayIndex) {
     }
     if (day.unknown_hours_shops && day.unknown_hours_shops.length > 0) {
       html += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-2 text-xs text-yellow-700">🕐 以下地点营业时间未知: ' + day.unknown_hours_shops.map(_escHtml).join(', ') + '</div>';
+    }
+    html += '</div>';
+  }
+
+  // ── 待排程餐厅 ──
+  var unassigned = day.unassigned_meals || [];
+  if (unassigned.length > 0) {
+    html += '<div class="flex-shrink-0 mt-3 bg-gray-50 border border-dashed border-gray-300 rounded-2xl p-3">';
+    html += '<p class="text-xs font-bold text-gray-500 mb-2">📋 待排程餐厅</p>';
+    for (var u = 0; u < unassigned.length; u++) {
+      var um = unassigned[u];
+      var uCat = um.category || '';
+      var uEmoji = '🍽️';
+      if (uCat === 'breakfast') uEmoji = '🥐';
+      html += '<div class="flex items-center justify-between text-xs text-gray-600 py-1">';
+      html += '<span>' + uEmoji + ' ' + _escHtml(um.name || '') + '</span>';
+      html += '<span class="text-gray-400">' + _escHtml(um.status || '待排程') + '</span>';
+      html += '</div>';
     }
     html += '</div>';
   }

@@ -78,8 +78,16 @@ CATEGORY_DURATIONS = {
 }
 
 MEAL_CATEGORIES = {"restaurant", "hotpot", "japanese", "cafe", "breakfast"}
-MAIN_MEAL_CATEGORIES = {"restaurant", "hotpot", "japanese"}  # 正餐：只排午/晚餐，不进入VISIT循环
+MAIN_MEAL_CATEGORIES = {"restaurant", "hotpot", "japanese", "food", "dining", "buffet", "barbecue"}  # 正餐：只排午/晚餐，不进入VISIT循环
 SNACK_CATEGORIES = {"cafe"}  # 小吃/饮品：可作VISIT节点，但需间隔≥90min
+
+# 早餐类店铺名称关键词（用于识别 category 被标为 restaurant 但实际经营早餐的店铺）
+BREAKFAST_NAME_KEYWORDS = [
+    "早餐", "早点", "早饭", "早茶", "豆浆", "油条", "包子", "粥", "煎饼",
+    "豆腐脑", "馄饨", "烧饼", "小笼包", "面馆", "豆花", "肠粉", "馒头",
+    "蒸饺", "锅贴", "粢饭", "麻团", "糖饼", "炸糕", "豆汁", "焦圈",
+    "鸡蛋灌饼", "肉夹馍", "手抓饼", "葱油饼", "生煎", "汤包", "抄手",
+]
 
 
 def _get_duration(category: str) -> int:
@@ -213,7 +221,10 @@ def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0, max_shops_
                     meal_count += 1
                     if meal_count <= 2:
                         total += _get_duration(cat)  # 最多计入2家正餐
-                    # 超过2家的正餐不计入（不会出现在VISIT中）
+                        if "_excess_meal" in s:
+                            del s["_excess_meal"]  # 前2家清除超额标记
+                    else:
+                        s["_excess_meal"] = True  # 第3+家正餐标记为超额（将被未排程）
                 else:
                     total += _get_duration(cat)
             # 粗略估计旅行时间 = 点数 × 15min
@@ -434,6 +445,31 @@ LUNCH_WINDOW = (11 * 60 + 30, 13 * 60 + 30)   # 11:30-13:30
 DINNER_WINDOW = (17 * 60 + 30, 19 * 60 + 30)  # 17:30-19:30
 
 
+def _bind_meals_to_destinations(main_meal_shops: list, visitable_shops: list) -> dict:
+    """
+    将每家正餐餐厅绑定到距离最近的非餐饮目的地。
+    返回: {meal_shop_id: {"dest_name": str, "dest_shop_id": str, "distance_m": float}}
+    用于后续在同一 day 内将餐厅安排在其绑定目的地附近。
+    """
+    bindings = {}
+    for meal in main_meal_shops:
+        best = None
+        best_dist = float('inf')
+        for v in visitable_shops:
+            d = _haversine_m(meal.get('lat', 0), meal.get('lng', 0),
+                             v.get('lat', 0), v.get('lng', 0))
+            if d < best_dist:
+                best_dist = d
+                best = v
+        if best:
+            bindings[meal.get('shop_id')] = {
+                "dest_name": best.get('name', ''),
+                "dest_shop_id": best.get('shop_id', ''),
+                "distance_m": best_dist,
+            }
+    return bindings
+
+
 def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                     weather: dict = None, wake_time_str: str = "07:30",
                     bedtime_str: str = "22:00", week_day: int = 0) -> dict:
@@ -458,7 +494,6 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
     closed_conflicts = []
     unknown_hours_shops = []
     MEAL_CATS = MEAL_CATEGORIES
-    meal_map = {s.get("shop_id"): s for s in shops if s.get("category", "") in MEAL_CATS}
     _last_food_end_minutes = None  # 追踪上一次进食结束时间（用于小吃间隔控制）
     used_meal_shop_ids = set()     # 追踪所有已用于餐食的店铺ID，防止同一店铺用于多餐
 
@@ -502,111 +537,90 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
         "duration_minutes": 0,
     })
 
-    # ── 早餐插入（07:00-09:00）──
-    bf_meal = None
-    for mid, m in meal_map.items():
-        if _is_breakfast(m):
-            bf_meal = m
-            break
+    # ── 早餐插入：一律不自动排程，由用户手动添加 ──
+    bf_meal = None  # 不再自动匹配早餐店
     bf_time = max(7 * 60, wake_minutes + 20)
-    if bf_meal:
-        timeline.append({
-            "time": f"{bf_time // 60:02d}:{bf_time % 60:02d}",
-            "action": "BREAKFAST",
-            "memo": f"🥐 {bf_meal.get('name', '早餐')}",
-            "category": bf_meal.get("category", "breakfast"),
-            "shop_id": bf_meal.get("shop_id", ""),
-            "duration_minutes": 45,
-        })
-        if bf_meal.get("shop_id"):
-            used_meal_shop_ids.add(bf_meal.get("shop_id"))
-        # 如果早餐店属于正餐类别（防御性处理），从正餐池中移除防止复用
-        if bf_meal.get("category", "") in MAIN_MEAL_CATEGORIES:
-            main_meal_shops = [s for s in main_meal_shops if s.get("shop_id") != bf_meal.get("shop_id")]
-    else:
-        timeline.append({
-            "time": f"{bf_time // 60:02d}:{bf_time % 60:02d}",
-            "action": "BREAKFAST_NEEDED",
-            "memo": "🥐 早餐（待搜索）",
-            "category": "breakfast",
-            "shop_id": "",
-            "duration_minutes": 45,
-        })
+    timeline.append({
+        "time": f"{bf_time // 60:02d}:{bf_time % 60:02d}",
+        "action": "BREAKFAST_NEEDED",
+        "memo": "🥐 早餐（待添加）",
+        "category": "breakfast",
+        "shop_id": "",
+        "duration_minutes": 45,
+    })
     current_minutes = max(current_minutes, bf_time + 45 + 15)  # 推进到 09:00+
     _last_food_end_minutes = bf_time + 45  # 早餐结束时间
 
+    # ── 餐厅-目的地绑定：每家正餐绑定到最近的非餐饮目的地 ──
+    meal_bindings = _bind_meals_to_destinations(main_meal_shops, visitable_shops)
+
     # ── 按路线顺序遍历（正餐不参与VISIT循环）──
+    lunch_assigned = False
+    dinner_assigned = False
     last_shop_lat, last_shop_lng = None, None
     for idx, shop in enumerate(visitable_shops):
         cat = shop.get("category", "")
-        # 跳过已用作早餐的店铺
-        if bf_meal and shop.get("shop_id") == bf_meal.get("shop_id"):
-            continue
         dur = _get_duration(cat)
         s_lat = shop.get("lat", 0)
         s_lng = shop.get("lng", 0)
+        shop_name = shop.get('name', '')
+        shop_id = shop.get('shop_id', '')
 
-        # ── 午餐插入（11:00-14:00）：从正餐池中选1家最近的（排除已用于其他餐次的店铺）──
-        lunch_start = 11 * 60
-        lunch_end = 14 * 60
-        if main_meal_shops and current_minutes < lunch_end and not any(t.get("action") == "LUNCH" for t in timeline):
-            # 如果当前时间在午餐窗口内或即将进入
-            if idx == 0 or current_minutes > lunch_start - 60:
-                # 选离当前位置最近的正餐（排除已用于其他餐次的店铺）
-                available_meals = [m for m in main_meal_shops if m.get("shop_id") not in used_meal_shop_ids]
-                if available_meals:
-                    nearest_meal = min(available_meals, key=lambda m:
-                        _haversine_m(s_lat, s_lng, m.get("lat", s_lat), m.get("lng", s_lng)))
-                    if current_minutes < lunch_start:
-                        current_minutes = lunch_start
-                    meal_dur = _get_duration(nearest_meal.get("category", ""))
-                    time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+        # ── 基于绑定的午餐/晚餐插入 ──
+        # 查找绑定到当前 VISIT 目的地的未分配正餐餐厅
+        bound_meals = [m for m in main_meal_shops
+                       if meal_bindings.get(m.get('shop_id'), {}).get('dest_name') == shop_name
+                       and m.get('shop_id') not in used_meal_shop_ids]
+
+        if bound_meals:
+            # 判断当前 visit 的时段：上午→午餐，下午→晚餐
+            visit_is_morning = current_minutes < 12 * 60
+
+            for meal in bound_meals:
+                if not lunch_assigned:
+                    # 午餐：安排在此 visit 之前
+                    lunch_time = max(11 * 60, min(current_minutes - 60, 11 * 60 + 30))
+                    meal_dur = _get_duration(meal.get("category", ""))
                     timeline.append({
-                        "time": time_str, "action": "LUNCH",
-                        "memo": f"🍽️ {nearest_meal.get('name', '')}",
-                        "category": nearest_meal.get("category", ""),
-                        "shop_id": nearest_meal.get("shop_id", ""),
+                        "time": f"{lunch_time // 60:02d}:{lunch_time % 60:02d}",
+                        "action": "LUNCH",
+                        "memo": f"🍽️ 午餐：{meal.get('name', '')}",
+                        "category": meal.get("category", ""),
+                        "shop_id": meal.get("shop_id", ""),
                         "duration_minutes": meal_dur,
-                        "opentime": nearest_meal.get("opentime", "未知"),
+                        "opentime": meal.get("opentime", "未知"),
                     })
-                    current_minutes += meal_dur + 30  # 午餐后休息
+                    current_minutes = max(current_minutes, lunch_time + meal_dur + 30)
                     _last_food_end_minutes = current_minutes
-                    main_meal_shops.remove(nearest_meal)  # 用过的不复用
-                    used_meal_shop_ids.add(nearest_meal.get("shop_id"))
+                    main_meal_shops.remove(meal)
+                    used_meal_shop_ids.add(meal.get("shop_id"))
+                    lunch_assigned = True
                     timeline.append({
                         "time": f"{current_minutes // 60:02d}:{current_minutes % 60:02d}",
                         "action": "REST", "memo": "☕ 午休片刻", "category": "rest",
                         "shop_id": "", "duration_minutes": 0,
                     })
-
-        # ── 晚餐插入（17:00-19:30）：在活动推过晚饭时间前插入（排除已用店铺）──
-        dinner_start = 17 * 60
-        dinner_end = 19 * 60 + 30
-        if main_meal_shops and current_minutes + dur > dinner_start and current_minutes < dinner_end \
-                and not any(t.get("action") == "DINNER" for t in timeline):
-            d_time = max(dinner_start, current_minutes)
-            # 距上次进食至少90min
-            if _last_food_end_minutes is not None:
-                d_time = max(d_time, _last_food_end_minutes + 90)
-            if d_time < dinner_end:
-                available_dinners = [m for m in main_meal_shops if m.get("shop_id") not in used_meal_shop_ids]
-                if available_dinners:
-                    nearest_d = min(available_dinners, key=lambda m:
-                        _haversine_m(s_lat, s_lng, m.get("lat", s_lat), m.get("lng", s_lng)))
-                    d_dur = _get_duration(nearest_d.get("category", ""))
-                    timeline.append({
-                        "time": f"{d_time // 60:02d}:{d_time % 60:02d}",
-                        "action": "DINNER",
-                        "memo": f"🍽️ {nearest_d.get('name', '')}",
-                        "category": nearest_d.get("category", ""),
-                        "shop_id": nearest_d.get("shop_id", ""),
-                        "duration_minutes": d_dur,
-                        "opentime": nearest_d.get("opentime", "未知"),
-                    })
-                    current_minutes = d_time + d_dur + 30
-                    _last_food_end_minutes = current_minutes
-                    main_meal_shops.remove(nearest_d)
-                    used_meal_shop_ids.add(nearest_d.get("shop_id"))
+                elif not dinner_assigned:
+                    # 晚餐：安排在此 visit 之后
+                    dinner_time = max(17 * 60, current_minutes + 30)
+                    if _last_food_end_minutes is not None:
+                        dinner_time = max(dinner_time, _last_food_end_minutes + 90)
+                    if dinner_time < 19 * 60 + 30:
+                        d_dur = _get_duration(meal.get("category", ""))
+                        timeline.append({
+                            "time": f"{dinner_time // 60:02d}:{dinner_time % 60:02d}",
+                            "action": "DINNER",
+                            "memo": f"🍽️ 晚餐：{meal.get('name', '')}",
+                            "category": meal.get("category", ""),
+                            "shop_id": meal.get("shop_id", ""),
+                            "duration_minutes": d_dur,
+                            "opentime": meal.get("opentime", "未知"),
+                        })
+                        current_minutes = dinner_time + d_dur + 30
+                        _last_food_end_minutes = current_minutes
+                        main_meal_shops.remove(meal)
+                        used_meal_shop_ids.add(meal.get("shop_id"))
+                        dinner_assigned = True
 
         # ── 小吃间隔检查（café类距上次进食≥90min）──
         if cat in SNACK_CATEGORIES and _last_food_end_minutes is not None:
@@ -686,7 +700,7 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                                  m.get("lat", last_shop_lat or 0), m.get("lng", last_shop_lng or 0)))
                 timeline.append({
                     "time": f"{fb_lunch // 60:02d}:{fb_lunch % 60:02d}",
-                    "action": "LUNCH", "memo": f"🍽️ {nearest.get('name', '')}",
+                    "action": "LUNCH", "memo": f"🍽️ 午餐：{nearest.get('name', '')}",
                     "category": nearest.get("category", ""),
                     "shop_id": nearest.get("shop_id", ""),
                     "duration_minutes": _get_duration(nearest.get("category", "")),
@@ -715,7 +729,7 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
             dinner_dur = _get_duration(nearest_dinner.get("category", ""))
             timeline.append({
                 "time": time_str, "action": "DINNER",
-                "memo": f"🍽️ {nearest_dinner.get('name', '')}",
+                "memo": f"🍽️ 晚餐：{nearest_dinner.get('name', '')}",
                 "category": nearest_dinner.get("category", ""),
                 "shop_id": nearest_dinner.get("shop_id", ""),
                 "duration_minutes": dinner_dur,
@@ -781,10 +795,24 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
     # 按时间排序
     timeline.sort(key=lambda t: _time_to_minutes(t.get("time", "00:00")))
 
+    # ── 收集未排程的正餐店铺 → 供前端展示"待排程" ──
+    unassigned_meals = []
+    for m in main_meal_shops:
+        unassigned_meals.append({
+            "shop_id": m.get("shop_id", ""),
+            "name": m.get("name", ""),
+            "category": m.get("category", ""),
+            "lat": m.get("lat", 0),
+            "lng": m.get("lng", 0),
+            "rating": m.get("rating", 0),
+            "status": "待排程",
+        })
+
     return {
         "timeline": timeline,
         "closed_conflicts": closed_conflicts,
         "unknown_hours_shops": unknown_hours_shops,
+        "unassigned_meals": unassigned_meals,
     }
 
 
@@ -797,13 +825,26 @@ def _time_to_minutes(time_str: str) -> int:
         return 0
 
 
-def _is_breakfast(shop: dict) -> bool:
-    """判断是否为早餐类店铺（仅凭 category 判定，不做名称关键词匹配）"""
-    cat = shop.get("category", "")
-    # 明确：正餐类绝不视为早餐，即使名称含"粥""包子"等
-    if cat in MAIN_MEAL_CATEGORIES:
+def _has_breakfast_name(name: str) -> bool:
+    """检查店铺名称是否含早餐类关键词（用于 category 被标为 restaurant 的早餐店识别）"""
+    if not name:
         return False
-    return cat == "breakfast"
+    return any(kw in name for kw in BREAKFAST_NAME_KEYWORDS)
+
+
+def _is_breakfast(shop: dict) -> bool:
+    """判断是否为早餐类店铺（category + 名称关键词回退）"""
+    cat = shop.get("category", "")
+    # 明确：category 为 breakfast 的始终是早餐
+    if cat == "breakfast":
+        return True
+    # 名称关键词回退：category 是正餐类但名称含早餐关键词 → 识别为早餐
+    if cat in MAIN_MEAL_CATEGORIES:
+        name = shop.get("name", "")
+        if _has_breakfast_name(name):
+            return True
+        return False
+    return False
 
 
 # ======================================================================
@@ -1153,6 +1194,7 @@ def solve_multi_day(
             "spatial_matrix": spatial_matrix,
             "closed_conflicts": closed_conflicts_day,
             "unknown_hours_shops": unknown_hours_day,
+            "unassigned_meals": tl_result.get("unassigned_meals", []),
         })
 
     # ── 阶段 5: 全局微调已在阶段 1.5 执行（_global_fine_tune）──
@@ -1217,9 +1259,10 @@ def solve_multi_day(
         mean_t = sum(all_times) / len(all_times)
         balance_variance = round(sum((t - mean_t) ** 2 for t in all_times) / len(all_times), 1)
 
-    # 汇总闭店冲突和未知营业时间
+    # 汇总闭店冲突、未知营业时间、未排程餐厅
     all_closed_conflicts = []
     all_unknown_hours = []
+    all_unassigned_meals = []
     for dr in day_results:
         for cc in dr.get("closed_conflicts", []):
             cc["day_index"] = dr["day_index"]
@@ -1227,10 +1270,13 @@ def solve_multi_day(
         for uh in dr.get("unknown_hours_shops", []):
             if uh not in all_unknown_hours:
                 all_unknown_hours.append(uh)
+        for um in dr.get("unassigned_meals", []):
+            um["day_index"] = dr["day_index"]
+            all_unassigned_meals.append(um)
 
     return {
         "days": day_results,
-        "unassigned": [],
+        "unassigned": all_unassigned_meals,
         "algorithm_metadata": {
             "cluster_method": "kmeans++",
             "balance_variance": balance_variance,
