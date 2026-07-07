@@ -2409,124 +2409,259 @@ async function sendMultiDayMessage() {
 
   // 维护多日聊天历史
   multiDayChatHistory.push({role: 'user', text: msg});
-  if (multiDayChatHistory.length > 6) multiDayChatHistory.shift();
+  if (multiDayChatHistory.length > 10) multiDayChatHistory = multiDayChatHistory.slice(-10);
 
   // 渲染用户消息气泡到聊天区
   var chatArea = document.getElementById('multi-day-chat-area');
   if (chatArea) {
-    chatArea.innerHTML += '<div class="flex justify-end mb-2"><div class="bg-yellow-100 rounded-2xl px-4 py-2 max-w-xs text-sm text-gray-800">' + _escHtml(msg) + '</div></div>';
-  }
-
-  var contextMessages = multiDayChatHistory.slice(0, -1).map(function(m) {
-    return (m.role === 'user' ? '用户: ' : 'AI: ') + m.text;
-  }).join('\n');
-
-  var dc = document.getElementById('dynamic-content');
-  if (dc) {
-    // 添加加载提示
+    chatArea.innerHTML += '<div class="flex justify-end mb-2"><div class="max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.06);">' + _escHtml(msg) + '</div></div>';
+    // 加载气泡（与单日风格一致的黄色）
     var loadDiv = document.createElement('div');
     loadDiv.id = 'multi-chat-loading';
-    loadDiv.className = 'bg-gray-50 rounded-2xl p-3 mb-2';
+    loadDiv.className = 'chat-bubble-ai max-w-[75%] px-4 py-3 mb-2';
+    loadDiv.style.cssText = 'background:#facc15;border:1px solid #eab308;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);';
     loadDiv.innerHTML = '<span class="typing-dots-inline"><span></span><span></span><span></span></span>';
-    var chatArea = document.getElementById('multi-day-chat-area');
-    if (chatArea) {
-      chatArea.appendChild(loadDiv);
-    } else if (dc) {
-      dc.appendChild(loadDiv);
+    chatArea.appendChild(loadDiv);
+    requestAnimationFrame(function() { if (chatArea.scrollTop !== undefined) chatArea.scrollTop = chatArea.scrollHeight; });
+  }
+
+  // ── 构建多日行程上下文 ──
+  var multiDayCtx = {};
+  if (multiDayScheduleResult && multiDayScheduleResult.days) {
+    multiDayCtx.active_trip = true;
+    multiDayCtx.trip_mode = 'multi';
+    multiDayCtx.trip_destinations = [multiDayScheduleResult.destination || '北京'];
+    var activeDay = multiDayScheduleResult.days[multiActiveDayIndex];
+    if (activeDay) {
+      var dests = [];
+      (activeDay.timeline || []).forEach(function(n) {
+        if (n.memo) dests.push(n.memo);
+      });
+      multiDayCtx.trip_destinations = dests.slice(0, 5);
     }
+  }
+
+  // ── 使用多日专用 session_id 隔离会话 ──
+  var multiDaySid = 'multi_' + Date.now();
+  if (window._multiDaySessionId) {
+    multiDaySid = window._multiDaySessionId;
   }
 
   var controller = new AbortController();
-  var timeoutId = setTimeout(function() { controller.abort(); }, 30000);
+  var timeoutId = setTimeout(function() { controller.abort(); }, 60000);
+
+  // SSE 状态
+  var aiBubbleRow = null;
+  var fullResponse = '';
+  var toolResultsText = '';  // 独立追踪工具结果，不覆盖 fullResponse
+  var loadingRemoved = false;
+  var toolEmojiMap = {
+    search_poi:'🔍', plan_route:'🗺️', hail_taxi:'🚕', add_reminder:'⏰',
+    remove_reminder:'🗑️', list_reminders:'📋', check_weather:'🌤️',
+    read_profile:'📝', update_profile:'⚙️', check_queue:'🪧',
+    start_trip:'🚀', edit_trip:'✏️', cancel_trip:'❌',
+    get_trip_status:'📊', plan_transit:'🚌',
+    geocode:'📍', search_nearby:'🔍'
+  };
+
+  function _ensureAiBubble() {
+    if (!aiBubbleRow) {
+      var lb = document.getElementById('multi-chat-loading');
+      if (lb) lb.remove();
+      loadingRemoved = true;
+      aiBubbleRow = document.createElement('div');
+      aiBubbleRow.className = 'chat-row flex items-start mb-3 animate-fade-in';
+      var bubble = document.createElement('div');
+      bubble.className = 'chat-bubble-ai max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed';
+      bubble.style.cssText = 'background:#facc15;border:1px solid #eab308;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);';
+      aiBubbleRow.appendChild(bubble);
+      var ca = document.getElementById('multi-day-chat-area');
+      if (ca) ca.appendChild(aiBubbleRow);
+      return bubble;
+    }
+    return aiBubbleRow.querySelector('div');
+  }
+
+  function _renderBubbleContent(bubble) {
+    // LLM 文本在上，工具结果（商户列表等）在下
+    var html = '';
+    if (fullResponse) {
+      html += '<span>' + _escHtml(fullResponse).replace(/\n/g, '<br>') + '</span>';
+      if (toolResultsText) html += '<div class="mt-2 pt-2 border-t border-yellow-300"></div>';
+    }
+    if (toolResultsText) {
+      html += toolResultsText;
+    }
+    bubble.innerHTML = html || '<span>...</span>';
+  }
 
   try {
-    // 构建轻量 schedule（只发送 days 中的关键字段，避免 spatial_matrix 等大对象）
-    var lightDays = (multiDayScheduleResult && multiDayScheduleResult.days || []).map(function(d) {
-      return {
-        day_index: d.day_index,
-        label: d.label,
-        timeline: (d.timeline || []).map(function(n) {
-          return {time: n.time, action: n.action, memo: n.memo, shop_id: n.shop_id || '', opentime: n.opentime || '未知', duration_minutes: n.duration_minutes || 0};
-        })
-      };
-    });
-    var res = await fetch(API_BASE + '/api/multi_day_edit', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
+    var res = await fetch(API_BASE + '/api/chat/stream', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        text: msg,
-        day_index: multiActiveDayIndex,
-        schedule: {days: lightDays},
-        context: contextMessages,
+        message: msg,
+        session_id: multiDaySid,
+        context: multiDayCtx
       }),
       signal: controller.signal
     });
-    clearTimeout(timeoutId);
 
-    var lb = document.getElementById('multi-chat-loading');
-    if (lb) lb.remove();
+    if (!res.ok) {
+      var errData = null;
+      try { errData = await res.json(); } catch(__) {}
+      throw new Error((errData && errData.error) ? errData.error : '服务器错误 (' + res.status + ')');
+    }
 
-    var data = await res.json();
-    var chatArea = document.getElementById('multi-day-chat-area');
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = '';
+    var currentEvent = '';
+    var updatedDays = null;
 
-    // 添加 AI 回复气泡
-    var aiMsg = data.message || '';
-    if (data.phase === 'clarify') {
-      aiMsg = '🤔 ' + aiMsg;
-    } else if (data.phase === 'confirm') {
-      // ── 确认交互：渲染确认/修正按钮 ──
-      var interpretation = data.interpretation || data.message || '';
-      if (chatArea) {
-        var confirmBubble = document.createElement('div');
-        confirmBubble.className = 'bg-yellow-50 border border-yellow-300 rounded-2xl p-4 mb-2 mr-8';
-        confirmBubble.innerHTML =
-          '<p class="text-sm text-gray-800 mb-3">🤔 ' + _escHtml(interpretation) + '</p>' +
-          '<div class="flex gap-2">' +
-          '<button class="multi-confirm-yes flex-1 bg-green-500 text-white font-bold py-2 rounded-xl text-sm hover:bg-green-600 transition">✅ 确认</button>' +
-          '<button class="multi-confirm-revise flex-1 bg-gray-300 text-gray-700 font-bold py-2 rounded-xl text-sm hover:bg-gray-400 transition">✏️ 修正</button>' +
-          '</div>';
-        chatArea.appendChild(confirmBubble);
-        requestAnimationFrame(function() { if (chatArea.scrollTop !== undefined) chatArea.scrollTop = chatArea.scrollHeight; });
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
 
-        // 确认按钮 → 发送 confirm_action
-        confirmBubble.querySelector('.multi-confirm-yes').addEventListener('click', function() {
-          confirmBubble.querySelector('.multi-confirm-yes').disabled = true;
-          confirmBubble.querySelector('.multi-confirm-revise').disabled = true;
-          _sendMultiDayConfirmation('execute', msg, lightDays);
-        });
+      buf += decoder.decode(chunk.value, {stream: true});
+      var lines = buf.split('\n');
+      buf = lines.pop() || '';
 
-        // 修正按钮 → 弹出输入框 → 发送 revise
-        confirmBubble.querySelector('.multi-confirm-revise').addEventListener('click', function() {
-          var note = prompt('请描述需要修正的地方：', '');
-          if (note && note.trim()) {
-            confirmBubble.querySelector('.multi-confirm-yes').disabled = true;
-            confirmBubble.querySelector('.multi-confirm-revise').disabled = true;
-            _sendMultiDayConfirmation('revise', msg, lightDays, note.trim());
-          }
-        });
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          var dataStr = line.slice(6);
+          try {
+            var data = JSON.parse(dataStr);
+
+            if (currentEvent === 'message') {
+              if (data.role === 'assistant' && data.content) {
+                fullResponse += data.content;
+                var bubble = _ensureAiBubble();
+                _renderBubbleContent(bubble);
+                var ca = document.getElementById('multi-day-chat-area');
+                if (ca && ca.scrollTop !== undefined) ca.scrollTop = ca.scrollHeight;
+              }
+            } else if (currentEvent === 'tool_call') {
+              var bubble = _ensureAiBubble();
+              var tEmoji = toolEmojiMap[data.name] || '🔧';
+              var tLabel = data.name || '处理中';
+              // 用 toolResultsText 展示工具状态，不清空 fullResponse
+              toolResultsText = '<span class="text-yellow-600">' + tEmoji + ' 正在' + tLabel + '...</span>';
+              _renderBubbleContent(bubble);
+            } else if (currentEvent === 'tool_result') {
+              // 保存 session_id 以便后续复用
+              if (data.session_id) {
+                window._multiDaySessionId = data.session_id;
+              }
+              // 检查 edit_trip / start_trip 结果中是否包含 days 数据
+              if (data.result && data.result.data && data.result.data.days) {
+                updatedDays = data.result.data.days;
+              }
+              // ── 展示工具结果 ──
+              var trEmoji = toolEmojiMap[data.name] || '✅';
+              var resultMsg = (data.result && data.result.message) || '';
+
+              // 处理 search_nearby 结果 — 渲染商户列表
+              if (data.name === 'search_nearby' && data.result && data.result.data && data.result.data.shops && data.result.data.shops.length > 0) {
+                var shops = data.result.data.shops;
+                var shopHtml = '<div class="text-xs mt-1 space-y-0.5">';
+                for (var si = 0; si < Math.min(shops.length, 8); si++) {
+                  var s = shops[si];
+                  var sName = s.name || s.shop_name || '未知';
+                  var sRating = s.rating || '?';
+                  var sDist = s.distance || s.distance_meters || '';
+                  shopHtml += '<div class="flex justify-between items-center py-0.5" style="border-bottom:1px solid rgba(234,179,8,0.3);">' +
+                    '<span class="truncate mr-2" style="max-width:60%;">' + _escHtml(sName) + '</span>' +
+                    '<span class="text-yellow-700 text-xs whitespace-nowrap">★' + sRating + (sDist ? ' | ' + sDist + 'm' : '') + '</span>' +
+                    '</div>';
+                }
+                if (shops.length > 8) shopHtml += '<div class="text-yellow-600 text-xs mt-1">...等 ' + shops.length + ' 家</div>';
+                shopHtml += '</div>';
+                toolResultsText = trEmoji + ' ' + (resultMsg || '在附近找到 ' + shops.length + ' 家商户') + shopHtml;
+              }
+              // 处理 search_poi 结果 — 从 categories 中提取 shops
+              else if (data.name === 'search_poi' && data.result && data.result.data && data.result.data.categories) {
+                var cats = data.result.data.categories;
+                var allShops = [];
+                cats.forEach(function(c) { if (c.shops && c.shops.length) allShops = allShops.concat(c.shops); });
+                if (allShops.length > 0) {
+                  var shopHtml2 = '<div class="text-xs mt-1 space-y-0.5">';
+                  for (var sj = 0; sj < Math.min(allShops.length, 8); sj++) {
+                    var s2 = allShops[sj];
+                    var s2Name = s2.name || s2.shop_name || '未知';
+                    var s2Rating = s2.rating || '?';
+                    var s2Dist = s2.distance || s2.distance_meters || '';
+                    shopHtml2 += '<div class="flex justify-between items-center py-0.5" style="border-bottom:1px solid rgba(234,179,8,0.3);">' +
+                      '<span class="truncate mr-2" style="max-width:60%;">' + _escHtml(s2Name) + '</span>' +
+                      '<span class="text-yellow-700 text-xs whitespace-nowrap">★' + s2Rating + (s2Dist ? ' | ' + s2Dist + 'm' : '') + '</span>' +
+                      '</div>';
+                  }
+                  if (allShops.length > 8) shopHtml2 += '<div class="text-yellow-600 text-xs mt-1">...等 ' + allShops.length + ' 家</div>';
+                  shopHtml2 += '</div>';
+                  toolResultsText = trEmoji + ' ' + (resultMsg || '找到 ' + allShops.length + ' 家商户') + shopHtml2;
+                } else {
+                  toolResultsText = trEmoji + ' ' + (resultMsg || '搜索完成');
+                }
+              }
+              // confirm_required
+              else if (data.status === 'confirm_required') {
+                toolResultsText = '⚠️ ' + (resultMsg || '需要确认');
+              }
+              // failed
+              else if (data.status === 'failed') {
+                toolResultsText = '❌ ' + (resultMsg || '操作失败');
+              }
+              // 其他工具结果
+              else if (resultMsg) {
+                toolResultsText = trEmoji + ' ' + resultMsg;
+              } else {
+                toolResultsText = trEmoji + ' 操作已完成';
+              }
+
+              var bubble2 = _ensureAiBubble();
+              _renderBubbleContent(bubble2);
+            } else if (currentEvent === 'done') {
+              if (data.session_id) {
+                window._multiDaySessionId = data.session_id;
+              }
+              // fall through to cleanup
+            } else if (currentEvent === 'error') {
+              var lb2 = document.getElementById('multi-chat-loading');
+              if (lb2) lb2.remove();
+              if (aiBubbleRow) aiBubbleRow.remove();
+              var ca = document.getElementById('multi-day-chat-area');
+              if (ca) {
+                ca.innerHTML += '<div class="max-w-[75%] px-3.5 py-2.5 text-sm" style="background:#fef2f2;border:1px solid #fecaca;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">❌ ' + _escHtml(data.message || '服务出错了') + '</div>';
+              }
+              multiDayChatHistory.push({role: 'ai', text: '❌ ' + (data.message || '服务出错了')});
+              if (multiDayChatHistory.length > 10) multiDayChatHistory = multiDayChatHistory.slice(-10);
+              input.disabled = false;
+              input.focus();
+              return;
+            }
+          } catch(__) { /* JSON parse error, skip */ }
+        }
       }
-
-      multiDayChatHistory.push({role: 'ai', text: '🤔 ' + interpretation});
-      if (multiDayChatHistory.length > 6) multiDayChatHistory = multiDayChatHistory.slice(-6);
-      input.disabled = false;
-      input.focus();
-      return;  // 确认阶段不继续走下面的通用逻辑
-    } else if (data.phase === 'done') {
-      aiMsg = '✅ ' + aiMsg;
-    } else if (data.phase === 'no_change') {
-      aiMsg = '💬 ' + aiMsg;
     }
 
-    if (chatArea && aiMsg) {
-      chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-gray-800">' + _escHtml(aiMsg) + '</div>';
+    // ── SSE 流结束，清理 ──
+    clearTimeout(timeoutId);
+    var lb3 = document.getElementById('multi-chat-loading');
+    if (lb3) lb3.remove();
+
+    // 保存 AI 回复到历史（合并工具结果 + LLM 文本）
+    var combinedResponse = (toolResultsText ? toolResultsText.replace(/<[^>]*>/g, ' ') + ' ' : '') + fullResponse;
+    if (combinedResponse.trim()) {
+      multiDayChatHistory.push({role: 'ai', text: combinedResponse.trim()});
+      if (multiDayChatHistory.length > 10) multiDayChatHistory = multiDayChatHistory.slice(-10);
     }
 
-    multiDayChatHistory.push({role: 'ai', text: aiMsg});
-    if (multiDayChatHistory.length > 6) multiDayChatHistory = multiDayChatHistory.slice(-6);
-
-    // 更新行程
-    if (data.phase === 'done' && data.days) {
-      multiDayScheduleResult.days = data.days;
-      // 保存聊天记录，防止 renderMultiDayCards 清空
+    // ── 如果有行程更新，刷新多日卡片 ──
+    if (updatedDays) {
+      multiDayScheduleResult.days = updatedDays;
       var _savedChat = '';
       var _mcArea = document.getElementById('multi-day-chat-area');
       if (_mcArea) _savedChat = _mcArea.innerHTML;
@@ -2540,118 +2675,19 @@ async function sendMultiDayMessage() {
     if (typeof scrollToBottom === 'function') scrollToBottom();
   } catch(e) {
     clearTimeout(timeoutId);
-    var lb2 = document.getElementById('multi-chat-loading');
-    if (lb2) lb2.remove();
-    var chatArea = document.getElementById('multi-day-chat-area');
-    if (chatArea) {
+    var lb4 = document.getElementById('multi-chat-loading');
+    if (lb4) lb4.remove();
+    var ca = document.getElementById('multi-day-chat-area');
+    if (ca) {
       if (e.name === 'AbortError') {
-        chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-yellow-700">⏱️ 响应超时，请稍后重试</div>';
+        ca.innerHTML += '<div class="max-w-[75%] px-3.5 py-2.5 text-sm" style="background:#fef9c3;border:1px solid #fde047;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">⏱️ 响应超时，请稍后重试</div>';
       } else {
-        chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-red-700">网络错误，请重试</div>';
+        ca.innerHTML += '<div class="max-w-[75%] px-3.5 py-2.5 text-sm" style="background:#fef2f2;border:1px solid #fecaca;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">❌ ' + _escHtml(e.message || '网络错误') + '</div>';
       }
     }
   }
   input.disabled = false;
   input.focus();
-}
-
-// ── 多日编辑确认/修正回调 ──
-async function _sendMultiDayConfirmation(action, originalText, lightDays, reviseNote) {
-  var chatArea = document.getElementById('multi-day-chat-area');
-
-  // 加载提示
-  var loadDiv = document.createElement('div');
-  loadDiv.id = 'multi-confirm-loading';
-  loadDiv.className = 'bg-gray-50 rounded-2xl p-3 mb-2';
-  loadDiv.innerHTML = '<span class="typing-dots-inline"><span></span><span></span><span></span></span>';
-  if (chatArea) chatArea.appendChild(loadDiv);
-
-  var controller = new AbortController();
-  var timeoutId = setTimeout(function() { controller.abort(); }, 30000);
-
-  try {
-    var body = {
-      text: originalText,
-      day_index: multiActiveDayIndex,
-      schedule: {days: lightDays},
-      context: '',
-      confirm_action: action
-    };
-    if (reviseNote) {
-      body.revise_note = reviseNote;
-    }
-
-    var res = await fetch(API_BASE + '/api/multi_day_edit', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-
-    var lb = document.getElementById('multi-confirm-loading');
-    if (lb) lb.remove();
-
-    var data = await res.json();
-    var resultMsg = data.message || (action === 'execute' ? '✅ 操作已执行' : '🔄 已根据反馈重新理解');
-
-    if (chatArea) {
-      if (data.phase === 'confirm') {
-        // 修正后仍需要确认 → 递归展示新的确认气泡
-        var interpretation = data.interpretation || data.message || '';
-        var confirmBubble = document.createElement('div');
-        confirmBubble.className = 'bg-yellow-50 border border-yellow-300 rounded-2xl p-4 mb-2 mr-8';
-        confirmBubble.innerHTML =
-          '<p class="text-sm text-gray-800 mb-3">🤔 ' + _escHtml(interpretation) + '</p>' +
-          '<div class="flex gap-2">' +
-          '<button class="multi-confirm-yes flex-1 bg-green-500 text-white font-bold py-2 rounded-xl text-sm hover:bg-green-600 transition">✅ 确认</button>' +
-          '<button class="multi-confirm-revise flex-1 bg-gray-300 text-gray-700 font-bold py-2 rounded-xl text-sm hover:bg-gray-400 transition">✏️ 修正</button>' +
-          '</div>';
-        chatArea.appendChild(confirmBubble);
-        confirmBubble.querySelector('.multi-confirm-yes').addEventListener('click', function() {
-          confirmBubble.querySelector('.multi-confirm-yes').disabled = true;
-          confirmBubble.querySelector('.multi-confirm-revise').disabled = true;
-          _sendMultiDayConfirmation('execute', originalText, lightDays);
-        });
-        confirmBubble.querySelector('.multi-confirm-revise').addEventListener('click', function() {
-          var note = prompt('请描述需要修正的地方：', '');
-          if (note && note.trim()) {
-            confirmBubble.querySelector('.multi-confirm-yes').disabled = true;
-            confirmBubble.querySelector('.multi-confirm-revise').disabled = true;
-            _sendMultiDayConfirmation('revise', originalText, lightDays, note.trim());
-          }
-        });
-      } else {
-        chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-gray-800">' + _escHtml(resultMsg) + '</div>';
-      }
-    }
-
-    // 更新行程
-    if (data.phase === 'done' && data.days) {
-      multiDayScheduleResult.days = data.days;
-      var _savedChat = '';
-      var _mcArea = document.getElementById('multi-day-chat-area');
-      if (_mcArea) _savedChat = _mcArea.innerHTML;
-      renderMultiDayCards(multiDayScheduleResult);
-      if (_savedChat) {
-        var _newMcArea = document.getElementById('multi-day-chat-area');
-        if (_newMcArea) _newMcArea.innerHTML = _savedChat;
-      }
-    }
-  } catch(e) {
-    clearTimeout(timeoutId);
-    var lb2 = document.getElementById('multi-confirm-loading');
-    if (lb2) lb2.remove();
-    if (chatArea) {
-      if (e.name === 'AbortError') {
-        chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-yellow-700">⏱️ 响应超时，请稍后重试</div>';
-      } else {
-        chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-red-700">网络错误，请重试</div>';
-      }
-    }
-  }
-
-  if (typeof scrollToBottom === 'function') scrollToBottom();
 }
 
 function _refreshTripView() {

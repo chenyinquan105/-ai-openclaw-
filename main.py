@@ -16,6 +16,9 @@ from dotenv import load_dotenv
 load_dotenv()
 import difflib
 
+# 预编译正则：过滤 LLM 文本输出中可能泄漏的 Anthropic-format XML 工具调用标签
+_XML_TOOL_TAG_RE = re.compile(r'</?invoke[^>]*>|</?parameter[^>]*>')
+
 # ======================================================================
 # 核心组件：语义映射与纠偏
 # ======================================================================
@@ -724,8 +727,11 @@ class MeituanAgent:
 
                     # 文本内容
                     if delta.content:
-                        collected_content += delta.content
-                        yield {"event": "message", "data": {"role": "assistant", "content": delta.content}}
+                        # 过滤 Anthropic-format XML 工具调用标签（当 tools=None 时模型可能幻觉输出）
+                        _clean = _XML_TOOL_TAG_RE.sub('', delta.content).strip()
+                        if _clean:
+                            collected_content += _clean
+                            yield {"event": "message", "data": {"role": "assistant", "content": _clean}}
 
                     # 思考链内容（v4-pro thinking mode）
                     if getattr(delta, 'reasoning_content', None):
