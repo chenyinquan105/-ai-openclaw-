@@ -94,11 +94,24 @@ def _m_to_t(mins: int) -> str:
     return f"{mins // 60:02d}:{mins % 60:02d}"
 
 
+def _detect_location_search(text: str) -> bool:
+    """检测用户消息是否包含「地名 + 搜索意图」，用于触发强制工具调用重试"""
+    if not text:
+        return False
+    location_hints = r'(?:附近|周边|旁边|一带|那边|那块|跟前|左右)'
+    search_hints = r'(?:有什么|搜一下|帮我搜|找一下|帮我找|推荐|好玩的|好吃的|好逛的|玩的|吃的|逛逛|逛逛看)'
+    has_location = bool(re.search(location_hints, text))
+    has_search = bool(re.search(search_hints, text))
+    # 额外：明确"搜XX附近"的倒装句式
+    has_inverted = bool(re.search(r'搜.*(?:附近|周边)', text))
+    return has_location and (has_search or has_inverted)
+
+
 class MeituanAgent:
     def __init__(self, api_key: str, base_url: str):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         # 通过 FAST_LLM_MODEL 环境变量切换更快模型（如 deepseek-chat 已内置加速）
-        self.model = os.getenv("FAST_LLM_MODEL", "deepseek-chat")
+        self.model = os.getenv("FAST_LLM_MODEL", "deepseek-v4-pro")
         self.context_memory = []
         self.poi_cache = {}
 
@@ -109,7 +122,7 @@ class MeituanAgent:
             max_tokens=max_tokens,
             tools=tools,
             tool_choice="auto" if tools else None,
-            timeout=8.0
+            timeout=30.0
         )
         if response_format is not None:
             kwargs["response_format"] = response_format
@@ -651,7 +664,7 @@ class MeituanAgent:
     # 通用LLM聊天流 — chat_stream()
     # ======================================================================
 
-    def chat_stream(self, messages: list, tools: list = None, max_tool_rounds: int = 5, response_format: dict = None):
+    def chat_stream(self, messages: list, tools: list = None, max_tool_rounds: int = 5, response_format: dict = None, allow_search_retry: bool = True):
         """
         流式LLM聊天生成器，支持工具调用循环。
 
@@ -666,17 +679,26 @@ class MeituanAgent:
         """
         current_messages = list(messages)  # 不修改原始列表
         tool_round = 0
+        force_tool_name = None  # 非空时强制调用指定工具（用于搜索意图重试）
 
         while tool_round <= max_tool_rounds:
             tool_round += 1
 
             try:
+                # 构建 tool_choice：重试时强制要求调工具
+                tc = "auto"
+                if not tools:
+                    tc = None
+                elif force_tool_name:
+                    tc = "required"  # DeepSeek 对 function-specific tool_choice 不稳定，用 required
+                    force_tool_name = None  # 只强制一次
+
                 kwargs = dict(
                     model=self.model,
                     messages=current_messages,
                     max_tokens=4096,
                     tools=tools,
-                    tool_choice="auto" if tools else None,
+                    tool_choice=tc,
                     stream=True,
                     timeout=120.0
                 )
@@ -689,6 +711,7 @@ class MeituanAgent:
 
             # 收集流式响应，同时检测tool_calls
             collected_content = ""
+            collected_reasoning_content = ""
             collected_tool_calls = []
             # DeepSeek streaming中 tool_calls 分chunk返回
             tool_call_buffer = {}  # index → {id, name, arguments_str}
@@ -703,6 +726,10 @@ class MeituanAgent:
                     if delta.content:
                         collected_content += delta.content
                         yield {"event": "message", "data": {"role": "assistant", "content": delta.content}}
+
+                    # 思考链内容（v4-pro thinking mode）
+                    if getattr(delta, 'reasoning_content', None):
+                        collected_reasoning_content += delta.reasoning_content
 
                     # 工具调用（流式：每个chunk可能只传一个function name片段或arguments片段）
                     if delta.tool_calls:
@@ -748,7 +775,7 @@ class MeituanAgent:
                     collected_tool_calls.append(tc)
 
                     # 添加到消息历史
-                    current_messages.append({
+                    _assistant_msg = {
                         "role": "assistant",
                         "content": None,
                         "tool_calls": [{
@@ -756,7 +783,10 @@ class MeituanAgent:
                             "type": "function",
                             "function": {"name": buf["name"], "arguments": buf["arguments_str"]}
                         }]
-                    })
+                    }
+                    if collected_reasoning_content:
+                        _assistant_msg["reasoning_content"] = collected_reasoning_content
+                    current_messages.append(_assistant_msg)
 
                     # yield工具调用事件
                     yield {
@@ -779,13 +809,39 @@ class MeituanAgent:
                                 "id": tc["id"],
                                 "name": tc["name"],
                                 "arguments": tc["arguments"]
-                            } for tc in collected_tool_calls]
+                            } for tc in collected_tool_calls],
+                            "reasoning_content": collected_reasoning_content or None
                         }
                     }
                     # 工具调用结果由server.py追加到messages后重新调用chat_stream
                     return
 
             else:
+                # 没有工具调用 — 检测搜索意图，强制重试一次
+                if tool_round == 1 and tools and allow_search_retry:
+                    last_user_msg = ""
+                    for m in reversed(current_messages):
+                        if m.get("role") == "user":
+                            last_user_msg = m.get("content", "")
+                            break
+                    print(f"[chat_stream] 第1轮无tool_calls, 检测消息: '{last_user_msg[:80]}'", flush=True)
+                    if _detect_location_search(last_user_msg):
+                        print(f"[chat_stream] ⚡ 检测到位置搜索意图，提取地名并强制 geocode", flush=True)
+                        # 从消息中提取地名（"XX附近" → XX）
+                        loc_match = re.search(r'([一-龥]{2,20}?)(?:附近|周边|旁边|一带|那边|那块)', last_user_msg)
+                        place_name = loc_match.group(1) if loc_match else "故宫"
+                        # 提取搜索关键词
+                        kw_match = re.search(r'(?:有什么|帮我找|推荐)([一-龥]{1,10}?)(?:的|吗|呢|呀|哈|～|！|。|$)', last_user_msg)
+                        keywords = kw_match.group(1) if kw_match else "景点"
+                        current_messages.append({
+                            "role": "user",
+                            "content": f"请调用 geocode 搜索「{place_name}」的坐标，然后调用 search_nearby 搜索周边的{keywords}。立即执行，不要回复文字。"
+                        })
+                        force_tool_name = "geocode"  # 强制 API 参数层面指定工具
+                        continue  # 重试一次
+                    else:
+                        print(f"[chat_stream] 未检测到位置搜索意图，正常结束", flush=True)
+
                 # 没有工具调用，纯文本回复完成
                 yield {"event": "done", "data": {"status": "complete"}}
                 return
@@ -797,8 +853,9 @@ class MeituanAgent:
         """
         工具调用完成后的继续流式生成。与chat_stream相同逻辑，
         但messages中已包含tool_call和tool结果。
+        关闭搜索重试，避免重复强制工具调用。
         """
-        return self.chat_stream(messages, tools, max_tool_rounds, response_format=response_format)
+        return self.chat_stream(messages, tools, max_tool_rounds, response_format=response_format, allow_search_retry=False)
 
 
 if __name__ == "__main__":

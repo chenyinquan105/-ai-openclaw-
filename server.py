@@ -305,7 +305,7 @@ def _get_active_session() -> dict:
     return history, session
 
 
-def _append_chat_message(role: str, content=None, tool_calls=None, tool_call_id=None, name=None):
+def _append_chat_message(role: str, content=None, tool_calls=None, tool_call_id=None, name=None, reasoning_content=None):
     """向活跃会话追加一条消息"""
     history, session = _get_active_session()
     msg = {"role": role}
@@ -317,6 +317,8 @@ def _append_chat_message(role: str, content=None, tool_calls=None, tool_call_id=
         msg["tool_call_id"] = tool_call_id
     if name:
         msg["name"] = name
+    if reasoning_content is not None:
+        msg["reasoning_content"] = reasoning_content
     msg["timestamp"] = datetime.now().isoformat()
     session["messages"].append(msg)
     session["updated_at"] = datetime.now().isoformat()
@@ -543,6 +545,7 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
             centroid_lat, centroid_lng = float(checkin_lat), float(checkin_lng)
 
         meals_added_today = []
+        meal_used_ids = set()  # 追踪当天已用于正餐的 shop_id，防午餐/晚餐重复
 
         # 补全早餐
         if has_bf_need or not has_breakfast:
@@ -579,6 +582,8 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
 
         # 补全午餐
         if not has_lunch:
+            # 先移除所有 LUNCH_NEEDED 占位节点（防止与真正 LUNCH 共存）
+            timeline[:] = [n for n in timeline if n.get("action") != "LUNCH_NEEDED"]
             lunch_shops = _auto_search_restaurants_for_day(
                 centroid_lat, centroid_lng, cuisine_prefs, rating_cutoff,
                 destination, meal_type="restaurant"
@@ -593,6 +598,12 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
                         t = _time_str_to_minutes(node.get("time", "12:00"))
                         if t < 12 * 60:
                             insert_idx = ti + 1
+                # 如果未找到合适位置（所有 VISIT 都在下午），插在第一个 VISIT/BEDTIME 之前
+                if insert_idx == len(timeline):
+                    for ti, node in enumerate(timeline):
+                        if node.get("action") in ("VISIT", "BEDTIME"):
+                            insert_idx = ti
+                            break
                 if insert_idx <= len(timeline):
                     timeline.insert(insert_idx, {
                         "time": lunch_time,
@@ -603,16 +614,21 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
                         "duration_minutes": 60,
                         "opentime": lunch.get("opentime", "未知"),
                     })
+                meal_used_ids.add(lunch.get("shop_id", ""))
                 meals_added_today.append({"meal": "lunch", "shop": lunch.get("name", "")})
 
         # 补全晚餐
         if not has_dinner:
+            # 先移除所有 DINNER_NEEDED 占位节点（防止与真正 DINNER 共存）
+            timeline[:] = [n for n in timeline if n.get("action") != "DINNER_NEEDED"]
             dinner_shops = _auto_search_restaurants_for_day(
                 centroid_lat, centroid_lng, cuisine_prefs, rating_cutoff,
                 destination, meal_type="restaurant"
             )
             if dinner_shops:
-                dinner = dinner_shops[0]
+                # 排除已用于午餐的店铺，避免同一餐厅午餐+晚餐复用
+                available_dinners = [s for s in dinner_shops if s.get("shop_id", "") not in meal_used_ids]
+                dinner = available_dinners[0] if available_dinners else dinner_shops[0]
                 dinner_time = "18:00"
                 timeline.append({
                     "time": dinner_time,
@@ -1049,6 +1065,120 @@ def _try_fast_category_match(user_text: str) -> list:
     cats = list(matched_cats)
     print(f"[fast-path] 「{user_text[:50]}」→ {cats}", flush=True)
     return cats
+
+
+def _detect_location_search(user_text: str) -> dict | None:
+    """
+    检测用户消息是否包含「具体地名 + 搜索意图」。
+    返回 {"place": str, "keywords": str} 或 None。
+
+    正例（拦截 — 纯位置搜索，无调度意图）:
+    - "故宫附近有什么好玩的" → {"place": "故宫", "keywords": "景点"}
+    - "三里屯周边好吃的推荐" → {"place": "三里屯", "keywords": "餐厅"}
+    - "望京旁边有咖啡店吗" → {"place": "望京", "keywords": "咖啡"}
+
+    反例（不拦截 — 含调度/修改意图，透传给 LLM 理解）:
+    - "故宫好玩吗" → None (问意见)
+    - "把故宫加到行程" → None (编辑行程)
+    - "帮我在7号上午，在故宫旁边找个好玩的" → None (含日期+调度意图)
+    - "你好" → None (寒暄)
+    """
+    if not user_text or len(user_text.strip()) < 3:
+        return None
+
+    text = user_text.strip()
+
+    # 1. 排除行程编辑/调度意图（让 LLM 处理复杂语义）
+    # 1a. 显式行程编辑关键词
+    trip_edit_keywords = ["加到行程", "添加行程", "修改行程", "删除行程", "取消行程",
+                          "加进行程", "加到计划", "加入行程", "加到我的行程",
+                          "加进计划", "帮我安排", "给我安排", "安排到", "排到"]
+    for kw in trip_edit_keywords:
+        if kw in text:
+            return None
+
+    # 1b. 日期+时段模式 → 涉及行程调度的可能性高，不拦截
+    date_time_patterns = [
+        r'\d+号\s*(?:上午|下午|晚上|早上|中午|凌晨)',   # "7号上午", "3号下午"
+        r'第\s*\d+\s*天',                              # "第3天", "第 3 天"
+        r'(?:今天|明天|后天)\s*(?:上午|下午|晚上|早上)?',  # "明天上午"
+    ]
+    for p in date_time_patterns:
+        if re.search(p, text):
+            return None
+
+    # 1c. 跨模式检测：同时包含日期数字 + 调度动作词 → 调度意图
+    has_date_ref = bool(re.search(r'\d+号|第\s*\d+\s*天|今天|明天|后天', text))
+    schedule_verbs = [r'帮我', r'给我', r'加到', r'安排', r'添加', r'放在', r'加进', r'排到']
+    has_schedule_verb = any(re.search(v, text) for v in schedule_verbs)
+    if has_date_ref and has_schedule_verb:
+        return None
+
+    # 2. 提取「地名 + 位置词」组合
+    location_pattern = r'([\w一-龥]{2,20})(?:附近|周边|旁边|一带|那边|这块|跟前|左右)'
+    match = re.search(location_pattern, text)
+    if not match:
+        return None
+    place = match.group(1).strip()
+
+    # 3. 检查搜索意图（必须同时满足位置信号 + 搜索意图）
+    search_patterns = [
+        r'有什么', r'有没有', r'哪有', r'哪里', r'哪儿',
+        r'帮我搜', r'帮我找', r'搜一下', r'找一下', r'搜搜',
+        r'推荐', r'介绍',
+        r'好吃的', r'好玩的', r'好逛的', r'吃的', r'玩的', r'好去处',
+        r'逛逛看', r'逛逛', r'逛一逛',
+        r'有\S{1,6}吗',  # "有咖啡店吗", "有火锅吗"
+        r'有\S{1,6}的',  # "有好吃的", "有玩的"
+    ]
+    has_search_intent = any(re.search(p, text) for p in search_patterns)
+    if not has_search_intent:
+        return None
+
+    # 4. 排除纯意见询问（如"XX好玩吗""XX怎么样"）
+    opinion_patterns = [r'好玩吗', r'怎么样\s*$', r'值得去吗', r'好不好']
+    if any(re.search(p, text) for p in opinion_patterns):
+        # 但如果同时有明确搜索词（如"有什么好玩的"），仍然拦截
+        if not re.search(r'有什么|帮我找|搜一下|推荐', text):
+            return None
+
+    # 5. 提取关键词：优先用用户原话中的品类词
+    keywords = "景点"  # 默认（同时用于显示和 API）
+    display_keyword = "景点"  # 用户友好的显示名
+    # 尝试复用 _try_fast_category_match 的品类映射
+    fast_match = _try_fast_category_match(text)
+    if fast_match:
+        # 取第一个匹配的品类
+        from skills.amap_poi.amap_poi import CATEGORY_KEYWORD_MAP
+        import main as _main
+        for cat in fast_match:
+            if cat in CATEGORY_KEYWORD_MAP:
+                keywords = CATEGORY_KEYWORD_MAP[cat]  # API 用（如 "景点|公园|博物馆"）
+                display_keyword = _main.CATEGORY_NAME_CN.get(cat, cat)  # 显示用（如 "景点"）
+                break
+    else:
+        # 尝试直接从文本提取品类词
+        category_words = ["火锅", "咖啡", "奶茶", "理发", "景点", "公园", "商场",
+                          "电影", "酒店", "日料", "川菜", "烧烤", "健身", "游泳",
+                          "早餐", "超市", "药店", "加油站", "停车"]
+        for w in category_words:
+            if w in text:
+                keywords = w
+                display_keyword = w
+                break
+        # 模糊品类词映射
+        if keywords == "景点" and display_keyword == "景点":
+            if re.search(r'好吃的|吃的|美食|吃饭|餐厅|饭', text):
+                keywords = "餐厅|中餐|快餐|美食"
+                display_keyword = "美食"
+            elif re.search(r'好逛的|逛街|购物|商场|买东西', text):
+                keywords = "购物|商场|商圈"
+                display_keyword = "购物"
+            elif re.search(r'好玩的|玩的|逛逛|逛一逛', text):
+                keywords = "景点|公园|博物馆|景区|名胜|古迹|寺庙"
+                display_keyword = "景点"
+
+    return {"place": place, "keywords": keywords, "display_keyword": display_keyword}
 
 
 def _infer_center_coord() -> str | None:
@@ -4228,7 +4358,7 @@ def parse_note():
             "https://api.deepseek.com/chat/completions",
             headers={"Authorization": f"Bearer {os.getenv('DEEPSEEK_API_KEY')}"},
             json={
-                "model": "deepseek-chat",
+                "model": os.getenv("FAST_LLM_MODEL", "deepseek-v4-pro"),
                 "messages": [{"role": "user", "content": f"把以下文字整理成一句简洁的服药备注（不超过20字），直接输出结果不要解释：{text}"}],
                 "max_tokens": 40, "temperature": 0.3
             },
@@ -4895,19 +5025,22 @@ CHAT_TOOLS = [
         "type": "function",
         "function": {
             "name": "edit_trip",
-            "description": "修改进行中的行程：增加/删除目的地、调整时间、更换交通方式、换店、重新排序。",
+            "description": "修改进行中的行程（单日/多日均支持）：增加/删除目的地、调整时间、更换交通方式、换店。多日行程需指定 day_index（从0开始，0=第1天）。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["add_stop", "remove_stop", "change_time", "change_transport", "reroute", "swap_current", "no_change", "clarify"], "description": "操作类型。swap_current=用户想换掉某家店；no_change=用户放弃修改；clarify=意图不明确需追问"},
+                    "action": {"type": "string", "enum": ["add_stop", "remove_stop", "change_time", "change_transport", "reroute", "swap_current", "replace_stop", "no_change", "clarify"], "description": "操作类型。add_stop=新增目的地；remove_stop=删除；change_time=调整时间；change_transport=换交通方式；swap_current=换店；replace_stop=跨品类替换；no_change=放弃修改；clarify=意图不明确需追问"},
                     "params": {
                         "type": "object",
                         "properties": {
-                            "keywords": {"type": "string", "description": "新增目的地关键词"},
-                            "category": {"type": "string", "description": "品类"},
+                            "keywords": {"type": "string", "description": "新增目的地关键词（如'咖啡'、'火锅'、'景点'）"},
+                            "category": {"type": "string", "description": "品类代码: hair/pet/cafe/gym/restaurant/cinema/laundry/hotpot/japanese/market/scenic"},
                             "shop_name": {"type": "string", "description": "用户明确提到的店名，没提则为空字符串"},
-                            "name": {"type": "string", "description": "要删除的店名"},
-                            "time": {"type": "string", "description": "新时间 HH:MM"},
+                            "name": {"type": "string", "description": "要删除/替换的店名"},
+                            "target_name": {"type": "string", "description": "swap_current 时指定要换掉的店名"},
+                            "target_category": {"type": "string", "description": "swap_current 时指定要换掉的品类"},
+                            "time": {"type": "string", "description": "新时间 HH:MM 格式，如'14:00'；或相对偏移如'+30'（推迟30分钟）"},
+                            "day_index": {"type": "integer", "description": "多日行程中要操作的天索引（从0开始，0=第1天）。不传则操作当前活跃天"},
                             "mode": {"type": "string", "enum": ["WALK", "TAXI", "METRO", "BUS"], "description": "交通方式"},
                             "preference": {"type": "string", "enum": ["fast", "short", "scenic", "avoid_highway"]},
                             "message": {"type": "string", "description": "clarify 时的追问内容"}
@@ -4968,6 +5101,173 @@ CHAT_TOOLS = [
         }
     },
 ]
+
+
+def _handle_multi_day_chat_edit(action: str, params: dict) -> dict:
+    """在 CHAT_TOOL edit_trip 中处理多日模式编辑。
+    将单日 edit_trip action 映射到多日 days[] 的操作。
+    """
+    days = session_state.get("days", [])
+    if not days:
+        return {"status": "ERROR", "message": "没有活跃的多日行程"}
+
+    active_idx = session_state.get("active_day_index", 0)
+    if active_idx >= len(days):
+        active_idx = 0
+
+    target_day = days[active_idx]
+    target_tl = target_day.setdefault("timeline", [])
+
+    if action in ("no_change", "clarify"):
+        return {"status": "SUCCESS", "message": "好的" if action == "no_change" else "请再描述一下你想怎么调整～"}
+
+    if action == "remove_stop":
+        name = params.get("name", "").strip()
+        if not name or len(name) < 2:
+            return {"status": "ERROR", "message": "请指定要删除的目的地名称（至少2个字）"}
+        # 从 timeline 中移除匹配的节点
+        new_tl = [n for n in target_tl if name not in (n.get("memo", "") or "")]
+        if len(new_tl) == len(target_tl):
+            return {"status": "ERROR", "message": f"在第{active_idx+1}天未找到「{name}」"}
+        if not new_tl:
+            return {"status": "ERROR", "message": "该操作会清空当天所有安排，已拒绝"}
+        target_day["timeline"] = new_tl
+        # 同步 task_list
+        target_day["task_list"] = [t for t in target_day.get("task_list", [])
+                                   if name not in (t.get("name", "") or "")]
+        # 同步 selected_pairs
+        target_day["selected_pairs"] = [(c, s, n) for c, s, n in target_day.get("selected_pairs", [])
+                                         if name not in n]
+        session_state["days"] = days
+        return {"status": "SUCCESS",
+                "message": f"已从第{active_idx+1}天移除「{name}」",
+                "data": {"days": days}}
+
+    if action == "add_stop":
+        kw = params.get("keywords", "") or params.get("shop_name", "")
+        cat = params.get("category", "")
+        shop_name = params.get("shop_name", "")
+        time_str = params.get("time", "12:00")
+        if not kw:
+            return {"status": "ERROR", "message": "请提供搜索关键词（如「咖啡」「景点」）"}
+        try:
+            # 搜索 POI
+            search_cat = [cat] if cat else ["restaurant"]
+            new_res = backend.skill_poi.search_poi_matrix(
+                center_coord=DEFAULT_CENTER_COORD,
+                categories=search_cat,
+                radius_meters=5000,
+                min_rating=3.5,
+                keywords=kw
+            )
+            found = False
+            for c, shops in new_res.get("search_results", {}).items():
+                if shops:
+                    best = max(shops, key=lambda s: s.get("rating", 0))
+                    new_node = {
+                        "time": time_str,
+                        "action": "VISIT",
+                        "memo": best["name"],
+                        "category": c,
+                        "shop_id": str(best.get("shop_id", "")),
+                        "lat": best.get("lat", ""),
+                        "lng": best.get("lng", ""),
+                        "duration_minutes": _duration(c) if c else 60,
+                        "rating": best.get("rating", 0),
+                    }
+                    # 按时间插入
+                    new_min = _time_str_to_minutes(time_str)
+                    insert_idx = len(target_tl)
+                    for i, n in enumerate(target_tl):
+                        nt = n.get("time", "")
+                        n_min = _time_str_to_minutes(nt) if nt else 9999
+                        if new_min < n_min:
+                            insert_idx = i
+                            break
+                    target_tl.insert(insert_idx, new_node)
+                    target_day.setdefault("task_list", []).append({
+                        "name": best["name"], "category": c,
+                        "shop_id": str(best.get("shop_id", "")),
+                        "lat": best.get("lat", ""), "lng": best.get("lng", ""),
+                        "duration_minutes": new_node["duration_minutes"],
+                    })
+                    target_day.setdefault("selected_pairs", []).append((c, str(best.get("shop_id", "")), best["name"]))
+                    found = True
+                    break
+            if found:
+                session_state["days"] = days
+                return {"status": "SUCCESS",
+                        "message": f"已添加「{kw}」到第{active_idx+1}天",
+                        "data": {"days": days}}
+            return {"status": "ERROR", "message": f"未找到「{kw}」相关商户"}
+        except Exception as e:
+            return {"status": "ERROR", "message": f"搜索失败: {str(e)}"}
+
+    if action == "change_time":
+        new_time = params.get("time", "")
+        if not new_time:
+            return {"status": "ERROR", "message": "请提供新时间（如 14:00）"}
+        session_state["fixed_time"] = new_time
+        session_state["time_mode"] = "fixed"
+        return {"status": "SUCCESS", "message": f"已将第{active_idx+1}天出发时间调整为 {new_time}",
+                "data": {"days": days}}
+
+    if action == "change_transport":
+        mode = params.get("mode", "WALK")
+        transport_name = {"WALK": "步行", "TAXI": "打车", "METRO": "地铁", "BUS": "公交"}.get(mode, "步行")
+        session_state["transport"] = transport_name
+        return {"status": "SUCCESS", "message": f"已将第{active_idx+1}天交通方式切换为 {transport_name}",
+                "data": {"days": days}}
+
+    if action == "swap_current":
+        target_name = params.get("target_name", "") or params.get("shop_name", "")
+        target_cat = params.get("target_category", "")
+        if not target_name and not target_cat:
+            return {"status": "ERROR", "message": "请指定要替换的目的地名称或品类"}
+        # 查找匹配的活动并替换
+        removed = False
+        for i, n in enumerate(target_tl):
+            memo = n.get("memo", "") or ""
+            cat_n = n.get("category", "")
+            if (target_name and target_name in memo) or (target_cat and target_cat == cat_n):
+                old_memo = memo
+                target_tl.pop(i)
+                removed = True
+                # 尝试搜索替换店铺
+                try:
+                    search_cat = [cat_n] if cat_n else ["restaurant"]
+                    new_res = backend.skill_poi.search_poi_matrix(
+                        center_coord=DEFAULT_CENTER_COORD, categories=search_cat,
+                        radius_meters=5000, min_rating=4.0, keywords=""
+                    )
+                    for c, shops in new_res.get("search_results", {}).items():
+                        if shops:
+                            best = max(shops, key=lambda s: s.get("rating", 0))
+                            new_node = {
+                                "time": n.get("time", "12:00"),
+                                "action": "VISIT",
+                                "memo": best["name"],
+                                "category": c,
+                                "shop_id": str(best.get("shop_id", "")),
+                                "lat": best.get("lat", ""),
+                                "lng": best.get("lng", ""),
+                                "duration_minutes": _duration(c) if c else 60,
+                                "rating": best.get("rating", 0),
+                            }
+                            target_tl.insert(i, new_node)
+                            break
+                except Exception:
+                    pass
+                break
+        if removed:
+            session_state["days"] = days
+            return {"status": "SUCCESS", "message": f"已替换「{old_memo}」",
+                    "data": {"days": days}}
+        return {"status": "ERROR", "message": f"在第{active_idx+1}天未找到匹配的活动"}
+
+    # 其他 action 不支持多日模式
+    return {"status": "ERROR",
+            "message": f"多日模式下暂不支持「{action}」操作，请尝试在行程面板中手动调整"}
 
 
 def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
@@ -5236,6 +5536,10 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
         elif tool_name == "edit_trip":
             action = arguments.get("action", "reroute")
             params = arguments.get("params", {})
+
+            # ── 多日模式：路由到多日编辑逻辑 ──
+            if session_state.get("trip_mode") == "multi":
+                return _handle_multi_day_chat_edit(action, params)
 
             if session_state.get("phase") != "done" and not session_state.get("selected_pairs"):
                 return {"status": "ERROR", "message": "没有活跃行程"}
@@ -5688,7 +5992,8 @@ def chat_stream():
         "提醒管理 → add_reminder / remove_reminder / list_reminders\n"
         "信息查询 → check_weather / check_queue / read_profile\n"
         "偏好更新 → update_profile\n"
-        "纯问候/闲聊（无实质需求）→ 不调工具，温暖回应 1-3 句\n\n"
+        "纯问候/闲聊（仅限「你好」「谢谢」「晚安」等寒暄，无任何实质需求）→ 不调工具，温暖回应 1-3 句\n"
+        "⚠️ 涉及地名+搜索意图（如「XX附近有什么」「帮我找XX周边的店」）不是闲聊！必须先调 geocode→search_nearby 实际搜索！\n\n"
         "# 语气规则\n\n"
         f"- 自然称呼{user_display}，不用「您」\n"
         "- 适量用「呀」「嘛」「哈」「～」和 emoji（1-3个/条），不要刷屏\n"
@@ -5720,6 +6025,8 @@ def chat_stream():
             m["tool_call_id"] = msg["tool_call_id"]
         if "name" in msg:
             m["name"] = msg["name"]
+        if "reasoning_content" in msg and msg["reasoning_content"] is not None:
+            m["reasoning_content"] = msg["reasoning_content"]
         messages.append(m)
     # 添加当前用户消息
     messages.append({"role": "user", "content": message})
@@ -5729,9 +6036,95 @@ def chat_stream():
 
     def generate():
         nonlocal messages
+        chat_session_id = history_db.get("active_session", "chat_000")
         try:
             # 发送用户消息事件
             yield f"event: message\ndata: {json.dumps({'role': 'user', 'content': message}, ensure_ascii=False)}\n\n"
+
+            # ═══════════════════════════════════════════════════════════════
+            # 预拦截：检测位置搜索意图，直接调高德 API（绕过 LLM function calling）
+            # ═══════════════════════════════════════════════════════════════
+            _location_intent = _detect_location_search(message)
+            if _location_intent:
+                place = _location_intent["place"]
+                keywords = _location_intent["keywords"]
+                display_keyword = _location_intent.get("display_keyword", keywords)
+                print(f"[LocationIntercept] 检测到位置搜索意图: place={place}, keywords={keywords}", flush=True)
+
+                # 1. 发射"正在搜索"文本（用友好的显示名）
+                yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': f'帮你搜搜{place}周边的{display_keyword}～'}, ensure_ascii=False)}\n\n"
+
+                # 2. geocode
+                geo_call_id = f"call_direct_geo_{int(_time.time())}"
+                yield f"event: tool_call\ndata: {json.dumps({'id': geo_call_id, 'name': 'geocode', 'arguments': {'address': place}, 'status': 'started'}, ensure_ascii=False)}\n\n"
+
+                geo_result = _amap_client.geocode(address=place, city="北京")
+                if geo_result:
+                    yield f"event: tool_result\ndata: {json.dumps({'id': geo_call_id, 'name': 'geocode', 'status': 'completed', 'result': {'status': 'SUCCESS', 'data': geo_result, 'message': f"已定位: {geo_result.get('formatted_address', place)}"}}, ensure_ascii=False)}\n\n"
+
+                    # 3. search_nearby
+                    sn_call_id = f"call_direct_sn_{int(_time.time())}"
+                    yield f"event: tool_call\ndata: {json.dumps({'id': sn_call_id, 'name': 'search_nearby', 'arguments': {'lng': geo_result['lng'], 'lat': geo_result['lat'], 'keywords': keywords}, 'status': 'started'}, ensure_ascii=False)}\n\n"
+
+                    search_result = _amap_client.search_nearby(
+                        lng=geo_result["lng"], lat=geo_result["lat"],
+                        radius=3000, keywords=keywords
+                    )
+                    shops = search_result.get("shops", [])[:15]
+                    total = search_result.get("count", len(shops))
+                    sn_result = {
+                        "status": "SUCCESS",
+                        "data": {
+                            "shops": shops, "total": total,
+                            "center": {"lng": geo_result["lng"], "lat": geo_result["lat"]}
+                        },
+                        "message": f"在{place}周边找到{total}家商户"
+                    }
+                    yield f"event: tool_result\ndata: {json.dumps({'id': sn_call_id, 'name': 'search_nearby', 'status': 'completed', 'result': sn_result}, ensure_ascii=False)}\n\n"
+
+                    # 4. 保存搜索结果到会话历史（仅文本，不保存 tool 消息避免后续 LLM 调用混乱）
+                    _append_chat_message("assistant", content=f'帮你搜搜{place}周边的{display_keyword}～')
+
+                    # 5. 将搜索结果注入为系统消息，让 LLM 直接总结（不模拟 tool_calls，避免 v4-pro reasoning_content 兼容问题）
+                    shop_names = [s.get("name", "?") for s in shops[:5]]
+                    shop_list_str = "、".join(shop_names) if shop_names else "无结果"
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            f"[系统已自动搜索] 用户想知道「{place}」附近有什么。"
+                            f"已通过高德地图在{place}周边（坐标 {geo_result['lng']},{geo_result['lat']}）"
+                            f"搜索「{keywords}」，共找到 {total} 家商户。"
+                            f"排名靠前的有：{shop_list_str}等。"
+                            f"搜索结果已通过前端面板展示给用户。"
+                            f"请用温暖自然的语气（1-3句话）引导用户查看面板，"
+                            f"可以挑1-2家评分高的简单提一下，但不要逐条列出。"
+                            f"绝对不要调用任何工具。"
+                        )
+                    })
+
+                    # 6. 调用 LLM 做自然语言总结（不带工具，纯文本回复）
+                    assistant_full_response = ""
+                    generator2 = agent.chat_stream(messages, tools=None, max_tool_rounds=1)
+                    for event_dict in generator2:
+                        evt = event_dict["event"]
+                        payload = event_dict["data"]
+                        if evt == "message":
+                            assistant_full_response += payload["content"]
+                            yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': payload['content']}, ensure_ascii=False)}\n\n"
+                        elif evt == "done":
+                            if assistant_full_response.strip():
+                                _append_chat_message("assistant", content=assistant_full_response.strip())
+                        elif evt == "error":
+                            yield f"event: error\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+                    yield f"event: done\ndata: {json.dumps({'session_id': chat_session_id, 'status': 'complete'}, ensure_ascii=False)}\n\n"
+                    return  # 拦截完成，不走原来的 LLM 路径
+                else:
+                    # geocode 失败 → 提示后结束
+                    print(f"[LocationIntercept] geocode 失败: {place}", flush=True)
+                    yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': f'抱歉，没找到「{place}」的位置，换个说法试试～'}, ensure_ascii=False)}\n\n"
+                    yield f"event: done\ndata: {json.dumps({'session_id': chat_session_id, 'status': 'complete'}, ensure_ascii=False)}\n\n"
+                    return
 
             # ═══════════════════════════════════════════════════════════════
             # LLM 路径：所有消息统一由 LLM 决定是聊天还是调工具
@@ -5759,8 +6152,9 @@ def chat_stream():
                 elif evt == "tool_calls_complete":
                     # 工具调用完成，执行工具
                     current_tool_calls = payload["tool_calls"]
+                    _reasoning = payload.get("reasoning_content")
 
-                    # ★ 保存assistant的tool_calls消息到历史（必须在tool结果之前）
+                    # ★ 保存assistant的tool_calls消息到历史和messages（必须在tool结果之前）
                     _tool_calls_for_history = []
                     for tc in current_tool_calls:
                         _tool_calls_for_history.append({
@@ -5768,7 +6162,17 @@ def chat_stream():
                             "type": "function",
                             "function": {"name": tc["name"], "arguments": json.dumps(tc["arguments"], ensure_ascii=False)}
                         })
-                    _append_chat_message("assistant", content=None, tool_calls=_tool_calls_for_history)
+                    _append_chat_message("assistant", content=None, tool_calls=_tool_calls_for_history, reasoning_content=_reasoning)
+                    # ⚠️ 关键：也必须加到 messages 列表中，否则后续 API 调用会报错
+                    # "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
+                    _assistant_msg = {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": _tool_calls_for_history
+                    }
+                    if _reasoning:
+                        _assistant_msg["reasoning_content"] = _reasoning
+                    messages.append(_assistant_msg)
 
                     for tc in current_tool_calls:
                         tool_name = tc["name"]
@@ -5809,12 +6213,14 @@ def chat_stream():
                         elif evt2 == "tool_call":
                             # 嵌套工具调用（第二轮）
                             yield f"event: tool_call\ndata: {json.dumps({'id': payload2['id'], 'name': payload2['name'], 'arguments': payload2['arguments'], 'status': 'started'}, ensure_ascii=False)}\n\n"
-                            # ★ 保存assistant的tool_calls到历史
-                            _append_chat_message("assistant", content=None, tool_calls=[{
+                            # ★ 保存assistant的tool_calls到历史和messages
+                            _tc_msg = [{
                                 "id": payload2["id"],
                                 "type": "function",
                                 "function": {"name": payload2["name"], "arguments": json.dumps(payload2["arguments"], ensure_ascii=False)}
-                            }])
+                            }]
+                            _append_chat_message("assistant", content=None, tool_calls=_tc_msg)
+                            messages.append({"role": "assistant", "content": None, "tool_calls": _tc_msg})
                             # 执行并返回
                             tc_result = _execute_chat_tool(payload2["name"], payload2["arguments"])
                             tc_result_status = tc_result.get('status', '')
@@ -5861,7 +6267,6 @@ def chat_stream():
                         _append_chat_message("assistant", content=assistant_full_response.strip())
 
             # 发送完成事件
-            chat_session_id = history_db.get("active_session", "chat_000")
             yield f"event: done\ndata: {json.dumps({'session_id': chat_session_id, 'status': 'complete'}, ensure_ascii=False)}\n\n"
 
         except Exception as e:

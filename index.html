@@ -1248,7 +1248,8 @@ async function doSearch() {
   remove_reminder:'🗑️', list_reminders:'📋', check_weather:'🌤️',
   read_profile:'📝', update_profile:'⚙️', check_queue:'🪧',
   start_trip:'🚀', edit_trip:'✏️', cancel_trip:'❌',
-  get_trip_status:'📊', plan_transit:'🚌'
+  get_trip_status:'📊', plan_transit:'🚌',
+  geocode:'📍', search_nearby:'🔍'
  };
 
  function _ensureAiBubble() {
@@ -1329,6 +1330,28 @@ async function doSearch() {
         pendingSearchCategories = categories;
         if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
         // 移除 tool_call 阶段创建的 AI 气泡（避免残留"正在为您..."）
+        if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
+       } else if (data.name === 'search_nearby' && data.result && data.result.data && data.result.data.shops && data.result.data.shops.length > 0) {
+        // ★ search_nearby 结果也走品类面板 — 构造伪 category 结构
+        var shops = data.result.data.shops;
+        var centerInfo = data.result.data.center || {};
+        pendingSearchCategories = [{
+          category: 'nearby',
+          label: (data.result.message || '周边搜索').replace(/在坐标.*?周边找到/, '在附近找到'),
+          center: centerInfo,
+          shops: shops.map(function(s) {
+            return {
+              name: s.name || s.shop_name || '',
+              shop_id: s.shop_id || s.id || '',
+              rating: s.rating || 0,
+              distance: s.distance || s.distance_meters || 0,
+              address: s.address || '',
+              category: s.category || '',
+              coord: s.coord || (s.lng && s.lat ? s.lng + ',' + s.lat : '')
+            };
+          })
+        }];
+        if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
         if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
        } else if (data.status === 'confirm_required') {
         // 需要用户确认的操作（如覆盖已有行程），不当作错误
@@ -2267,7 +2290,7 @@ async function sendTripMessage() {
 
   // AbortController 5s 超时
   var controller = new AbortController();
-  var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+  var timeoutId = setTimeout(function() { controller.abort(); }, 25000);
   var timedOut = false;
 
   try {
@@ -2414,7 +2437,7 @@ async function sendMultiDayMessage() {
   }
 
   var controller = new AbortController();
-  var timeoutId = setTimeout(function() { controller.abort(); }, 20000);
+  var timeoutId = setTimeout(function() { controller.abort(); }, 30000);
 
   try {
     // 构建轻量 schedule（只发送 days 中的关键字段，避免 spatial_matrix 等大对象）
@@ -2449,6 +2472,44 @@ async function sendMultiDayMessage() {
     var aiMsg = data.message || '';
     if (data.phase === 'clarify') {
       aiMsg = '🤔 ' + aiMsg;
+    } else if (data.phase === 'confirm') {
+      // ── 确认交互：渲染确认/修正按钮 ──
+      var interpretation = data.interpretation || data.message || '';
+      if (chatArea) {
+        var confirmBubble = document.createElement('div');
+        confirmBubble.className = 'bg-yellow-50 border border-yellow-300 rounded-2xl p-4 mb-2 mr-8';
+        confirmBubble.innerHTML =
+          '<p class="text-sm text-gray-800 mb-3">🤔 ' + _escHtml(interpretation) + '</p>' +
+          '<div class="flex gap-2">' +
+          '<button class="multi-confirm-yes flex-1 bg-green-500 text-white font-bold py-2 rounded-xl text-sm hover:bg-green-600 transition">✅ 确认</button>' +
+          '<button class="multi-confirm-revise flex-1 bg-gray-300 text-gray-700 font-bold py-2 rounded-xl text-sm hover:bg-gray-400 transition">✏️ 修正</button>' +
+          '</div>';
+        chatArea.appendChild(confirmBubble);
+        requestAnimationFrame(function() { if (chatArea.scrollTop !== undefined) chatArea.scrollTop = chatArea.scrollHeight; });
+
+        // 确认按钮 → 发送 confirm_action
+        confirmBubble.querySelector('.multi-confirm-yes').addEventListener('click', function() {
+          confirmBubble.querySelector('.multi-confirm-yes').disabled = true;
+          confirmBubble.querySelector('.multi-confirm-revise').disabled = true;
+          _sendMultiDayConfirmation('execute', msg, lightDays);
+        });
+
+        // 修正按钮 → 弹出输入框 → 发送 revise
+        confirmBubble.querySelector('.multi-confirm-revise').addEventListener('click', function() {
+          var note = prompt('请描述需要修正的地方：', '');
+          if (note && note.trim()) {
+            confirmBubble.querySelector('.multi-confirm-yes').disabled = true;
+            confirmBubble.querySelector('.multi-confirm-revise').disabled = true;
+            _sendMultiDayConfirmation('revise', msg, lightDays, note.trim());
+          }
+        });
+      }
+
+      multiDayChatHistory.push({role: 'ai', text: '🤔 ' + interpretation});
+      if (multiDayChatHistory.length > 6) multiDayChatHistory = multiDayChatHistory.slice(-6);
+      input.disabled = false;
+      input.focus();
+      return;  // 确认阶段不继续走下面的通用逻辑
     } else if (data.phase === 'done') {
       aiMsg = '✅ ' + aiMsg;
     } else if (data.phase === 'no_change') {
@@ -2492,6 +2553,105 @@ async function sendMultiDayMessage() {
   }
   input.disabled = false;
   input.focus();
+}
+
+// ── 多日编辑确认/修正回调 ──
+async function _sendMultiDayConfirmation(action, originalText, lightDays, reviseNote) {
+  var chatArea = document.getElementById('multi-day-chat-area');
+
+  // 加载提示
+  var loadDiv = document.createElement('div');
+  loadDiv.id = 'multi-confirm-loading';
+  loadDiv.className = 'bg-gray-50 rounded-2xl p-3 mb-2';
+  loadDiv.innerHTML = '<span class="typing-dots-inline"><span></span><span></span><span></span></span>';
+  if (chatArea) chatArea.appendChild(loadDiv);
+
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() { controller.abort(); }, 30000);
+
+  try {
+    var body = {
+      text: originalText,
+      day_index: multiActiveDayIndex,
+      schedule: {days: lightDays},
+      context: '',
+      confirm_action: action
+    };
+    if (reviseNote) {
+      body.revise_note = reviseNote;
+    }
+
+    var res = await fetch(API_BASE + '/api/multi_day_edit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    var lb = document.getElementById('multi-confirm-loading');
+    if (lb) lb.remove();
+
+    var data = await res.json();
+    var resultMsg = data.message || (action === 'execute' ? '✅ 操作已执行' : '🔄 已根据反馈重新理解');
+
+    if (chatArea) {
+      if (data.phase === 'confirm') {
+        // 修正后仍需要确认 → 递归展示新的确认气泡
+        var interpretation = data.interpretation || data.message || '';
+        var confirmBubble = document.createElement('div');
+        confirmBubble.className = 'bg-yellow-50 border border-yellow-300 rounded-2xl p-4 mb-2 mr-8';
+        confirmBubble.innerHTML =
+          '<p class="text-sm text-gray-800 mb-3">🤔 ' + _escHtml(interpretation) + '</p>' +
+          '<div class="flex gap-2">' +
+          '<button class="multi-confirm-yes flex-1 bg-green-500 text-white font-bold py-2 rounded-xl text-sm hover:bg-green-600 transition">✅ 确认</button>' +
+          '<button class="multi-confirm-revise flex-1 bg-gray-300 text-gray-700 font-bold py-2 rounded-xl text-sm hover:bg-gray-400 transition">✏️ 修正</button>' +
+          '</div>';
+        chatArea.appendChild(confirmBubble);
+        confirmBubble.querySelector('.multi-confirm-yes').addEventListener('click', function() {
+          confirmBubble.querySelector('.multi-confirm-yes').disabled = true;
+          confirmBubble.querySelector('.multi-confirm-revise').disabled = true;
+          _sendMultiDayConfirmation('execute', originalText, lightDays);
+        });
+        confirmBubble.querySelector('.multi-confirm-revise').addEventListener('click', function() {
+          var note = prompt('请描述需要修正的地方：', '');
+          if (note && note.trim()) {
+            confirmBubble.querySelector('.multi-confirm-yes').disabled = true;
+            confirmBubble.querySelector('.multi-confirm-revise').disabled = true;
+            _sendMultiDayConfirmation('revise', originalText, lightDays, note.trim());
+          }
+        });
+      } else {
+        chatArea.innerHTML += '<div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-gray-800">' + _escHtml(resultMsg) + '</div>';
+      }
+    }
+
+    // 更新行程
+    if (data.phase === 'done' && data.days) {
+      multiDayScheduleResult.days = data.days;
+      var _savedChat = '';
+      var _mcArea = document.getElementById('multi-day-chat-area');
+      if (_mcArea) _savedChat = _mcArea.innerHTML;
+      renderMultiDayCards(multiDayScheduleResult);
+      if (_savedChat) {
+        var _newMcArea = document.getElementById('multi-day-chat-area');
+        if (_newMcArea) _newMcArea.innerHTML = _savedChat;
+      }
+    }
+  } catch(e) {
+    clearTimeout(timeoutId);
+    var lb2 = document.getElementById('multi-confirm-loading');
+    if (lb2) lb2.remove();
+    if (chatArea) {
+      if (e.name === 'AbortError') {
+        chatArea.innerHTML += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-yellow-700">⏱️ 响应超时，请稍后重试</div>';
+      } else {
+        chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8 text-sm text-red-700">网络错误，请重试</div>';
+      }
+    }
+  }
+
+  if (typeof scrollToBottom === 'function') scrollToBottom();
 }
 
 function _refreshTripView() {
@@ -2650,7 +2810,7 @@ function _pickSwapTarget(shopId) {
 
 function _doEditTripSwap(shopId) {
   var controller = new AbortController();
-  var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+  var timeoutId = setTimeout(function() { controller.abort(); }, 25000);
   var chatArea = document.getElementById('trip-chat-area');
 
   // 构建上下文（与 sendTripMessage 一致）
@@ -7953,6 +8113,7 @@ function renderAttractionsList(attractions) {
     else if (attr.category === 'hotpot') catEmoji = '🍲';
     else if (attr.category === 'shopping') catEmoji = '🛍️';
     else if (attr.category === 'cafe') catEmoji = '☕';
+    else if (attr.category === 'breakfast') catEmoji = '🥐';
     else if (attr.category === 'hotel') catEmoji = '🏨';
     var rating = typeof attr.rating === 'number' ? attr.rating : parseFloat(attr.rating) || 0;
     var stars = '';

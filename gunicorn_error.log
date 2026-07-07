@@ -2407,3 +2407,12 @@ UnboundLocalError: cannot access local variable 'llm_failed' where it is not ass
 [2026-07-06 17:09:53 +0800] [54737] [INFO] Using worker: gthread
 [2026-07-06 17:09:53 +0800] [54739] [INFO] Booting worker with pid: 54739
 [2026-07-06 17:09:53 +0800] [54737] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[auto_fix] move_to_day: 八达岭长城 D1→D2
+[auto_fix] 共应用 1 个自动修正: ['已将「八达岭长城」从第1天移至第2天']
+[审查问答] 快照校验: days=2, 总节点=16
+[审查问答] LLM 原始返回 (22 chars): {
+  "operations": []
+}...
+[审查问答] 操作前各天节点数: [8, 8]
+[审查问答] 操作后各天节点数: [8, 8], 变更: []
