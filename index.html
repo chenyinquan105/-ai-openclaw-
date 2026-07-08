@@ -8318,6 +8318,10 @@ async function executeSmartSchedule() {
       body: JSON.stringify({start_time: '09:00', candidates: multiCandidatePool})
     });
     var data = await res.json();
+    if (data.status === 'OVERCROWDED') {
+      _showOvercrowdedDialog(data);
+      return;
+    }
     if (data.status === 'SUCCESS') {
       multiDayScheduleResult = data; multiActiveDayIndex = 0;
       renderMultiDayCards(data);
@@ -8342,6 +8346,91 @@ async function executeSmartSchedule() {
     }
   } catch (e) {
     console.error('[MultiDay] executeSmartSchedule ERROR:', e);
+    if (dc) dc.innerHTML = '<div class="bg-red-50 rounded-3xl p-6 text-center"><p class="text-red-500 font-bold">请求失败</p></div>';
+  }
+}
+
+
+// ---- 超量 POI 弹窗 ----
+
+function _showOvercrowdedDialog(data) {
+  var dc = document.getElementById('dynamic-content');
+  if (!dc) return;
+
+  var optionsHTML = (data.options || []).map(function(opt) {
+    var icon = opt.action === 'extend_days' ? '📅' : (opt.action === 'reduce_pois' ? '✂️' : '✅');
+    var cls = opt.action === 'extend_days' ? 'bg-gray-900 text-yellow-400' :
+              (opt.action === 'reduce_pois' ? 'bg-white border-2 border-gray-300 text-gray-700' :
+               'bg-white border border-gray-200 text-gray-500');
+    return '<button onclick="_handleOvercrowdedChoice(\'' + opt.action + '\', ' + (opt.days || 0) + ')" class="' + cls + ' font-bold py-3 px-4 rounded-xl text-sm w-full mb-2 hover:scale-95 transition-transform">' + icon + ' ' + opt.label + '</button>';
+  }).join('');
+
+  dc.innerHTML = '<div id="overcrowded-dialog" class="bg-yellow-50 rounded-3xl border-2 border-yellow-300 p-5 mt-3 animate-fade-in">' +
+    '<p class="text-2xl text-center mb-2">⚠️</p>' +
+    '<p class="text-sm font-bold text-gray-900 text-center mb-1">景点太多了</p>' +
+    '<p class="text-xs text-gray-600 text-center mb-4">' + data.message + '</p>' +
+    '<div class="space-y-1">' + optionsHTML + '</div>' +
+    '</div>';
+  if (typeof scrollToBottom === 'function') scrollToBottom();
+}
+
+async function _handleOvercrowdedChoice(action, days) {
+  var dc = document.getElementById('dynamic-content');
+  try {
+    // 先通知后端用户选择
+    var res = await fetch(API_BASE + '/api/schedule_overcrowded_answer', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: action, days: days})
+    });
+    var answerData = await res.json();
+
+    if (action === 'reduce_pois') {
+      // 返回选择阶段
+      if (dc) dc.innerHTML = '<div class="bg-blue-50 rounded-3xl p-5 text-center"><p class="text-sm text-blue-700">📋 请返回上方的候选池，减少选择的景点数量</p></div>';
+      showCandidateBar();
+      return;
+    }
+
+    // extend_days 或 continue_anyway：重新调用 smart_schedule
+    if (dc) dc.innerHTML = '<div class="text-center py-8"><p class="text-sm text-gray-500">🪄 正在重新排程...</p></div>';
+    if (typeof scrollToBottom === 'function') scrollToBottom();
+
+    var schedBody = {start_time: '09:00', candidates: multiCandidatePool};
+    if (action === 'continue_anyway') {
+      schedBody.overcrowded_action = 'continue_anyway';
+    }
+
+    var schedRes = await fetch(API_BASE + '/api/smart_schedule', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(schedBody)
+    });
+    var schedData = await schedRes.json();
+
+    if (schedData.status === 'OVERCROWDED') {
+      // 仍然超量（不太可能但做防御）
+      _showOvercrowdedDialog(schedData);
+      return;
+    }
+
+    if (schedData.status === 'SUCCESS') {
+      multiDayScheduleResult = schedData; multiActiveDayIndex = 0;
+      renderMultiDayCards(schedData);
+      isInTripMode = true;
+      if (typeof switchBottomBarToTripMode === 'function') switchBottomBarToTripMode();
+      hideCandidateBar();
+      currentPhase = 'trip_active';
+
+      var review = schedData.review;
+      if (review && review.phase === 'schedule_review' && review.questions && review.questions.length > 0) {
+        _showScheduleReviewQuestion(schedData, review, 0);
+      }
+    } else if (dc) {
+      dc.innerHTML = '<div class="bg-red-50 rounded-3xl p-6 text-center"><p class="text-red-500 font-bold">排程失败</p><p class="text-sm">' + (schedData.message || '') + '</p></div>';
+    }
+  } catch (e) {
+    console.error('[MultiDay] _handleOvercrowdedChoice ERROR:', e);
     if (dc) dc.innerHTML = '<div class="bg-red-50 rounded-3xl p-6 text-center"><p class="text-red-500 font-bold">请求失败</p></div>';
   }
 }
@@ -8544,14 +8633,20 @@ function expandDayDetail(dayIndex) {
   html += '</div>';
 
   // ── 统计条 ──
+  var warningCount = (day.closed_conflicts && day.closed_conflicts.length) || 0;
+  var unassignedMealCount = (day.unassigned_meals && day.unassigned_meals.length) || 0;
+  var scheduledCount = (day.pairs ? day.pairs.length : 0);
+
   html += '<div class="flex gap-3 mb-4 text-xs text-gray-500 flex-shrink-0 bg-gray-50 rounded-2xl p-3">';
   html += '<span>⏱ ' + Math.round((day.total_duration_minutes || 0) / 60) + 'h</span>';
   html += '<span>🚶 ' + (day.total_travel_minutes || 0) + 'min</span>';
-  html += '<span>📍 ' + (day.pairs ? day.pairs.length : 0) + '站</span>';
+  html += '<span>✅ ' + Math.max(0, scheduledCount) + '个已排</span>';
+  if (warningCount > 0) html += '<span class="text-amber-600">⚠️ ' + warningCount + '个时间紧张</span>';
   html += '</div>';
 
   // ── 时间线（可滚动）──
   html += '<div class="flex-1 overflow-y-auto space-y-2" style="padding-bottom:4px">';
+
   if (timeline.length > 0) {
     for (var t = 0; t < timeline.length; t++) {
       var node = timeline[t];
@@ -8579,21 +8674,15 @@ function expandDayDetail(dayIndex) {
   }
   html += '</div>';
 
-  // ── 冲突和未知营业时间提示 ──
-  if ((day.closed_conflicts && day.closed_conflicts.length > 0) || (day.unknown_hours_shops && day.unknown_hours_shops.length > 0)) {
-    html += '<div class="flex-shrink-0 mt-3 space-y-1">';
-    if (day.closed_conflicts && day.closed_conflicts.length > 0) {
-      for (var cc = 0; cc < day.closed_conflicts.length; cc++) {
-        var c = day.closed_conflicts[cc];
-        html += '<div class="bg-red-50 border border-red-200 rounded-2xl p-2 text-xs text-red-700">🚫 ' + _escHtml(c.shop_name || '') + ': ' + _escHtml(c.reason || '') + '</div>';
-      }
-    }
+  // ── 预警汇总 ──
+  if (warningCount > 0 || (day.unknown_hours_shops && day.unknown_hours_shops.length > 0)) {
+    html += '<div class="flex-shrink-0 mt-2 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-800">';
+    html += '⚠️ ' + warningCount + ' 个地点时间紧张（建议延长天数或调整行程）';
     if (day.unknown_hours_shops && day.unknown_hours_shops.length > 0) {
-      html += '<div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-2 text-xs text-yellow-700">🕐 以下地点营业时间未知: ' + day.unknown_hours_shops.map(_escHtml).join(', ') + '</div>';
+      html += '；🕐 ' + day.unknown_hours_shops.length + ' 个地点营业时间未知';
     }
     html += '</div>';
   }
-
   // ── 待排程餐厅 ──
   var unassigned = day.unassigned_meals || [];
   if (unassigned.length > 0) {

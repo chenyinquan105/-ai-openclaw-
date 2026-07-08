@@ -518,117 +518,34 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
         preferences=preferences,
     )
 
-    # ── 后处理：自动补全三餐 ──
-    cuisine_prefs = preferences.get("taste", {}).get("cuisine_preference", [])
-    rating_cutoff = preferences.get("budget", {}).get("rating_cutoff", 3.5)
+    # ── 后处理：跨天餐厅去重 + 保留待排程占位 ──
+    # 不再通过 Amap API 自动搜索补全餐厅，只用预选池中的餐厅。
+    # 预选餐厅不足时保留 LUNCH_NEEDED / DINNER_NEEDED 占位节点。
+    global_used_meal_ids = set()  # 跨天追踪已用餐厅，防止同店复排
+    auto_meals_added = []  # 不再自动添加，保留字段兼容前端
     destination = session_state.get("trip_destination", "北京")
-    auto_meals_added = []
 
     for day in result.get("days", []):
-        timeline = day.get("timeline", [])
         day_idx = day.get("day_index", 0)
+        timeline = day.get("timeline", [])
 
-        # 统计已有的餐次
-        has_lunch = any(n.get("action") == "LUNCH" for n in timeline)
-        has_dinner = any(n.get("action") == "DINNER" for n in timeline)
-
-        # 计算当天活动中心点
-        lats = [float(s.get("lat", checkin_lat)) for s in result.get("days", [])[day_idx].get("task_list", [])]
-        lngs = [float(s.get("lng", checkin_lng)) for s in result.get("days", [])[day_idx].get("task_list", [])]
-        if lats and lngs:
-            centroid_lat = sum(lats) / len(lats)
-            centroid_lng = sum(lngs) / len(lngs)
-        else:
-            centroid_lat, centroid_lng = float(checkin_lat), float(checkin_lng)
-
-        meals_added_today = []
-        # 预填 scheduler 已分配的餐厅 ID（含 BREAKFAST/LUNCH/DINNER），防止 auto-complete 复用
-        meal_used_ids = set()
+        # 跨天去重：移除当天 timeline 中已被前些天用过的餐厅
         for node in timeline:
             sid = node.get("shop_id", "")
-            if sid and node.get("action") in ("BREAKFAST", "LUNCH", "DINNER"):
-                meal_used_ids.add(sid)
+            action = node.get("action", "")
+            if sid and action in ("LUNCH", "DINNER"):
+                if sid in global_used_meal_ids:
+                    # 该餐厅已在之前的天使用过 → 替换为待排程占位
+                    node["action"] = "LUNCH_NEEDED" if action == "LUNCH" else "DINNER_NEEDED"
+                    node["memo"] = "⚠️ 午餐（待补充）" if action == "LUNCH" else "⚠️ 晚餐（待补充）"
+                    node["category"] = "lunch_needed" if action == "LUNCH" else "dinner_needed"
+                    node["shop_id"] = ""
+                    node["opentime"] = "未知"
+                else:
+                    global_used_meal_ids.add(sid)
 
-        # 早餐：不再自动补全，保留 BREAKFAST_NEEDED 供用户手动添加
-
-        # 补全午餐
-        if not has_lunch:
-            # 先移除所有 LUNCH_NEEDED 占位节点（防止与真正 LUNCH 共存）
-            timeline[:] = [n for n in timeline if n.get("action") != "LUNCH_NEEDED"]
-            lunch_shops = _auto_search_restaurants_for_day(
-                centroid_lat, centroid_lng, cuisine_prefs, rating_cutoff,
-                destination, meal_type="restaurant"
-            )
-            if lunch_shops:
-                # 排除已用于其他餐次的店铺，避免复用
-                available_lunches = [s for s in lunch_shops if s.get("shop_id", "") not in meal_used_ids]
-                lunch = available_lunches[0] if available_lunches else lunch_shops[0]
-                lunch_time = "12:00"
-                # 找到上午最后一个 VISIT 之后插入
-                insert_idx = len(timeline)
-                for ti, node in enumerate(timeline):
-                    if node.get("action") == "VISIT":
-                        t = _time_str_to_minutes(node.get("time", "12:00"))
-                        if t < 12 * 60:
-                            insert_idx = ti + 1
-                # 如果未找到合适位置（所有 VISIT 都在下午），插在第一个 VISIT/BEDTIME 之前
-                if insert_idx == len(timeline):
-                    for ti, node in enumerate(timeline):
-                        if node.get("action") in ("VISIT", "BEDTIME"):
-                            insert_idx = ti
-                            break
-                if insert_idx <= len(timeline):
-                    timeline.insert(insert_idx, {
-                        "time": lunch_time,
-                        "action": "LUNCH",
-                        "memo": f"🍽️ 午餐：{lunch.get('name', '午餐')}",
-                        "category": lunch.get("category", "restaurant"),
-                        "shop_id": lunch.get("shop_id", ""),
-                        "duration_minutes": 60,
-                        "opentime": lunch.get("opentime", "未知"),
-                    })
-                meal_used_ids.add(lunch.get("shop_id", ""))
-                meals_added_today.append({"meal": "lunch", "shop": lunch.get("name", "")})
-
-        # 补全晚餐
-        if not has_dinner:
-            # 先移除所有 DINNER_NEEDED 占位节点（防止与真正 DINNER 共存）
-            timeline[:] = [n for n in timeline if n.get("action") != "DINNER_NEEDED"]
-            dinner_shops = _auto_search_restaurants_for_day(
-                centroid_lat, centroid_lng, cuisine_prefs, rating_cutoff,
-                destination, meal_type="restaurant"
-            )
-            if dinner_shops:
-                # 排除已用于其他餐次的店铺，避免复用
-                available_dinners = [s for s in dinner_shops if s.get("shop_id", "") not in meal_used_ids]
-                dinner = available_dinners[0] if available_dinners else dinner_shops[0]
-                dinner_time = "18:00"
-                # 找到正确的插入位置（在下午活动之后、BEDTIME 之前）
-                insert_idx = len(timeline)
-                for ti, node in enumerate(timeline):
-                    if node.get("action") == "BEDTIME":
-                        insert_idx = ti
-                        break
-                    t = _time_str_to_minutes(node.get("time", "00:00"))
-                    if t > 17 * 60:
-                        insert_idx = ti
-                        break
-                timeline.insert(insert_idx, {
-                    "time": dinner_time,
-                    "action": "DINNER",
-                    "memo": f"🍽️ 晚餐：{dinner.get('name', '晚餐')}",
-                    "category": dinner.get("category", "restaurant"),
-                    "shop_id": dinner.get("shop_id", ""),
-                    "duration_minutes": 60,
-                    "opentime": dinner.get("opentime", "未知"),
-                })
-                meals_added_today.append({"meal": "dinner", "shop": dinner.get("name", "")})
-
-        # 重新排序 timeline（server 端 insert 操作可能打乱顺序）
+        # 重新排序（去重替换可能改变节点，但时间不变）
         timeline.sort(key=lambda n: _time_str_to_minutes(n.get("time", "00:00")))
-
-        if meals_added_today:
-            auto_meals_added.append({"day_index": day_idx, "meals": meals_added_today})
 
     # ── 后处理：闭店冲突 → 搜索替代品 ──
     closed_conflicts_resolved = []
@@ -861,9 +778,9 @@ def _llm_review_schedule(schedule_result: dict, weather_data: dict, overcrowded_
 **auto_fixes 中每个 fix 必须包含 type 字段**，可选值：
 - "move_to_day": 将 POI 移至另一天（需 from_day_index, to_day_index, poi_name）
 - "swap": 交换两天的 POI（需 day_a_index, day_b_index, poi_a_name, poi_b_name）
-- "remove_poi": 移除不合理的 POI（需 day_index, poi_name）
 - "reorder": 调整当天顺序（需 day_index, poi_name, new_position）
 - "general": 通用建议（仅 detail，无需程序化应用）
+**注意：绝不要使用 remove_poi——所有用户选择的目的地都必须保留。如需移除请通过 questions 让用户决定。**
 
 严格按以下 JSON 格式输出（不要包含其他文字）：
 {"auto_fixes":[{"type":"move_to_day","from_day_index":0,"to_day_index":1,"poi_name":"八达岭长城","detail":"故宫到八达岭长城60km，建议移至第二天单独游览"}],"questions":[{"question_id":"q1","question_text":"第1天有雷阵雨，长城是户外景点，但第2天天气晴朗，是否把长城改到第2天？","options":["改到第2天","坚持第1天去，带雨具","换成室内活动"]}],"risk_flags":["第2天体力消耗较大","⚠️ 第1天: 故宫→八达岭长城 相距60km，严重跨城！"]}
@@ -5160,9 +5077,36 @@ def _handle_multi_day_chat_edit(action: str, params: dict) -> dict:
         kw = params.get("keywords", "") or params.get("shop_name", "")
         cat = params.get("category", "")
         shop_name = params.get("shop_name", "")
+        shop_id = params.get("shop_id", "")
         time_str = params.get("time", "12:00")
         if not kw:
             return {"status": "ERROR", "message": "请提供搜索关键词（如「咖啡」「景点」）"}
+        # 用户未指定具体店铺 → 返回候选列表，不自动添加
+        if not shop_name and not shop_id:
+            try:
+                search_cat = [cat] if cat else ["restaurant"]
+                new_res = backend.skill_poi.search_poi_matrix(
+                    center_coord=center,
+                    categories=search_cat,
+                    radius_meters=5000,
+                    min_rating=3.5,
+                    keywords=kw
+                )
+                candidates = []
+                for c, shops in new_res.get("search_results", {}).items():
+                    for s in shops[:5]:
+                        candidates.append({
+                            "shop_id": str(s.get("shop_id", "")),
+                            "name": s.get("name", ""),
+                            "category": c,
+                            "rating": s.get("rating", 0),
+                        })
+                return {"status": "SUCCESS", "phase": "need_shop_selection",
+                        "message": f"找到 {len(candidates)} 个「{kw}」相关商户，请选择",
+                        "candidates": candidates}
+            except Exception as e:
+                return {"status": "ERROR", "message": f"搜索失败: {str(e)}"}
+        # 用户指定了具体店铺 → 自动添加
         try:
             # 搜索 POI（使用 _infer_center_coord 优先酒店坐标）
             search_cat = [cat] if cat else ["restaurant"]
@@ -6984,18 +6928,25 @@ def smart_schedule():
         return jsonify({"status": "ERROR", "message": "天数必须 >= 1"}), 400
 
     # ── 事前检查：POI 数量 vs 天数是否合理 ──
-    MAX_PER_DAY = 5  # 每天合理上限（含景点+餐厅等）
-    total_pois = len(candidate_pool)
+    import math
+    MAX_SCENIC_PER_DAY = 2  # 每天景点上限（只算 scenic，不含饭店/购物中心）
+    scenic_count = sum(1 for s in candidate_pool if s.get("category", "") == "scenic")
     overcrowded_warning = None
-    if total_pois > trip_days * MAX_PER_DAY:
-        recommended = max(1, int(__import__('math').ceil(total_pois / MAX_PER_DAY)))
-        overcrowded_warning = {
-            "overcrowded": True,
-            "total_pois": total_pois,
+    overcrowded_action = data.get("overcrowded_action", "")
+    if scenic_count > trip_days * MAX_SCENIC_PER_DAY and overcrowded_action != "continue_anyway":
+        recommended = max(trip_days + 1, int(math.ceil(scenic_count / MAX_SCENIC_PER_DAY)))
+        return jsonify({
+            "status": "OVERCROWDED",
+            "scenic_count": scenic_count,
             "current_days": trip_days,
             "suggested_days": recommended,
-            "message": f"您选了{total_pois}个地点，{trip_days}天可能玩不过来，建议增至{recommended}天体验更好"
-        }
+            "message": f"您选了{scenic_count}个景点，{trip_days}天每天最多{MAX_SCENIC_PER_DAY}个，建议增至{recommended}天体验更好",
+            "options": [
+                {"action": "extend_days", "label": f"延长至{recommended}天", "days": recommended},
+                {"action": "reduce_pois", "label": "返回减少景点"},
+                {"action": "continue_anyway", "label": f"保持{trip_days}天，继续排程"},
+            ]
+        }), 200
 
     # 如果没有酒店坐标，用第一个POI的坐标作为参考
     if not checkin_lat or not checkin_lng:
@@ -7049,25 +7000,63 @@ def smart_schedule():
                 poi_name = fix.get("poi_name", "")
                 if 0 <= from_day < len(result["days"]) and 0 <= to_day < len(result["days"]) and poi_name:
                     moved = None
+                    moved_from_day = None
                     for day in result["days"]:
                         for t in list(day.get("task_list", [])):
                             if t.get("name", "") == poi_name:
                                 moved = t
+                                moved_from_day = day
                                 day["task_list"].remove(t)
                                 break
                         if moved:
                             break
                     if moved:
                         result["days"][to_day].setdefault("task_list", []).append(moved)
+                        # 同步更新 selected_pairs（pairs 列表）
+                        src_pairs = result["days"][from_day].get("pairs", [])
+                        moved_pair = None
+                        for p in src_pairs:
+                            if len(p) >= 3 and p[2] == poi_name:
+                                moved_pair = p
+                                break
+                        if moved_pair:
+                            result["days"][from_day]["pairs"] = [p for p in src_pairs if not (len(p) >= 3 and p[2] == poi_name)]
+                            result["days"][to_day].setdefault("pairs", []).append(moved_pair)
+                        # 同步更新 timeline：从源天移除匹配节点（精确 shop_id 匹配）
+                        src_timeline = result["days"][from_day].get("timeline", [])
+                        moved_shop_id = moved.get("shop_id", "") if isinstance(moved, dict) else ""
+                        moved_task_id = moved.get("task_id", "") if isinstance(moved, dict) else ""
+                        match_id = moved_shop_id or moved_task_id
+                        result["days"][from_day]["timeline"] = [
+                            n for n in src_timeline
+                            if n.get("shop_id") != match_id
+                        ]
+                        # 目标天 timeline 插入占位节点（按时间排序）
+                        dst_timeline = result["days"][to_day].get("timeline", [])
+                        placeholder_time = "10:00"  # 默认上午，前端可后续调整
+                        dst_timeline.append({
+                            "time": placeholder_time,
+                            "action": "VISIT",
+                            "memo": f"📌 {poi_name}（已移入）",
+                            "category": moved.get("category", ""),
+                            "shop_id": moved_shop_id,
+                            "duration_minutes": moved.get("duration_minutes", 60),
+                            "opentime": "未知",
+                        })
+                        dst_timeline.sort(key=lambda n: (lambda t: int(t.split(":")[0])*60 + int(t.split(":")[1]))(n.get("time", "00:00")))
+                        result["days"][to_day]["timeline"] = dst_timeline
                         auto_fixes_applied.append(f"已将「{poi_name}」从第{from_day+1}天移至第{to_day+1}天")
                         print(f"[auto_fix] move_to_day: {poi_name} D{from_day+1}→D{to_day+1}", flush=True)
             elif fix_type == "remove_poi":
-                day_idx = fix.get("day_index", -1)
+                # 【设计原则】预选池目的地 100% 保留，不允许 LLM 删除。
+                # 若 LLM 认为某 POI 不合理，应转为 question 让用户决定，
+                # 或在 risk_flags 中标注，绝不自动删除。
                 poi_name = fix.get("poi_name", "")
-                if 0 <= day_idx < len(result["days"]) and poi_name:
-                    task_list = result["days"][day_idx].get("task_list", [])
-                    result["days"][day_idx]["task_list"] = [t for t in task_list if t.get("name", "") != poi_name]
-                    auto_fixes_applied.append(f"已从第{day_idx+1}天移除「{poi_name}」")
+                print(f"[auto_fix] remove_poi 已禁用，忽略删除「{poi_name}」的请求", flush=True)
+                # 转为 risk_flag 提醒用户
+                if "risk_flags" not in review_result:
+                    review_result["risk_flags"] = []
+                review_result["risk_flags"].append(f"LLM 建议移除「{poi_name}」，已自动保留（所有预选目的地均须排入）")
             elif fix_type == "swap":
                 day_a = fix.get("day_a_index", -1)
                 day_b = fix.get("day_b_index", -1)
@@ -7108,6 +7097,47 @@ def smart_schedule():
         "unknown_hours_shops": result.get("unknown_hours_shops", []),
         "reminders_injected": reminders_injected,
         "overcrowded_warning": overcrowded_warning,  # 事前检查：POI过多警告
+    })
+
+
+@app.route("/api/schedule_overcrowded_answer", methods=["POST"])
+def schedule_overcrowded_answer():
+    """处理超量 POI 的用户选择。
+    请求: {action: "extend_days"|"reduce_pois"|"continue_anyway", days: int}
+    """
+    _ensure_agent()
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "")
+
+    if action == "reduce_pois":
+        # 返回选择阶段，让用户减少 POI
+        session_state["phase"] = "poi_selection"
+        return jsonify({
+            "status": "REDUCE_POIS",
+            "message": "请减少选择的景点数量，或返回重新选择。",
+        })
+
+    if action == "extend_days":
+        new_days = data.get("days", 0)
+        if new_days < 1:
+            return jsonify({"status": "ERROR", "message": "无效的天数"}), 400
+        session_state["trip_days"] = new_days
+        # 重建 days 数组
+        session_state["days"] = [
+            {"day_index": i, "label": f"第{i+1}天",
+             "selected_pairs": [], "task_list": [], "spatial_matrix": {}}
+            for i in range(new_days)
+        ]
+
+    if action == "continue_anyway":
+        # 不改变天数，继续排程（前端以 overcrowded_action=continue_anyway 重调 smart_schedule）
+        pass
+
+    return jsonify({
+        "status": "OK",
+        "action": action,
+        "trip_days": session_state.get("trip_days", 2),
+        "message": "已更新，请重新触发排程" if action in ("extend_days", "continue_anyway") else "请减少景点",
     })
 
 

@@ -450,7 +450,7 @@ class AmapPOIClient:
         if amap_type.startswith("05"):
             return ("restaurant", "餐饮")
         if amap_type.startswith("06"):
-            return ("cafe", "购物")
+            return ("shopping", "购物")
         if amap_type.startswith("07"):
             return ("hair", "生活服务")
         if amap_type.startswith("08"):

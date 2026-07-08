@@ -2416,3 +2416,106 @@ UnboundLocalError: cannot access local variable 'llm_failed' where it is not ass
 }...
 [审查问答] 操作前各天节点数: [8, 8]
 [审查问答] 操作后各天节点数: [8, 8], 变更: []
+[2026-07-07 20:52:28 +0800] [71124] [INFO] Starting gunicorn 26.0.0
+[2026-07-07 20:52:28 +0800] [71124] [INFO] Listening at: http://0.0.0.0:5000 (71124)
+[2026-07-07 20:52:28 +0800] [71124] [INFO] Using worker: gthread
+[2026-07-07 20:52:28 +0800] [71126] [INFO] Booting worker with pid: 71126
+[2026-07-07 20:52:28 +0800] [71124] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: {
+  "auto_fixes": [
+    {
+      "type": "general",
+      "detail": "第2天 checkin
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[2026-07-08 14:56:21 +0800] [74997] [INFO] Starting gunicorn 26.0.0
+[2026-07-08 14:56:21 +0800] [74997] [INFO] Listening at: http://0.0.0.0:5000 (74997)
+[2026-07-08 14:56:21 +0800] [74997] [INFO] Using worker: gthread
+[2026-07-08 14:56:21 +0800] [74999] [INFO] Booting worker with pid: 74999
+[2026-07-08 14:56:22 +0800] [74997] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+Traceback (most recent call last):
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 6960, in smart_schedule
+    result = _run_multi_day_schedule(
+        candidate_pool, trip_days,
+        checkin_lat, checkin_lng,
+        transport, start_time
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 565, in _run_multi_day_schedule
+    alternatives = _auto_search_alternatives(shop_name, cat, ref_lat, ref_lng, destination)
+                                                                               ^^^^^^^^^^^
+NameError: name 'destination' is not defined
+Traceback (most recent call last):
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 6960, in smart_schedule
+    result = _run_multi_day_schedule(
+        candidate_pool, trip_days,
+        checkin_lat, checkin_lng,
+        transport, start_time
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 565, in _run_multi_day_schedule
+    alternatives = _auto_search_alternatives(shop_name, cat, ref_lat, ref_lng, destination)
+                                                                               ^^^^^^^^^^^
+NameError: name 'destination' is not defined
+Traceback (most recent call last):
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 6960, in smart_schedule
+    result = _run_multi_day_schedule(
+        candidate_pool, trip_days,
+        checkin_lat, checkin_lng,
+        transport, start_time
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 565, in _run_multi_day_schedule
+    alternatives = _auto_search_alternatives(shop_name, cat, ref_lat, ref_lng, destination)
+                                                                               ^^^^^^^^^^^
+NameError: name 'destination' is not defined
+Traceback (most recent call last):
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 6960, in smart_schedule
+    result = _run_multi_day_schedule(
+        candidate_pool, trip_days,
+        checkin_lat, checkin_lng,
+        transport, start_time
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 565, in _run_multi_day_schedule
+    alternatives = _auto_search_alternatives(shop_name, cat, ref_lat, ref_lng, destination)
+                                                                               ^^^^^^^^^^^
+NameError: name 'destination' is not defined
+Traceback (most recent call last):
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 6960, in smart_schedule
+    result = _run_multi_day_schedule(
+        candidate_pool, trip_days,
+        checkin_lat, checkin_lng,
+        transport, start_time
+    )
+  File "/Users/kaijimima1234/项目/美团ai openclaw版本/server.py", line 565, in _run_multi_day_schedule
+    alternatives = _auto_search_alternatives(shop_name, cat, ref_lat, ref_lng, destination)
+                                                                               ^^^^^^^^^^^
+NameError: name 'destination' is not defined
+[2026-07-08 14:57:14 +0800] [75064] [INFO] Starting gunicorn 26.0.0
+[2026-07-08 14:57:14 +0800] [75064] [INFO] Listening at: http://0.0.0.0:5000 (75064)
+[2026-07-08 14:57:14 +0800] [75064] [INFO] Using worker: gthread
+[2026-07-08 14:57:14 +0800] [75066] [INFO] Booting worker with pid: 75066
+[2026-07-08 14:57:14 +0800] [75064] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[2026-07-08 14:58:10 +0800] [75124] [INFO] Starting gunicorn 26.0.0
+[2026-07-08 14:58:10 +0800] [75124] [INFO] Listening at: http://0.0.0.0:5000 (75124)
+[2026-07-08 14:58:10 +0800] [75124] [INFO] Using worker: gthread
+[2026-07-08 14:58:10 +0800] [75126] [INFO] Booting worker with pid: 75126
+[2026-07-08 14:58:10 +0800] [75124] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[2026-07-08 15:09:49 +0800] [75417] [INFO] Starting gunicorn 26.0.0
+[2026-07-08 15:09:49 +0800] [75417] [INFO] Listening at: http://0.0.0.0:5000 (75417)
+[2026-07-08 15:09:49 +0800] [75417] [INFO] Using worker: gthread
+[2026-07-08 15:09:49 +0800] [75419] [INFO] Booting worker with pid: 75419
+[2026-07-08 15:09:49 +0800] [75417] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 

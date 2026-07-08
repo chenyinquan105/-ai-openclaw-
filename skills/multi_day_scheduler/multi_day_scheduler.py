@@ -17,6 +17,21 @@ multi_day_scheduler.py —— 多日行程智能排程引擎
 import math
 import sys
 import os
+import random
+import copy
+
+# 导入惩罚函数模块（批次二：软约束模型）
+try:
+    from scheduling_penalty import (meal_time_penalty, SKIP_PENALTY_BASE,
+                                      LAMBDA_TRAVEL, FATIGUE_COEFFICIENT, LAMBDA_FATIGUE)
+except ImportError:
+    # 回退：如果模块不存在，使用默认值（保持向后兼容）
+    def meal_time_penalty(meal_type, proposed_minutes):
+        return 0.0
+    SKIP_PENALTY_BASE = 200
+    LAMBDA_TRAVEL = 0.3
+    FATIGUE_COEFFICIENT = {"default": 0.8}
+    LAMBDA_FATIGUE = 0.5
 
 # ======================================================================
 # Haversine 距离计算（与 route_planner 保持一致）
@@ -199,7 +214,7 @@ def _simple_kmeans(shops: list, coords: list, k: int, max_iter: int = 100) -> li
 # 阶段 2: 负载均衡 —— 贪心重分配
 # ======================================================================
 
-def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0, max_shops_per_day: int = 5) -> list:
+def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0, max_scenic_per_day: int = 2) -> list:
     """
     贪心迭代重分配，使每天总时间接近目标，且每天 POI 数不超标。
     第一遍：时间均衡（目标: 每天活动 + 旅行时间在 max_hours 的 +-15% 内）。
@@ -220,11 +235,8 @@ def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0, max_shops_
                 if cat in MAIN_MEAL_CATEGORIES:
                     meal_count += 1
                     if meal_count <= 2:
-                        total += _get_duration(cat)  # 最多计入2家正餐
-                        if "_excess_meal" in s:
-                            del s["_excess_meal"]  # 前2家清除超额标记
-                    else:
-                        s["_excess_meal"] = True  # 第3+家正餐标记为超额（将被未排程）
+                        total += _get_duration(cat)  # 最多计入2家正餐（1午+1晚）
+                    # 第3+家正餐不计入时间预算（每天最多2顿正餐），但不标记任何内部字段
                 else:
                     total += _get_duration(cat)
             # 粗略估计旅行时间 = 点数 × 15min
@@ -271,20 +283,66 @@ def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0, max_shops_
         else:
             break
 
-    # ── 第二遍：数量均衡 —— 每天 POI 数不超上限 ──
+    # ── 第二遍前半：景点数量均衡 —— 只统计 scenic，不包含饭店/购物中心 ──
     for _ in range(max_iter):
-        counts = [len(c) for c in clusters]
+        # 只统计 scenic 类别（景区/景点）
+        scenic_counts = [
+            sum(1 for s in c if s.get("category", "") == "scenic")
+            for c in clusters
+        ]
+        max_vc = max(scenic_counts)
+        min_vc = min(scenic_counts)
+        # 数量差距 <= 1 则认为已均衡
+        if max_vc - min_vc <= 1:
+            break
+
+        over_idx = scenic_counts.index(max_vc)
+        under_idx = scenic_counts.index(min_vc)
+
+        # 从最多天选一个 scenic 离最少天质心最近的搬过去
+        target_centroid = _cluster_centroid(clusters[under_idx])
+        if target_centroid is None:
+            break
+
+        best_shop = None
+        best_dist = float("inf")
+        for s in clusters[over_idx]:
+            if s.get("category", "") != "scenic":
+                continue  # 只搬 scenic（景点），不搬餐厅/购物中心
+            lat = float(s.get("lat", 0))
+            lng = float(s.get("lng", 0))
+            d = _haversine_m(lat, lng, target_centroid[0], target_centroid[1])
+            if d < best_dist:
+                best_dist = d
+                best_shop = s
+
+        if best_shop:
+            clusters[over_idx].remove(best_shop)
+            clusters[under_idx].append(best_shop)
+        else:
+            break
+
+    # ── 第二遍后半：数量上限 —— 每天 scenic 数不超上限（不限制饭店/购物中心）──
+    prev_max_count = float("inf")
+    for _ in range(max_iter):
+        # 只统计 scenic，饭店/购物中心不计入上限
+        counts = [sum(1 for s in c if s.get("category", "") == "scenic") for c in clusters]
         max_count = max(counts)
         min_count = min(counts)
 
         # 最多天未超标 → 停止
-        if max_count <= max_shops_per_day:
+        if max_count <= max_scenic_per_day:
             break
+
+        # 防抖：如果总scenic超出 days*cap，无法全部满足，停止重分配
+        if max_count >= prev_max_count:
+            break
+        prev_max_count = max_count
 
         max_idx = counts.index(max_count)
         min_idx = counts.index(min_count)
 
-        # 从最多天选一个离最少天质心最近的点搬过去
+        # 从最多天选一个 scenic 离最少天质心最近的搬过去
         target_centroid = _cluster_centroid(clusters[min_idx])
         if target_centroid is None:
             break
@@ -292,6 +350,8 @@ def _balance_clusters(clusters: list, max_hours_per_day: float = 8.0, max_shops_
         best_shop = None
         best_dist = float("inf")
         for s in clusters[max_idx]:
+            if s.get("category", "") != "scenic":
+                continue  # 只搬 scenic，不动饭店/购物中心
             lat = float(s.get("lat", 0))
             lng = float(s.get("lng", 0))
             d = _haversine_m(lat, lng, target_centroid[0], target_centroid[1])
@@ -437,6 +497,44 @@ def _two_opt_improve(route: list) -> list:
     return best_route
 
 
+def _reorder_by_route(shops: list, route: list) -> list:
+    """
+    将 shops 按 TSP 优化后的 route 坐标顺序重排。
+    route 是 [(lat, lng), ...]，包含起止酒店坐标。
+    返回按旅行顺序排列的 shops 列表。
+    """
+    if not route or len(route) < 3:
+        return list(shops)
+
+    # 构建 (rounded_lat, rounded_lng) → shop 映射（处理 GPS 精度差异）
+    coord_to_shops = {}
+    for s in shops:
+        key = (round(float(s.get("lat", 0)), 4), round(float(s.get("lng", 0)), 4))
+        if key not in coord_to_shops:
+            coord_to_shops[key] = []
+        coord_to_shops[key].append(s)
+
+    ordered = []
+    seen_ids = set()
+    # 跳过首尾酒店坐标，只处理中间途经点
+    for point in route[1:-1]:
+        key = (round(point[0], 4), round(point[1], 4))
+        candidates = coord_to_shops.get(key, [])
+        for shop in candidates:
+            sid = shop.get("shop_id", "")
+            if sid not in seen_ids:
+                ordered.append(shop)
+                seen_ids.add(sid)
+                break
+
+    # 兜底：未被 route 匹配到的 shop 保持原顺序追加
+    for s in shops:
+        if s.get("shop_id", "") not in seen_ids:
+            ordered.append(s)
+
+    return ordered
+
+
 # ======================================================================
 # 阶段 4: 用餐插入
 # ======================================================================
@@ -472,9 +570,13 @@ def _bind_meals_to_destinations(main_meal_shops: list, visitable_shops: list) ->
 
 def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                     weather: dict = None, wake_time_str: str = "07:30",
-                    bedtime_str: str = "22:00", week_day: int = 0) -> dict:
+                    bedtime_str: str = "22:00", week_day: int = 0,
+                    transport: str = "步行优先") -> dict:
     """
     智能时间线构建：就近用餐 + 休息缓冲 + 天气标记 + 营业时间感知。
+
+    参数:
+        transport: 用户选择的交通方式，用于活动间 travel 耗时估算
 
     返回:
       {"timeline": [...], "closed_conflicts": [...], "unknown_hours_shops": [...]}
@@ -578,8 +680,13 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
 
             for meal in bound_meals:
                 if not lunch_assigned:
-                    # 午餐：安排在此 visit 之前
-                    lunch_time = max(11 * 60, min(current_minutes - 60, 11 * 60 + 30))
+                    # 午餐：从候选时间中选惩罚最小的（软约束）
+                    candidates = [
+                        max(11 * 60, current_minutes - 60),
+                        max(11 * 60, current_minutes),
+                        current_minutes + 30,
+                    ]
+                    lunch_time = min(candidates, key=lambda t: meal_time_penalty("lunch", t))
                     meal_dur = _get_duration(meal.get("category", ""))
                     timeline.append({
                         "time": f"{lunch_time // 60:02d}:{lunch_time % 60:02d}",
@@ -596,7 +703,7 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                     used_meal_shop_ids.add(meal.get("shop_id"))
                     lunch_assigned = True
                     timeline.append({
-                        "time": f"{current_minutes // 60:02d}:{current_minutes % 60:02d}",
+                        "time": _safe_time_str(current_minutes),
                         "action": "REST", "memo": "☕ 午休片刻", "category": "rest",
                         "shop_id": "", "duration_minutes": 0,
                     })
@@ -632,40 +739,57 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
         if len(timeline) > 0:
             if last_shop_lat and last_shop_lng:
                 travel_m = _haversine_m(last_shop_lat, last_shop_lng, s_lat, s_lng)
-                travel_min = max(5, round(travel_m / _get_speed("步行优先")))
+                travel_min = max(5, round(travel_m / _get_speed(transport)))
                 current_minutes += travel_min
             else:
                 current_minutes += 15
 
-        # ── 夜间截止（由 bedtime 决定）──
-        bed_h, bed_m = map(int, bedtime_str.split(":"))
-        night_cutoff = bed_h * 60 + bed_m - 60  # 就寝前1小时不再排活动
-        if current_minutes >= night_cutoff:
-            continue
+        # ── 品类时间窗约束 ──
+        if cat != "shopping":
+            # 午餐：活动开始于 11:30-13:30 时推到 13:30（下午）
+            if LUNCH_WINDOW[0] <= current_minutes < LUNCH_WINDOW[1]:
+                current_minutes = max(current_minutes, LUNCH_WINDOW[1])
 
-        # ── 营业时间检查 ──
+            # 非购物类白天约束：应在晚餐前完成，晚餐后留给购物/夜市
+            if current_minutes >= DINNER_WINDOW[0]:
+                # 标记 warning，但仍排入（不 kill，不 swap）
+                closed_conflicts.append({
+                    "shop_name": shop.get("name", ""),
+                    "shop_id": shop.get("shop_id", ""),
+                    "category": cat,
+                    "visit_time": _safe_time_str(current_minutes),
+                    "opentime": shop.get("opentime", "未知"),
+                    "reason": (
+                        f"非购物活动排在了晚间（{_safe_time_str(current_minutes)}），"
+                        f"体验可能不佳，建议延长天数或调整日期"
+                    ),
+                    "type": "evening_non_shopping",
+                })
+
+        # ── 营业时间检查（仅记录警告，不跳过）──
         opentime_str = shop.get("opentime", "未知")
         hours = _parse_opentime(opentime_str, week_day)
         open_check = _check_open(hours, current_minutes, dur)
 
         if open_check["status"] == "after_close":
+            # 店铺已关门，仍排入但追加警告
             closed_conflicts.append({
                 "shop_name": shop.get("name", ""),
                 "shop_id": shop.get("shop_id", ""),
                 "category": cat,
-                "visit_time": f"{current_minutes // 60:02d}:{current_minutes % 60:02d}",
+                "visit_time": _safe_time_str(current_minutes),
                 "opentime": opentime_str,
-                "reason": open_check["message"],
+                "reason": open_check["message"] + "（仍排入行程，请留意）",
+                "type": "business_hours_warning",
             })
-            continue  # 跳过此 POI
+            # 不 continue —— 所有目的地都必须排入
 
         if open_check["status"] == "before_open":
             # 推迟到开门时间
             suggested = open_check.get("suggested_time", current_minutes)
-            if suggested <= night_cutoff:
-                current_minutes = suggested
+            current_minutes = suggested
 
-        time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+        time_str = _safe_time_str(current_minutes)
 
         # ── 构建 memo ──
         memo = shop.get("name", "")
@@ -689,58 +813,8 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
         if cat in SNACK_CATEGORIES:
             _last_food_end_minutes = current_minutes
 
-    # ── 兜底午餐：主循环未插入时补插（排除已用店铺）──
-    if main_meal_shops and not any(t.get("action") in ("LUNCH", "LUNCH_NEEDED") for t in timeline):
-        fb_lunch = max(11*60+30, min(14*60, current_minutes))
-        if fb_lunch < 19 * 60:
-            available_fb = [m for m in main_meal_shops if m.get("shop_id") not in used_meal_shop_ids]
-            if available_fb:
-                nearest = min(available_fb, key=lambda m:
-                    _haversine_m(last_shop_lat or 0, last_shop_lng or 0,
-                                 m.get("lat", last_shop_lat or 0), m.get("lng", last_shop_lng or 0)))
-                timeline.append({
-                    "time": f"{fb_lunch // 60:02d}:{fb_lunch % 60:02d}",
-                    "action": "LUNCH", "memo": f"🍽️ 午餐：{nearest.get('name', '')}",
-                    "category": nearest.get("category", ""),
-                    "shop_id": nearest.get("shop_id", ""),
-                    "duration_minutes": _get_duration(nearest.get("category", "")),
-                    "opentime": nearest.get("opentime", "未知"),
-                })
-                _last_food_end_minutes = fb_lunch + _get_duration(nearest.get("category", ""))
-                main_meal_shops.remove(nearest)
-                used_meal_shop_ids.add(nearest.get("shop_id"))
-
-    # ── 兜底晚餐：主循环未插入时补插（所有活动在17:00前结束的罕见情况，排除已用店铺）──
-    if main_meal_shops and not any(t.get("action") == "DINNER" for t in timeline) and current_minutes < 20 * 60:
-        dinner_time = max(17 * 60 + 30, current_minutes)
-        # 距上次进食至少90min（避免吃完小吃立刻吃正餐）
-        if _last_food_end_minutes is not None:
-            dinner_time = max(dinner_time, _last_food_end_minutes + 90)
-        current_minutes = dinner_time
-        # 选离最后位置最近的1家正餐（排除已用店铺）
-        ref_lat = last_shop_lat or 0
-        ref_lng = last_shop_lng or 0
-        available_fb_dinner = [m for m in main_meal_shops if m.get("shop_id") not in used_meal_shop_ids]
-        if available_fb_dinner:
-            nearest_dinner = min(available_fb_dinner, key=lambda m:
-                _haversine_m(ref_lat, ref_lng, m.get("lat", ref_lat), m.get("lng", ref_lng)))
-            time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
-            opentime_str = nearest_dinner.get("opentime", "未知")
-            dinner_dur = _get_duration(nearest_dinner.get("category", ""))
-            timeline.append({
-                "time": time_str, "action": "DINNER",
-                "memo": f"🍽️ 晚餐：{nearest_dinner.get('name', '')}",
-                "category": nearest_dinner.get("category", ""),
-                "shop_id": nearest_dinner.get("shop_id", ""),
-                "duration_minutes": dinner_dur,
-                "opentime": opentime_str,
-            })
-            current_minutes += dinner_dur + 10
-            _last_food_end_minutes = current_minutes
-            main_meal_shops.remove(nearest_dinner)
-            used_meal_shop_ids.add(nearest_dinner.get("shop_id"))
-
     # ── 兜底：无餐厅时插入占位节点（确保三餐始终可见）──
+    # 不再自动从候选池抓剩余餐厅填充——只用 meal binding 分配的餐厅，不够就显示待排程
     has_lunch = any(t.get("action") == "LUNCH" for t in timeline)
     has_dinner = any(t.get("action") == "DINNER" for t in timeline)
     if not has_lunch:
@@ -756,19 +830,20 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
             "shop_id": "", "duration_minutes": 60, "opentime": "未知",
         })
 
-    # ── 智能就寝时间 ──
-    bed_h, bed_m = map(int, bedtime_str.split(":"))
-    default_bedtime = bed_h * 60 + bed_m
-    # 最后活动结束后 90min 就寝，约束在 21:00-23:30
-    bedtime_minutes = max(21 * 60, min(23 * 60 + 30, current_minutes + 90))
-    # 如果默认就寝时间更合理（用户偏好），用默认值
-    if bedtime_minutes > default_bedtime + 60:
-        bedtime_minutes = default_bedtime
+    # ── 弹性就寝时间 ──
+    # 最后活动结束后 90min 就寝，不设上限（行程紧时自动后延）
+    bedtime_minutes = current_minutes + 90
+    # 不低于 21:00（太早睡不合理），不设上限
+    bedtime_minutes = max(21 * 60, bedtime_minutes)
+    # 如果超过次日凌晨，添加提示
+    bedtime_memo = "🌙 就寝"
+    if bedtime_minutes >= 24 * 60:
+        bedtime_memo = "🌙 就寝（⚠️ 行程很满，建议延长天数）"
 
     timeline.append({
-        "time": f"{bedtime_minutes // 60:02d}:{bedtime_minutes % 60:02d}",
+        "time": _safe_time_str(bedtime_minutes),
         "action": "BEDTIME",
-        "memo": "🌙 就寝",
+        "memo": bedtime_memo,
         "category": "bedtime",
         "shop_id": "",
         "duration_minutes": 0,
@@ -781,7 +856,7 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
         for shop in ordered_shops:
             cat = shop.get("category", "")
             dur = _get_duration(cat)
-            time_str = f"{current_minutes // 60:02d}:{current_minutes % 60:02d}"
+            time_str = _safe_time_str(current_minutes)
             timeline.append({
                 "time": time_str, "action": "VISIT",
                 "memo": shop.get("name", ""),
@@ -823,6 +898,25 @@ def _time_to_minutes(time_str: str) -> int:
         return h * 60 + m
     except (ValueError, TypeError):
         return 0
+
+
+def _safe_time_str(minutes: float) -> str:
+    """
+    将分钟数安全格式化为 "HH:MM"，处理溢出午夜的情况。
+    minutes >= 1440 时显示为 "次日 HH:MM"。
+    """
+    if minutes < 0:
+        minutes = 0
+    if minutes < 1440:
+        h = int(minutes) // 60
+        m = int(minutes) % 60
+        return f"{h:02d}:{m:02d}"
+    else:
+        # 跨午夜：显示 "次日 HH:MM"
+        remaining = int(minutes) - 1440
+        h = remaining // 60
+        m = remaining % 60
+        return f"次日{h:02d}:{m:02d}"
 
 
 def _has_breakfast_name(name: str) -> bool:
@@ -1110,7 +1204,7 @@ def solve_multi_day(
     clusters = _global_fine_tune(clusters, checkin_lat, checkin_lng)
 
     # ── 阶段 2: 负载均衡 ──
-    clusters = _balance_clusters(clusters, max_hours_per_day, max_shops_per_day=5)
+    clusters = _balance_clusters(clusters, max_hours_per_day, max_scenic_per_day=2)
 
     # 准备天气和偏好数据
     wdata = weather_data or {}
@@ -1130,21 +1224,67 @@ def solve_multi_day(
 
         route_result = _route_one_day(cluster, checkin_lat, checkin_lng, transport_preference, day_weather)
 
+        # 按 TSP 优化后的路线顺序重排 cluster
+        ordered_cluster = _reorder_by_route(cluster, route_result.get("route", []))
+        if not ordered_cluster:
+            ordered_cluster = cluster
+
         # ── 阶段 4: 智能时间线构建（就近用餐 + 休息缓冲 + 天气标记 + 营业时间感知）──
-        tl_result = _build_timeline(route_result, cluster, start_time_str, day_weather,
+        tl_result = _build_timeline(route_result, ordered_cluster, start_time_str, day_weather,
                                      wake_time_str="07:30", bedtime_str="22:00",
-                                     week_day=(i % 7))
+                                     week_day=(i % 7), transport=transport_preference)
         timeline = tl_result["timeline"]
         closed_conflicts_day = tl_result.get("closed_conflicts", [])
         unknown_hours_day = tl_result.get("unknown_hours_shops", [])
 
-        # 构建 selected_pairs 格式
+        # ── 阶段 5.5: 精修层（局部搜索优化，始终运行）──
+        if REFINE_ENABLED:
+            # 转换 timeline 格式以适配精修层（需要 start_minutes 而非 time string）
+            refined_timeline_raw = _refine_timeline(
+                _timeline_to_refine_format(timeline),
+                ordered_cluster,
+            )
+            # 将精修后的时间线转回原有格式
+            timeline = _refine_format_to_timeline(refined_timeline_raw, timeline)
+            # closed_conflicts 保留不变（全部为 warning 信息，不受精修影响）
+
+        # 构建 status 映射表
+        # scheduled: timeline 中有 VISIT/LUNCH/DINNER 节点
+        timeline_shop_ids = set()
+        for node in timeline:
+            sid = node.get("shop_id", "")
+            if sid and node.get("action") in ("VISIT", "LUNCH", "DINNER"):
+                timeline_shop_ids.add(sid)
+        # unassigned_meal: unassigned_meals 中的 shop_id
+        unassigned_meal_ids = {um["shop_id"] for um in tl_result.get("unassigned_meals", []) if um.get("shop_id")}
+        # 构建 warnings 映射（仅记录预警，不影响排入）
+        warnings_map = {}
+        for cc in closed_conflicts_day:
+            sid = cc.get("shop_id", "")
+            if sid:
+                if sid not in warnings_map:
+                    warnings_map[sid] = []
+                warnings_map[sid].append(cc.get("reason", ""))
+
+        # 构建 selected_pairs 格式（按 TSP 顺序）
         pairs = []
         task_list = []
-        for s in cluster:
+        for s in ordered_cluster:
             cat = s.get("category", "")
             sid = s.get("shop_id", "")
             sname = s.get("name", "")
+
+            # 确定状态（所有非正餐默认 scheduled）
+            if sid in unassigned_meal_ids:
+                status = "unassigned_meal"
+            elif cat in MAIN_MEAL_CATEGORIES and sid not in timeline_shop_ids:
+                status = "unassigned_meal"
+            else:
+                status = "scheduled"
+
+            # 收集该 task 的所有 warnings
+            task_warnings = warnings_map.get(sid, [])
+
             pairs.append((cat, sid, sname))
             task_list.append({
                 "task_id": sid,
@@ -1154,6 +1294,8 @@ def solve_multi_day(
                 "lng": s.get("lng", checkin_lng),
                 "duration_minutes": _get_duration(cat),
                 "human_needed": True,
+                "status": status,
+                "warnings": task_warnings,
             })
 
         # 构建 spatial_matrix
@@ -1288,6 +1430,344 @@ def solve_multi_day(
         "closed_conflicts": all_closed_conflicts,
         "unknown_hours_shops": all_unknown_hours,
     }
+
+
+# ======================================================================
+# 阶段 5.5: 精修层（局部搜索优化）
+# ======================================================================
+
+# 精修层配置参数
+REFINE_ENABLED = True
+REFINE_MAX_ITERATIONS = 80
+
+
+def _timeline_to_refine_format(timeline: list) -> list:
+    """
+    将 _build_timeline 产出的 timeline 格式转换为精修层使用的格式。
+
+    _build_timeline 格式: {"time": "09:00", "action": "VISIT", "shop_id": ..., "duration_minutes": ...}
+    精修层格式: {"type": "VISIT", "shop_id": ..., "start_minutes": 540, "duration_minutes": ..., "travel_minutes": ...}
+    """
+    result = []
+    prev_end_minutes = None
+    for node in timeline:
+        action = node.get("action", "")
+        refined_node = {
+            "shop_id": node.get("shop_id", ""),
+            "category": node.get("category", ""),
+            "duration_minutes": node.get("duration_minutes", 0),
+        }
+
+        # 计算 start_minutes
+        time_str = node.get("time", "00:00")
+        try:
+            h, m = map(int, time_str.split(":"))
+            start_minutes = h * 60 + m
+        except (ValueError, TypeError):
+            start_minutes = 0
+        refined_node["start_minutes"] = start_minutes
+
+        # 计算 travel_minutes（从前一个节点到当前节点的时间差 - 前一个节点的duration）
+        if prev_end_minutes is not None and start_minutes > prev_end_minutes:
+            refined_node["travel_minutes"] = start_minutes - prev_end_minutes
+        else:
+            refined_node["travel_minutes"] = 0
+
+        if action == "VISIT":
+            refined_node["type"] = "VISIT"
+        elif action == "LUNCH":
+            refined_node["type"] = "LUNCH"
+        elif action == "DINNER":
+            refined_node["type"] = "DINNER"
+        elif action == "BREAKFAST" or action == "BREAKFAST_NEEDED":
+            refined_node["type"] = "BREAKFAST"
+        elif action == "LUNCH_NEEDED":
+            refined_node["type"] = "LUNCH"
+        elif action == "DINNER_NEEDED":
+            refined_node["type"] = "DINNER"
+        elif action == "REST":
+            refined_node["type"] = "REST"
+        elif action == "BEDTIME":
+            refined_node["type"] = "BEDTIME"
+        elif action == "WAKE_UP":
+            refined_node["type"] = "WAKE_UP"
+        else:
+            refined_node["type"] = action
+
+        result.append(refined_node)
+        prev_end_minutes = start_minutes + node.get("duration_minutes", 0)
+
+    return result
+
+
+def _refine_format_to_timeline(refined: list, original_timeline: list) -> list:
+    """
+    将精修层格式转回 _build_timeline 的时间线格式。
+
+    保持原 timeline 中非 VISIT/LUNCH/DINNER 节点不变，
+    用精修后的 VISIT/LUNCH/DINNER 节点替换对应的原有节点。
+    通过 shop_id 精确匹配，避免位置错位导致数据混乱。
+    """
+    result = []
+    refined_visit_meals = [n for n in refined if n.get("type") in ("VISIT", "LUNCH", "DINNER")]
+
+    # 构建 refined 节点的 shop_id → node 映射（用于精确匹配）
+    refined_by_shop_id = {}
+    refined_visit_no_shop = []  # 无 shop_id 的精修节点（如 LUNCH_NEEDED）
+    for rn in refined_visit_meals:
+        sid = rn.get("shop_id", "")
+        if sid:
+            refined_by_shop_id[sid] = rn
+        else:
+            refined_visit_no_shop.append(rn)
+
+    # 按原始顺序重建，用 shop_id 精确匹配精修后的数据
+    used_refined_shop_ids = set()
+    for orig in original_timeline:
+        action = orig.get("action", "")
+        if action in ("VISIT", "LUNCH", "DINNER"):
+            orig_sid = orig.get("shop_id", "")
+            rn = None
+
+            # 优先通过 shop_id 精确匹配
+            if orig_sid and orig_sid in refined_by_shop_id:
+                rn = refined_by_shop_id[orig_sid]
+                used_refined_shop_ids.add(orig_sid)
+            # 无 shop_id 的节点（如 LUNCH_NEEDED）用位置匹配
+            elif not orig_sid and refined_visit_no_shop:
+                rn = refined_visit_no_shop.pop(0)
+
+            if rn:
+                start_min = rn.get("start_minutes", 0)
+                result.append({
+                    "time": f"{start_min // 60:02d}:{start_min % 60:02d}",
+                    "action": action,
+                    "memo": orig.get("memo", ""),
+                    "category": rn.get("category", orig.get("category", "")),
+                    "shop_id": rn.get("shop_id", orig_sid),
+                    "duration_minutes": rn.get("duration_minutes", orig.get("duration_minutes", 0)),
+                    "opentime": orig.get("opentime", "未知"),
+                })
+            else:
+                result.append(orig)
+        else:
+            result.append(orig)
+
+    # 追加精修中新增的 VISIT/LUNCH/DINNER 节点（不在原始 timeline 中）
+    for rn in refined_visit_meals:
+        sid = rn.get("shop_id", "")
+        if sid and sid not in used_refined_shop_ids:
+            start_min = rn.get("start_minutes", 0)
+            rtype = rn.get("type", "VISIT")
+            action_map = {"VISIT": "VISIT", "LUNCH": "LUNCH", "DINNER": "DINNER"}
+            # 尝试从原始 shops 信息中找回 memo
+            result.append({
+                "time": f"{start_min // 60:02d}:{start_min % 60:02d}",
+                "action": action_map.get(rtype, "VISIT"),
+                "memo": "",
+                "category": rn.get("category", ""),
+                "shop_id": sid,
+                "duration_minutes": rn.get("duration_minutes", 0),
+                "opentime": "未知",
+            })
+
+    # 按时间排序
+    result.sort(key=lambda t: _time_to_minutes(t.get("time", "00:00")))
+    return result
+
+
+def _total_cost(timeline: list, all_shops: list) -> float:
+    """
+    计算时间线的综合代价。
+
+    包含三项：
+    1. 用餐时间偏离惩罚（午餐/晚餐偏离锚点）
+    2. 未访问店铺的损失（SKIP_PENALTY_BASE × 权重）
+    3. 通勤时间的机会成本（LAMBDA_TRAVEL × 通勤分钟数）
+    """
+    cost = 0.0
+
+    for node in timeline:
+        if node.get("type") == "LUNCH":
+            cost += meal_time_penalty("lunch", node.get("start_minutes", 720))
+        elif node.get("type") == "DINNER":
+            cost += meal_time_penalty("dinner", node.get("start_minutes", 1110))
+
+    # 未访问点的损失
+    scheduled_ids = {n.get("shop_id", "") for n in timeline if n.get("type") == "VISIT"}
+    for shop in all_shops:
+        sid = shop.get("shop_id", "")
+        if sid and sid not in scheduled_ids:
+            rating = shop.get("rating", 0)
+            if rating >= 4.5:
+                weight = 2.0
+            elif rating >= 4.0:
+                weight = 1.5
+            elif rating >= 3.0:
+                weight = 1.0
+            else:
+                weight = 0.5
+            cost += weight * SKIP_PENALTY_BASE
+
+    # 通勤时间的机会成本
+    for node in timeline:
+        cost += LAMBDA_TRAVEL * node.get("travel_minutes", 0)
+
+    # 体力消耗惩罚
+    cost += fatigue_cost(timeline)
+
+    return cost
+
+
+def fatigue_cost(timeline: list) -> float:
+    """
+    计算体力消耗惩罚值。
+
+    体力初始为 100，每项 VISIT 活动消耗体力（品类系数 × 时长），
+    休息/用餐节点恢复体力。体力低于 30 时产生二次惩罚。
+    """
+    fatigue_level = 100.0
+    total_penalty = 0.0
+
+    for node in timeline:
+        if node.get("type") == "VISIT":
+            cat = node.get("category", "default")
+            coef = FATIGUE_COEFFICIENT.get(cat, FATIGUE_COEFFICIENT.get("default", 0.8))
+            fatigue_level -= coef * node.get("duration_minutes", 60) / 60.0
+            if fatigue_level < 30:
+                total_penalty += (30 - fatigue_level) ** 2
+        elif node.get("type") in ("LUNCH", "DINNER", "REST", "BREAKFAST"):
+            fatigue_level = min(100.0, fatigue_level + 10)
+
+    return LAMBDA_FATIGUE * total_penalty
+
+
+def _accept_prob(old_cost: float, new_cost: float, iteration: int, max_iterations: int) -> float:
+    """
+    模拟退火接受概率：温度随迭代次数下降。
+    """
+    temperature = max(0.01, 1.0 - iteration / max_iterations)
+    if new_cost <= old_cost:
+        return 1.0
+    return math.exp(-(new_cost - old_cost) / (temperature * 50))
+
+
+def _random_neighbor_move(timeline: list, killed_shops: list, all_shops: list) -> list:
+    """
+    随机选择一种邻域操作并应用，返回新的 timeline（深拷贝后操作）。
+
+    邻域操作：
+    1. 平移用餐时间（±15/30 min）
+    2. 尝试补回一个被 kill 的点
+    3. 交换相邻 VISIT 顺序
+    """
+    import copy as _copy
+    new_timeline = _copy.deepcopy(timeline)
+
+    ops = [1, 2, 3]
+    # 如果没有被 kill 的点，跳过操作2
+    if not killed_shops:
+        ops.remove(2)
+    # 如果没有 VISIT 节点，跳过操作3
+    visit_indices = [i for i, n in enumerate(new_timeline) if n.get("type") == "VISIT"]
+    if len(visit_indices) < 2:
+        if 3 in ops:
+            ops.remove(3)
+
+    if not ops:
+        return new_timeline
+
+    op = random.choice(ops)
+
+    if op == 1:
+        # 平移用餐时间
+        meal_indices = [i for i, n in enumerate(new_timeline)
+                       if n.get("type") in ("LUNCH", "DINNER")]
+        if meal_indices:
+            idx = random.choice(meal_indices)
+            shift = random.choice([-30, -15, 15, 30])
+            old_time = new_timeline[idx].get("start_minutes", 720)
+            new_time = max(0, min(1440, old_time + shift))
+            new_timeline[idx]["start_minutes"] = new_time
+
+    elif op == 2:
+        # 尝试补回一个被 kill 的点
+        if killed_shops:
+            shop = random.choice(killed_shops)
+            cat = shop.get("category", "")
+            dur = CATEGORY_DURATIONS.get(cat, 60)
+            # 插入到通勤增量最小的位置
+            best_pos = None
+            best_extra_travel = float("inf")
+            for i in range(len(new_timeline)):
+                if new_timeline[i].get("type") != "VISIT":
+                    continue
+                # 粗略估算插入后的额外通勤
+                extra_travel = random.uniform(5, 20)  # 简化估算
+                if extra_travel < best_extra_travel:
+                    best_extra_travel = extra_travel
+                    best_pos = i + 1
+
+            if best_pos is not None and best_pos <= len(new_timeline):
+                new_timeline.insert(best_pos, {
+                    "type": "VISIT",
+                    "shop_id": shop.get("shop_id", ""),
+                    "start_minutes": 0,  # 后续需要重新推算时间
+                    "category": cat,
+                    "duration_minutes": dur,
+                    "travel_minutes": best_extra_travel,
+                })
+
+    elif op == 3:
+        # 交换相邻 VISIT 顺序
+        if len(visit_indices) >= 2:
+            i = random.choice(visit_indices[:-1])
+            j = i + 1
+            while j < len(new_timeline) and new_timeline[j].get("type") != "VISIT":
+                j += 1
+            if j < len(new_timeline) and new_timeline[j].get("type") == "VISIT":
+                new_timeline[i], new_timeline[j] = new_timeline[j], new_timeline[i]
+
+    return new_timeline
+
+
+def _refine_timeline(timeline: list, all_shops: list,
+                     max_iterations: int = None) -> list:
+    """
+    局部搜索精修：在 _build_timeline 产出的基线时间线上，
+    通过模拟退火尝试改善用餐时间和景点覆盖率。
+
+    参数:
+        timeline: 基线时间线（_build_timeline 产出）
+        all_shops: 所有店铺（用于 _total_cost 计算）
+        max_iterations: 最大迭代次数（默认使用 REFINE_MAX_ITERATIONS）
+
+    返回:
+        优化后的 timeline（不修改原对象）
+    """
+    if max_iterations is None:
+        max_iterations = REFINE_MAX_ITERATIONS
+
+    if not REFINE_ENABLED:
+        return list(timeline)
+
+    current = copy.deepcopy(timeline)
+    current_cost = _total_cost(current, all_shops)
+    best = copy.deepcopy(current)
+    best_cost = current_cost
+
+    for i in range(max_iterations):
+        neighbor = _random_neighbor_move(current, [], all_shops)
+        neighbor_cost = _total_cost(neighbor, all_shops)
+
+        if neighbor_cost < current_cost or random.random() < _accept_prob(current_cost, neighbor_cost, i, max_iterations):
+            current = neighbor
+            current_cost = neighbor_cost
+            if current_cost < best_cost:
+                best = copy.deepcopy(current)
+                best_cost = current_cost
+
+    return best
 
 
 # ======================================================================
