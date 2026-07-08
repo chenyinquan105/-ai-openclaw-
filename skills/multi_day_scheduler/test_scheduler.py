@@ -84,16 +84,16 @@ class TestTransportSpeed:
         - 步行预测: 5000/83.3 ≈ 60 min
         - 驾车预测: 5000/667 ≈ 7.5 min
         """
-        # 两个相距约 5km 的购物点（天安门→颐和园方向）
+        # 两个相距约 2.4km 的购物点（<3km 阈值，保留原始速度差异）
         shop_a = make_shop("test_a", "商圈A", "shopping", 39.908, 116.397, opentime="08:00-22:00")
-        shop_b = make_shop("test_b", "商圈B", "shopping", 39.950, 116.350, opentime="08:00-22:00")
+        shop_b = make_shop("test_b", "商圈B", "shopping", 39.925, 116.415, opentime="08:00-22:00")
 
-        actual_distance = _haversine_m(39.908, 116.397, 39.950, 116.350)
-        assert actual_distance > 3000, f"测试距离太短 ({actual_distance:.0f}m)，需要 >3000m"
+        actual_distance = _haversine_m(39.908, 116.397, 39.925, 116.415)
+        assert actual_distance < 3000, f"测试距离太远 ({actual_distance:.0f}m)，需 <3000m 保留速度差异"
 
         shops = [shop_a, shop_b]
 
-        day_plan = {"route": [(HOTEL_LAT, HOTEL_LNG), (39.908, 116.397), (39.950, 116.350), (HOTEL_LAT, HOTEL_LNG)]}
+        day_plan = {"route": [(HOTEL_LAT, HOTEL_LNG), (39.908, 116.397), (39.925, 116.415), (HOTEL_LAT, HOTEL_LNG)]}
 
         # ── 用驾车模式 ──
         result_drive = _build_timeline(day_plan, shops, start_time_str="07:00",

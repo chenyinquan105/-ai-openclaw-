@@ -590,7 +590,11 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
     main_meal_shops = [s for s in ordered_shops if s.get("category", "") in MAIN_MEAL_CATEGORIES]
     snack_shops = [s for s in ordered_shops if s.get("category", "") in SNACK_CATEGORIES]
     # 非餐类 + 小吃 = VISIT循环遍历对象（正餐排除在外）
-    visitable_shops = [s for s in ordered_shops if s.get("category", "") not in MAIN_MEAL_CATEGORIES]
+    # 重排：非购物类在前（优先占上午/下午），购物类在后（可晚间）
+    _all_visitable = [s for s in ordered_shops if s.get("category", "") not in MAIN_MEAL_CATEGORIES]
+    non_shopping = [s for s in _all_visitable if s.get("category", "") != "shopping"]
+    shopping_only = [s for s in _all_visitable if s.get("category", "") == "shopping"]
+    visitable_shops = non_shopping + shopping_only
 
     timeline = []
     closed_conflicts = []
@@ -659,6 +663,7 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
     # ── 按路线顺序遍历（正餐不参与VISIT循环）──
     lunch_assigned = False
     dinner_assigned = False
+    deferred_dinner = None  # 延迟到 VISIT 后插入的晚餐
     last_shop_lat, last_shop_lng = None, None
     for idx, shop in enumerate(visitable_shops):
         cat = shop.get("category", "")
@@ -708,26 +713,9 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                         "shop_id": "", "duration_minutes": 0,
                     })
                 elif not dinner_assigned:
-                    # 晚餐：安排在此 visit 之后
-                    dinner_time = max(17 * 60, current_minutes + 30)
-                    if _last_food_end_minutes is not None:
-                        dinner_time = max(dinner_time, _last_food_end_minutes + 90)
-                    if dinner_time < 19 * 60 + 30:
-                        d_dur = _get_duration(meal.get("category", ""))
-                        timeline.append({
-                            "time": f"{dinner_time // 60:02d}:{dinner_time % 60:02d}",
-                            "action": "DINNER",
-                            "memo": f"🍽️ 晚餐：{meal.get('name', '')}",
-                            "category": meal.get("category", ""),
-                            "shop_id": meal.get("shop_id", ""),
-                            "duration_minutes": d_dur,
-                            "opentime": meal.get("opentime", "未知"),
-                        })
-                        current_minutes = dinner_time + d_dur + 30
-                        _last_food_end_minutes = current_minutes
-                        main_meal_shops.remove(meal)
-                        used_meal_shop_ids.add(meal.get("shop_id"))
-                        dinner_assigned = True
+                    # 晚餐：延迟到 VISIT 之后再插入，避免把景点挤到晚上
+                    deferred_dinner = meal
+                    dinner_assigned = True
 
         # ── 小吃间隔检查（café类距上次进食≥90min）──
         if cat in SNACK_CATEGORIES and _last_food_end_minutes is not None:
@@ -739,7 +727,11 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
         if len(timeline) > 0:
             if last_shop_lat and last_shop_lng:
                 travel_m = _haversine_m(last_shop_lat, last_shop_lng, s_lat, s_lng)
-                travel_min = max(5, round(travel_m / _get_speed(transport)))
+                speed = _get_speed(transport)
+                # 远距离（>3km）自动切驾车速度，避免步行数小时跨城
+                if travel_m > 3000 and speed < 500:
+                    speed = 667  # 驾车 40km/h
+                travel_min = max(5, round(travel_m / speed))
                 current_minutes += travel_min
             else:
                 current_minutes += 15
@@ -752,7 +744,7 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
 
             # 非购物类白天约束：应在晚餐前完成，晚餐后留给购物/夜市
             if current_minutes >= DINNER_WINDOW[0]:
-                # 标记 warning，但仍排入（不 kill，不 swap）
+                # 标记 warning（正常情况不应走到这里，因为非购物优先排+晚餐延迟插入）
                 closed_conflicts.append({
                     "shop_name": shop.get("name", ""),
                     "shop_id": shop.get("shop_id", ""),
@@ -761,7 +753,7 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                     "opentime": shop.get("opentime", "未知"),
                     "reason": (
                         f"非购物活动排在了晚间（{_safe_time_str(current_minutes)}），"
-                        f"体验可能不佳，建议延长天数或调整日期"
+                        f"体验可能不佳"
                     ),
                     "type": "evening_non_shopping",
                 })
@@ -808,6 +800,29 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
             "opentime": opentime_str,
         })
         current_minutes += dur + 10
+
+        # ── 延迟晚餐插入：在 VISIT 之后（而非之前）──
+        if deferred_dinner is not None:
+            d_meal = deferred_dinner
+            dinner_time = max(17 * 60, current_minutes + 30)
+            if _last_food_end_minutes is not None:
+                dinner_time = max(dinner_time, _last_food_end_minutes + 90)
+            d_dur = _get_duration(d_meal.get("category", ""))
+            timeline.append({
+                "time": f"{dinner_time // 60:02d}:{dinner_time % 60:02d}",
+                "action": "DINNER",
+                "memo": f"🍽️ 晚餐：{d_meal.get('name', '')}",
+                "category": d_meal.get("category", ""),
+                "shop_id": d_meal.get("shop_id", ""),
+                "duration_minutes": d_dur,
+                "opentime": d_meal.get("opentime", "未知"),
+            })
+            current_minutes = dinner_time + d_dur + 30
+            _last_food_end_minutes = current_minutes
+            main_meal_shops.remove(d_meal)
+            used_meal_shop_ids.add(d_meal.get("shop_id"))
+            deferred_dinner = None
+
         last_shop_lat, last_shop_lng = s_lat, s_lng
         # 小吃/饮品结束时间记录（用于后续间隔控制）
         if cat in SNACK_CATEGORIES:
@@ -837,8 +852,6 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
     bedtime_minutes = max(21 * 60, bedtime_minutes)
     # 如果超过次日凌晨，添加提示
     bedtime_memo = "🌙 就寝"
-    if bedtime_minutes >= 24 * 60:
-        bedtime_memo = "🌙 就寝（⚠️ 行程很满，建议延长天数）"
 
     timeline.append({
         "time": _safe_time_str(bedtime_minutes),

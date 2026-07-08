@@ -756,7 +756,7 @@ def _llm_review_schedule(schedule_result: dict, weather_data: dict, overcrowded_
 1. 路线合理：同一天 POI 距离是否合理？有没有跨城的情况？
    - **每个节点旁边的 [lat,lng] 是坐标，标题行注明了当天 POI 间最大距离**
    - 任意两个 POI 间距 > 15km 且交通 > 30min → 必须在 risk_flags 中标出
-   - 任意两个 POI 间距 > 30km → 属于跨城级别，必须生成 auto_fix（type: "move_to_day"）
+   - 任意两个 POI 间距 > 30km → 属于跨城级别，在 risk_flags 中标出即可，不要自动 move_to_day
    - 「远距离POI对」列出了当天所有间距 > 3km 的 POI 组合
 2. 用餐安排：午餐(11:30-13:30)/晚餐(17:30-19:30)是否在合理位置？是否就近？
 3. 天气影响：雨天户外景点是否需要提醒或调整？
@@ -780,7 +780,7 @@ def _llm_review_schedule(schedule_result: dict, weather_data: dict, overcrowded_
 - "swap": 交换两天的 POI（需 day_a_index, day_b_index, poi_a_name, poi_b_name）
 - "reorder": 调整当天顺序（需 day_index, poi_name, new_position）
 - "general": 通用建议（仅 detail，无需程序化应用）
-**注意：绝不要使用 remove_poi——所有用户选择的目的地都必须保留。如需移除请通过 questions 让用户决定。**
+**注意：绝不要使用 remove_poi——所有用户选择的目的地都必须保留。所有非餐类目的地必须在 timeline 中有对应的 VISIT 节点。不要通过 move_to_day 以外的方式移动或删除目的地。**
 
 严格按以下 JSON 格式输出（不要包含其他文字）：
 {"auto_fixes":[{"type":"move_to_day","from_day_index":0,"to_day_index":1,"poi_name":"八达岭长城","detail":"故宫到八达岭长城60km，建议移至第二天单独游览"}],"questions":[{"question_id":"q1","question_text":"第1天有雷阵雨，长城是户外景点，但第2天天气晴朗，是否把长城改到第2天？","options":["改到第2天","坚持第1天去，带雨具","换成室内活动"]}],"risk_flags":["第2天体力消耗较大","⚠️ 第1天: 故宫→八达岭长城 相距60km，严重跨城！"]}
@@ -6987,6 +6987,18 @@ def smart_schedule():
     trip_weather = session_state.get("trip_weather", {})
 
     # ── LLM 审查（阶段 2）──
+    # 审查前完整时间线日志（含时间）
+    print(f"[排程审查前] === 完整时间线 ===", flush=True)
+    for di, day in enumerate(result.get("days", [])):
+        for n in day.get("timeline", []):
+            print(f"  D{di+1} {n.get('time',''):>6} {n.get('action',''):<12} {n.get('memo','')[:40]} (shop_id={n.get('shop_id','')}, cat={n.get('category','')})", flush=True)
+    pre_review_visits = []
+    for di, day in enumerate(result.get("days", [])):
+        for n in day.get("timeline", []):
+            if n.get("action") == "VISIT":
+                pre_review_visits.append(f"D{di+1}:{n.get('shop_id','')}:{n.get('memo','')[:20]}")
+    print(f"[排程审查前] VISIT节点({len(pre_review_visits)}): {pre_review_visits}", flush=True)
+
     review_result = _llm_review_schedule(result, trip_weather, overcrowded_warning)
 
     # ── 应用 auto_fixes（LLM 确定的优化，无需用户确认）──
@@ -6998,42 +7010,45 @@ def smart_schedule():
                 from_day = fix.get("from_day_index", -1)
                 to_day = fix.get("to_day_index", -1)
                 poi_name = fix.get("poi_name", "")
-                if 0 <= from_day < len(result["days"]) and 0 <= to_day < len(result["days"]) and poi_name:
+                if 0 <= to_day < len(result["days"]) and poi_name:
                     moved = None
-                    moved_from_day = None
-                    for day in result["days"]:
+                    actual_from_day = -1
+                    for di, day in enumerate(result["days"]):
                         for t in list(day.get("task_list", [])):
                             if t.get("name", "") == poi_name:
                                 moved = t
-                                moved_from_day = day
+                                actual_from_day = di
                                 day["task_list"].remove(t)
                                 break
                         if moved:
                             break
-                    if moved:
+                    if moved and actual_from_day >= 0:
+                        # ⚠️ 使用 actual_from_day（POI 实际所在天）而非 LLM 指定的 from_day
+                        # 防止 LLM 错误指定 from_day 导致 timeline/pairs 误删
                         result["days"][to_day].setdefault("task_list", []).append(moved)
-                        # 同步更新 selected_pairs（pairs 列表）
-                        src_pairs = result["days"][from_day].get("pairs", [])
+                        # 同步更新 selected_pairs（pairs 列表）——从实际所在天移除
+                        actual_src_pairs = result["days"][actual_from_day].get("pairs", [])
                         moved_pair = None
-                        for p in src_pairs:
+                        for p in actual_src_pairs:
                             if len(p) >= 3 and p[2] == poi_name:
                                 moved_pair = p
                                 break
                         if moved_pair:
-                            result["days"][from_day]["pairs"] = [p for p in src_pairs if not (len(p) >= 3 and p[2] == poi_name)]
+                            result["days"][actual_from_day]["pairs"] = [p for p in actual_src_pairs if not (len(p) >= 3 and p[2] == poi_name)]
                             result["days"][to_day].setdefault("pairs", []).append(moved_pair)
-                        # 同步更新 timeline：从源天移除匹配节点（精确 shop_id 匹配）
-                        src_timeline = result["days"][from_day].get("timeline", [])
+                        # 同步更新 timeline：从实际所在天移除（精确 shop_id 匹配）
+                        actual_src_timeline = result["days"][actual_from_day].get("timeline", [])
                         moved_shop_id = moved.get("shop_id", "") if isinstance(moved, dict) else ""
                         moved_task_id = moved.get("task_id", "") if isinstance(moved, dict) else ""
                         match_id = moved_shop_id or moved_task_id
-                        result["days"][from_day]["timeline"] = [
-                            n for n in src_timeline
-                            if n.get("shop_id") != match_id
-                        ]
+                        if match_id:
+                            result["days"][actual_from_day]["timeline"] = [
+                                n for n in actual_src_timeline
+                                if n.get("shop_id") != match_id
+                            ]
                         # 目标天 timeline 插入占位节点（按时间排序）
                         dst_timeline = result["days"][to_day].get("timeline", [])
-                        placeholder_time = "10:00"  # 默认上午，前端可后续调整
+                        placeholder_time = "10:00"
                         dst_timeline.append({
                             "time": placeholder_time,
                             "action": "VISIT",
@@ -7045,8 +7060,10 @@ def smart_schedule():
                         })
                         dst_timeline.sort(key=lambda n: (lambda t: int(t.split(":")[0])*60 + int(t.split(":")[1]))(n.get("time", "00:00")))
                         result["days"][to_day]["timeline"] = dst_timeline
-                        auto_fixes_applied.append(f"已将「{poi_name}」从第{from_day+1}天移至第{to_day+1}天")
-                        print(f"[auto_fix] move_to_day: {poi_name} D{from_day+1}→D{to_day+1}", flush=True)
+                        auto_fixes_applied.append(f"已将「{poi_name}」从第{actual_from_day+1}天移至第{to_day+1}天")
+                        print(f"[auto_fix] move_to_day: {poi_name} D{actual_from_day+1}→D{to_day+1} (LLM指定的from_day={from_day+1})", flush=True)
+                    else:
+                        print(f"[auto_fix] move_to_day 跳过: 未在任何天找到 '{poi_name}'", flush=True)
             elif fix_type == "remove_poi":
                 # 【设计原则】预选池目的地 100% 保留，不允许 LLM 删除。
                 # 若 LLM 认为某 POI 不合理，应转为 question 让用户决定，
@@ -7082,8 +7099,96 @@ def smart_schedule():
         # 更新 applied_fixes 到 review_result
         review_result["applied_fixes"] = auto_fixes_applied
 
+    # 审查后排程快照日志
+    post_review_visits = []
+    for di, day in enumerate(result.get("days", [])):
+        for n in day.get("timeline", []):
+            if n.get("action") == "VISIT":
+                post_review_visits.append(f"D{di+1}:{n.get('shop_id','')}:{n.get('memo','')[:20]}")
+    print(f"[排程审查后] VISIT节点({len(post_review_visits)}): {post_review_visits}", flush=True)
+    print(f"[排程审查后] === 完整时间线 ===", flush=True)
+    for di, day in enumerate(result.get("days", [])):
+        for n in day.get("timeline", []):
+            print(f"  D{di+1} {n.get('time',''):>6} {n.get('action',''):<12} {n.get('memo','')[:40]} (shop_id={n.get('shop_id','')}, cat={n.get('category','')})", flush=True)
+    if pre_review_visits != post_review_visits:
+        lost = [v for v in pre_review_visits if v not in post_review_visits]
+        gained = [v for v in post_review_visits if v not in pre_review_visits]
+        print(f"[排程审查] ⚠️ VISIT节点变化! 丢失:{lost} 新增:{gained}", flush=True)
+
+    # ── ⚠️ 目的地完整性验证：确保所有非餐类目的地都在 timeline 中有 VISIT 节点 ──
+    MEAL_CATS_CHECK = {"restaurant", "hotpot", "japanese", "food", "dining", "buffet", "barbecue"}
+    all_non_meal_shops = {}  # shop_id → {name, category}
+    for s in candidate_pool:
+        cat = s.get("category", "")
+        sid = s.get("shop_id", "")
+        if cat not in MEAL_CATS_CHECK and sid:
+            all_non_meal_shops[sid] = {"name": s.get("name", ""), "category": cat}
+
+    timeline_visit_ids = set()
+    for day in result.get("days", []):
+        for n in day.get("timeline", []):
+            if n.get("action") == "VISIT" and n.get("shop_id"):
+                timeline_visit_ids.add(n.get("shop_id"))
+
+    missing_from_timeline = []
+    for sid, info in all_non_meal_shops.items():
+        if sid not in timeline_visit_ids:
+            missing_from_timeline.append((sid, info["name"], info["category"]))
+
+    if missing_from_timeline:
+        print(f"[完整性验证] ❌ {len(missing_from_timeline)} 个非餐目的地缺失于 timeline: {[(sid, name) for sid, name, _ in missing_from_timeline]}", flush=True)
+        # 尝试恢复：在最后一天追加缺失的 VISIT 节点
+        last_day = result["days"][-1] if result.get("days") else None
+        if last_day:
+            last_timeline = last_day.get("timeline", [])
+            for sid, name, cat in missing_from_timeline:
+                # 检查这个 shop 是否在 task_list 中（task_list 用 task_id 而非 shop_id）
+                found_in_task = False
+                for d in result["days"]:
+                    for t in d.get("task_list", []):
+                        if t.get("shop_id") == sid or t.get("task_id") == sid:
+                            found_in_task = True
+                            break
+                if found_in_task:
+                    last_timeline.append({
+                        "time": "10:00",
+                        "action": "VISIT",
+                        "memo": f"⚠️ 恢复：{name}（系统检测到缺失，已自动补回）",
+                        "category": cat,
+                        "shop_id": sid,
+                        "duration_minutes": 60,
+                        "opentime": "未知",
+                    })
+                    print(f"[完整性验证] 已恢复 '{name}' ({sid}) 到最后一天 timeline", flush=True)
+                else:
+                    print(f"[完整性验证] ⚠️ '{name}' ({sid}) 既不在 timeline 也不在 task_list 中！", flush=True)
+            last_timeline.sort(key=lambda n: (lambda t: int(t.split(":")[0])*60 + int(t.split(":")[1]))(n.get("time", "00:00")) if ":" in str(n.get("time", "")) else 600)
+            last_day["timeline"] = last_timeline
+            # 重新验证
+            timeline_visit_ids2 = set()
+            for day in result.get("days", []):
+                for n in day.get("timeline", []):
+                    if n.get("action") == "VISIT" and n.get("shop_id"):
+                        timeline_visit_ids2.add(n.get("shop_id"))
+            still_missing = [sid for sid in all_non_meal_shops if sid not in timeline_visit_ids2]
+            if still_missing:
+                print(f"[完整性验证] ⚠️ 恢复后仍有 {len(still_missing)} 个缺失: {still_missing}", flush=True)
+            else:
+                print(f"[完整性验证] ✅ 恢复后所有非餐目的地均已存在于 timeline", flush=True)
+        else:
+            print(f"[完整性验证] ❌ 无法恢复：result 中没有 day 数据", flush=True)
+    else:
+        print(f"[完整性验证] ✅ 所有 {len(all_non_meal_shops)} 个非餐目的地均存在于 timeline", flush=True)
+
     # ── 提醒注入（阶段 3）：起床/就寝 → 持续响铃 ──
     reminders_injected = _inject_multi_day_reminders(result)
+
+    # ── 组装最终 VISIT 快照用于前端诊断 ──
+    final_visit_snapshot = []
+    for di, day in enumerate(result.get("days", [])):
+        for n in day.get("timeline", []):
+            if n.get("action") == "VISIT":
+                final_visit_snapshot.append({"day": di+1, "shop_id": n.get("shop_id",""), "memo": (n.get("memo","") or "")[:40]})
 
     return jsonify({
         "status": "SUCCESS",
@@ -7097,6 +7202,9 @@ def smart_schedule():
         "unknown_hours_shops": result.get("unknown_hours_shops", []),
         "reminders_injected": reminders_injected,
         "overcrowded_warning": overcrowded_warning,  # 事前检查：POI过多警告
+        "_debug_visit_snapshot": final_visit_snapshot,  # 诊断用：最终 VISIT 节点列表
+        "_debug_candidate_count": len(candidate_pool),
+        "_debug_auto_fixes_count": len(auto_fixes_applied),
     })
 
 
@@ -7208,8 +7316,7 @@ def schedule_review_answer():
 
 支持的操作类型：
 - add_node: 添加新节点 → {"type":"add_node","day_index":0,"node":{"time":"15:00","action":"VISIT","memo":"颐和园","category":"scenic"}}
-- remove_node: 删除节点（用 memo 中的名称匹配） → {"type":"remove_node","day_index":0,"target_name":"故宫"}
-- move_node: 移动节点到另一天 → {"type":"move_node","target_name":"长城","to_day":2,"to_time":"09:00"}
+- move_node: 移动节点到另一天（用于重新分配，不可用于删除） → {"type":"move_node","target_name":"长城","to_day":2,"to_time":"09:00"}
 - change_time: 修改节点时间 → {"type":"change_time","day_index":0,"target_name":"天坛","new_time":"10:00"}
 - swap_node: 替换节点 → {"type":"swap_node","day_index":0,"target_name":"故宫","new_node":{"time":"09:00","action":"VISIT","memo":"颐和园","category":"scenic"}}
 - update_node: 更新节点字段 → {"type":"update_node","day_index":0,"target_name":"早餐","field":"time","value":"08:00"}
@@ -7221,6 +7328,8 @@ def schedule_review_answer():
 - day_index / to_day 从 0 开始计数：第1天=0, 第2天=1, 第3天=2, 以此类推
 - 不需要改动的节点不要出现在 operations 中
 - target_name 必须从当前排程 memo 中**精确**匹配（完全相等），不要模糊匹配
+- ⚠️ 严禁删除任何 VISIT 节点！所有用户选择的目的地都必须保留在时间线中！
+- 如需减少某天负担，用 move_node 将 VISIT 移到另一天，不要删除
 - 如果无需进一步问题，follow_up_questions 为空数组；最多再提 1 个跟进问题
 - follow_up_questions 格式: [{"question_id":"q_f1","question_text":"问题文本","options":["选项1","选项2"]}]
 - 注意天气上下文：如果涉及户外活动改期，检查目标天是否户外适宜"""
@@ -7316,6 +7425,7 @@ def schedule_review_answer():
                             print(f"[审查问答] add_node 跳过: day_index={op.get('day_index')}, ok={ok}, node={'有' if node else '无'}", flush=True)
 
                     elif op_type == "remove_node":
+                        # ⚠️ 禁止删除 VISIT 节点——所有目的地都必须保留在时间线中
                         di, ok = _norm_day_index(op.get("day_index", -1))
                         target = op.get("target_name", "")
                         if not ok:
@@ -7323,14 +7433,21 @@ def schedule_review_answer():
                             continue
                         tl = sched_days[di].get("timeline", [])
                         found = False
+                        target_node = None
                         for node in list(tl):
                             if _match_node(node, target):
-                                tl.remove(node)
+                                target_node = node
                                 found = True
-                                changes_log.append(f"第{di+1}天删除{target}")
                                 break
                         if not found:
                             print(f"[审查问答] remove_node: 第{di+1}天未找到 '{target}'", flush=True)
+                            continue
+                        if target_node and target_node.get("action") == "VISIT":
+                            print(f"[审查问答] remove_node 已阻止: 不允许删除 VISIT 节点 '{target}'（所有目的地必须保留）", flush=True)
+                            changes_log.append(f"⚠️ 已阻止删除「{target}」（所有目的地均须保留）")
+                            continue
+                        tl.remove(target_node)
+                        changes_log.append(f"第{di+1}天删除{target}")
 
                     elif op_type == "move_node":
                         target = op.get("target_name", "")
@@ -7422,6 +7539,35 @@ def schedule_review_answer():
             # 操作后日志
             after_counts = [len(sd.get("timeline", [])) for sd in sched_days]
             print(f"[审查问答] 操作后各天节点数: {after_counts}, 变更: {changes_log}", flush=True)
+
+            # ── ⚠️ 目的地完整性验证：确保 task_list 中所有非餐目的地都在 timeline 中有 VISIT 节点 ──
+            MEAL_CATS_CHECK2 = {"restaurant", "hotpot", "japanese", "food", "dining", "buffet", "barbecue"}
+            review_missing = []
+            for di, day in enumerate(sched_days):
+                task_shop_ids = {}
+                for t in day.get("task_list", []):
+                    sid = t.get("shop_id") or t.get("task_id", "")
+                    cat = t.get("category", "")
+                    if sid and cat not in MEAL_CATS_CHECK2:
+                        task_shop_ids[sid] = t.get("name", "")
+                tl_shop_ids = {n.get("shop_id", "") for n in day.get("timeline", []) if n.get("shop_id", "")}
+                for sid, name in task_shop_ids.items():
+                    if sid not in tl_shop_ids:
+                        review_missing.append((di, sid, name))
+                        print(f"[审查问答] ❌ 完整性验证: 第{di+1}天 task_list 有 '{name}' ({sid}) 但 timeline 中无 VISIT 节点", flush=True)
+            if review_missing:
+                for di, sid, name in review_missing:
+                    if di < len(sched_days):
+                        sched_days[di].setdefault("timeline", []).append({
+                            "time": "10:00", "action": "VISIT",
+                            "memo": f"⚠️ 恢复：{name}（审查操作后缺失，已自动补回）",
+                            "category": "scenic", "shop_id": sid,
+                            "duration_minutes": 60, "opentime": "未知",
+                        })
+                        _sort_timeline(sched_days[di]["timeline"])
+                print(f"[审查问答] ✅ 已恢复 {len(review_missing)} 个缺失的目的地", flush=True)
+            else:
+                print(f"[审查问答] ✅ 所有非餐目的地均在 timeline 中", flush=True)
 
             # 更新缓存
             session_state["_review_state"]["schedule_snapshot"] = schedule

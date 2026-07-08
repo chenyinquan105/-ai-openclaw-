@@ -2519,3 +2519,10 @@ NameError: name 'destination' is not defined
 [json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
 [json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
 [json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[2026-07-08 19:57:35 +0800] [75417] [INFO] Handling signal: term
+[2026-07-08 19:58:05 +0800] [75419] [INFO] Worker exiting (pid: 75419)
+[2026-07-08 19:58:05 +0800] [75417] [INFO] Shutting down: Master

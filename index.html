@@ -8537,6 +8537,11 @@ async function _submitReviewAnswers(scheduleData) {
 function renderMultiDayCards(data) {
   var dc = document.getElementById('dynamic-content');
   if (!dc) return;
+  // 🔍 诊断日志：打印服务端返回的 VISIT 快照
+  if (data._debug_visit_snapshot) {
+    console.log('[诊断] 服务端VISIT快照(' + data._debug_visit_snapshot.length + '个):', JSON.stringify(data._debug_visit_snapshot));
+  }
+  console.log('[诊断] candidate数=' + (data._debug_candidate_count || '?') + ' auto_fix数=' + (data._debug_auto_fixes_count || '?'));
   var days = data.days || [];
   if (days.length === 0) return;  // 不覆盖现有内容
   // ── 防御：检查是否有任何有效 timeline 节点 ──
