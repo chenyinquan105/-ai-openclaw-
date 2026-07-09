@@ -131,6 +131,7 @@
 }
 .weather-sunny { animation:sun-rotate 8s linear infinite; }
 @keyframes sun-rotate { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+.weather-sunny .cloud-back,
 .weather-sunny .cloud,
 .weather-sunny .rain-drop,
 .weather-sunny .snow-flake,
@@ -140,6 +141,7 @@
 /* --- 雨天 --- */
 .weather-rainy .sun-core,
 .weather-rainy .sun-ray { display:none; }
+.weather-rainy .cloud-back,
 .weather-rainy .snow-flake,
 .weather-rainy .fog-layer { display:none; }
 .weather-rainy .cloud {
@@ -200,24 +202,28 @@
 }
 
 /* --- 多云（云遮日） --- */
-.weather-cloudy .sun-ray { display:none; }
 .weather-cloudy .sun-core {
-  position:absolute; width:20px; height:20px; background:#fbbf24; border-radius:50%;
-  top:20px; left:6px; box-shadow:0 0 8px 2px rgba(251,191,36,0.35);
+  position:absolute; width:18px; height:18px; background:#fbbf24; border-radius:50%;
+  top:8px; left:2px; box-shadow:0 0 10px 2px rgba(251,191,36,0.45),0 0 22px 4px rgba(251,191,36,0.15);
   z-index:0;
 }
+.weather-cloudy .sun-ray {
+  position:absolute; top:2px; left:10px; width:2px; height:12px; background:#fbbf24; border-radius:1px;
+  transform-origin:1px 15px; opacity:0.6;
+}
+.weather-cloudy .cloud-back { display:none; }
 .weather-cloudy .cloud {
-  display:block; position:absolute; top:8px; left:10px; width:34px; height:14px; z-index:1;
-  background:#cbd5e1; border-radius:18px;
+  display:block; position:absolute; top:26px; left:4px; width:46px; height:16px; z-index:1;
+  background:#94a3b8; border-radius:20px;
   animation:cloud-drift 6s ease-in-out infinite;
 }
 .weather-cloudy .cloud::before {
-  content:''; position:absolute; width:18px; height:18px; background:#cbd5e1; border-radius:50%;
-  top:-8px; left:3px;
+  content:''; position:absolute; width:24px; height:24px; background:#94a3b8; border-radius:50%;
+  top:-10px; left:4px;
 }
 .weather-cloudy .cloud::after {
-  content:''; position:absolute; width:14px; height:14px; background:#cbd5e1; border-radius:50%;
-  top:-6px; left:16px;
+  content:''; position:absolute; width:20px; height:20px; background:#94a3b8; border-radius:50%;
+  top:-8px; left:21px;
 }
 .weather-cloudy .rain-drop,
 .weather-cloudy .snow-flake,
@@ -227,18 +233,30 @@
 /* --- 阴天（全云遮日） --- */
 .weather-overcast .sun-core,
 .weather-overcast .sun-ray { display:none; }
+.weather-overcast .cloud-back {
+  display:block; position:absolute; top:18px; left:-2px; width:44px; height:16px; z-index:0;
+  background:#64748b; border-radius:20px;
+}
+.weather-overcast .cloud-back::before {
+  content:''; position:absolute; width:22px; height:22px; background:#64748b; border-radius:50%;
+  top:-9px; left:5px;
+}
+.weather-overcast .cloud-back::after {
+  content:''; position:absolute; width:18px; height:18px; background:#64748b; border-radius:50%;
+  top:-7px; left:19px;
+}
 .weather-overcast .cloud {
-  display:block; position:absolute; top:10px; left:0px; width:48px; height:18px; z-index:1;
-  background:#9ca3af; border-radius:22px;
+  display:block; position:absolute; top:22px; left:4px; width:44px; height:16px; z-index:1;
+  background:#94a3b8; border-radius:20px;
   animation:overcast-drift 8s ease-in-out infinite;
 }
 .weather-overcast .cloud::before {
-  content:''; position:absolute; width:24px; height:24px; background:#9ca3af; border-radius:50%;
-  top:-10px; left:2px;
+  content:''; position:absolute; width:22px; height:22px; background:#94a3b8; border-radius:50%;
+  top:-9px; left:5px;
 }
 .weather-overcast .cloud::after {
-  content:''; position:absolute; width:20px; height:20px; background:#9ca3af; border-radius:50%;
-  top:-8px; left:24px;
+  content:''; position:absolute; width:18px; height:18px; background:#94a3b8; border-radius:50%;
+  top:-7px; left:19px;
 }
 .weather-overcast .rain-drop,
 .weather-overcast .snow-flake,
@@ -265,24 +283,31 @@
   top:-7px; left:19px;
 }
 .weather-snow .snow-flake {
-  display:block; position:absolute; top:28px; width:4px; height:4px; background:#e2e8f0;
-  border-radius:50%; box-shadow:0 0 3px 1px rgba(226,232,240,0.6);
-  animation:snow-fall var(--sd) linear infinite;
+  display:block; position:absolute; top:20px; width:2px; height:8px; background:#7dd3fc;
+  border-radius:1px; opacity:0.85;
+  animation:snow-fall var(--rd) linear infinite;
 }
+.weather-snow .snow-flake::before {
+  content:''; position:absolute; top:0; left:0; width:2px; height:8px; background:inherit;
+  border-radius:inherit; transform:rotate(60deg);
+}
+.weather-snow .snow-flake::after {
+  content:''; position:absolute; top:0; left:0; width:2px; height:8px; background:inherit;
+  border-radius:inherit; transform:rotate(120deg);
+}
+.weather-snow .cloud-back,
 .weather-snow .rain-drop,
 .weather-snow .fog-layer,
 .weather-snow .lightning { display:none; }
 @keyframes snow-fall {
-  0%   { transform:translateY(0) translateX(0); opacity:0.9; }
-  25%  { transform:translateY(4px) translateX(2px); opacity:0.75; }
-  50%  { transform:translateY(9px) translateX(-1px); opacity:0.55; }
-  75%  { transform:translateY(13px) translateX(2px); opacity:0.3; }
-  100% { transform:translateY(18px) translateX(-2px); opacity:0; }
+  0%   { transform:translateY(0) translateX(0); opacity:0.85; }
+  100% { transform:translateY(22px) translateX(3px); opacity:0; }
 }
 
 /* --- 雾/霾/沙尘 --- */
 .weather-foggy .sun-core,
 .weather-foggy .sun-ray { display:none; }
+.weather-foggy .cloud-back,
 .weather-foggy .cloud { display:none; }
 .weather-foggy .rain-drop { display:none; }
 .weather-foggy .snow-flake { display:none; }
@@ -397,7 +422,7 @@
  <!-- Weather type selector (always visible) -->
  <div id="weather-type-selector" class="space-y-1.5" style="opacity:0.4; pointer-events:none;">
    <label class="block text-[11px] text-gray-500">虚拟天气类型</label>
-   <div id="weather-radio-group" class="flex gap-1.5 flex-wrap">
+   <div id="weather-radio-group" class="grid grid-cols-3 gap-1.5">
      <label class="flex items-center gap-1 bg-gray-800 rounded-lg px-2 py-1.5 border border-gray-700 transition">
        <input type="radio" name="virtual-weather-type" value="晴天" checked onchange="setVirtualWeatherType('晴天')" class="accent-yellow-400">
        <span class="text-[11px] text-white">☀️</span>
@@ -537,6 +562,7 @@
         <div class="sun-ray" style="transform:rotate(225deg)"></div>
         <div class="sun-ray" style="transform:rotate(270deg)"></div>
         <div class="sun-ray" style="transform:rotate(315deg)"></div>
+        <div class="cloud-back"></div>
         <div class="cloud"></div>
         <div class="rain-drop" style="left:4px; height:4px; animation-delay:0s; --rd:1.05s"></div>
         <div class="rain-drop" style="left:4px; height:3px; animation-delay:0.5s; --rd:1.05s"></div>
@@ -559,16 +585,16 @@
         <div class="rain-drop" style="left:40px; height:4px; animation-delay:0.15s; --rd:1.4s"></div>
         <div class="rain-drop" style="left:40px; height:3px; animation-delay:0.65s; --rd:1.4s"></div>
         <!-- 雪花 -->
-        <div class="snow-flake" style="left:4px; animation-delay:0s; --sd:1.5s"></div>
-        <div class="snow-flake" style="left:8px; animation-delay:0.4s; --sd:1.8s"></div>
-        <div class="snow-flake" style="left:12px; animation-delay:0.2s; --sd:1.3s"></div>
-        <div class="snow-flake" style="left:16px; animation-delay:0.7s; --sd:1.9s"></div>
-        <div class="snow-flake" style="left:20px; animation-delay:0.35s; --sd:1.6s"></div>
-        <div class="snow-flake" style="left:24px; animation-delay:0.55s; --sd:1.4s"></div>
-        <div class="snow-flake" style="left:28px; animation-delay:0.15s; --sd:1.75s"></div>
-        <div class="snow-flake" style="left:32px; animation-delay:0.6s; --sd:1.55s"></div>
-        <div class="snow-flake" style="left:36px; animation-delay:0.25s; --sd:1.85s"></div>
-        <div class="snow-flake" style="left:40px; animation-delay:0.5s; --sd:1.65s"></div>
+        <div class="snow-flake" style="left:4px; animation-delay:0s; --rd:1.05s"></div>
+        <div class="snow-flake" style="left:8px; animation-delay:0.15s; --rd:1.2s"></div>
+        <div class="snow-flake" style="left:12px; animation-delay:0.3s; --rd:1.35s"></div>
+        <div class="snow-flake" style="left:16px; animation-delay:0.55s; --rd:0.95s"></div>
+        <div class="snow-flake" style="left:20px; animation-delay:0.2s; --rd:1.15s"></div>
+        <div class="snow-flake" style="left:24px; animation-delay:0.35s; --rd:1.3s"></div>
+        <div class="snow-flake" style="left:28px; animation-delay:0.1s; --rd:1.0s"></div>
+        <div class="snow-flake" style="left:32px; animation-delay:0.8s; --rd:1.25s"></div>
+        <div class="snow-flake" style="left:36px; animation-delay:0.4s; --rd:1.1s"></div>
+        <div class="snow-flake" style="left:40px; animation-delay:0.15s; --rd:1.4s"></div>
         <!-- 雾层 -->
         <div class="fog-layer" style="top:10px; animation-delay:0s;"></div>
         <div class="fog-layer" style="top:20px; animation-delay:-1.5s;"></div>
