@@ -62,6 +62,7 @@ def _read_profile() -> dict:
         "commute": {
             "walking_tolerance_meters": 800,
             "transport_priority": "步行优先",
+            "travel_preference": "公共交通",
         },
         "budget": {
             "price_level": "中端",
@@ -100,6 +101,7 @@ def _read_profile() -> dict:
         ("通勤", "commute", {
             "walking_tolerance_meters": "walking_tolerance_meters",
             "transport_priority": "transport_priority",
+            "travel_preference": "travel_preference",
         }),
         ("预算", "budget", {
             "price_level": "price_level",
@@ -239,6 +241,7 @@ def _write_profile(updates: dict) -> dict:
 |---|---|
 | walking_tolerance_meters | {current['commute']['walking_tolerance_meters']} |
 | transport_priority | {current['commute']['transport_priority']} |
+| travel_preference | {current['commute']['travel_preference']} |
 
 ## 预算
 | 字段 | 值 |
@@ -883,12 +886,41 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
     except Exception:
         preferences = {}
 
+    # 构建旅行信息（去程/返程）
+    departure_city = session_state.get("trip_departure_city", "")
+    travel_info = {
+        "outbound_type": session_state.get("trip_outbound_type", ""),
+        "outbound_departure_time": session_state.get("trip_outbound_departure_time", ""),
+        "outbound_arrival_time": session_state.get("trip_outbound_arrival_time", ""),
+        "arrival_station": session_state.get("trip_arrival_station", ""),
+        "return_type": session_state.get("trip_return_type", ""),
+        "return_departure_time": session_state.get("trip_return_departure_time", ""),
+        "return_station": session_state.get("trip_return_station", ""),
+        "departure_city": departure_city,
+    }
+    # 补充站点坐标（从内置字典查找）
+    try:
+        from skills.multi_day_scheduler.multi_day_scheduler import _lookup_station_coord
+        for key in ("arrival_station", "return_station"):
+            st_name = travel_info.get(key, "")
+            if st_name:
+                coord = _lookup_station_coord(st_name)
+                if coord:
+                    travel_info[f"{key}_lat"] = coord[0]
+                    travel_info[f"{key}_lng"] = coord[1]
+    except ImportError:
+        pass
+    travel_preference = session_state.get("trip_travel_preference",
+        preferences.get("commute", {}).get("travel_preference", "公共交通"))
+
     result = _skill_multi_day_schedule(
         shops, trip_days,
         float(checkin_lat), float(checkin_lng),
         transport, start_time,
         weather_data=weather_data,
         preferences=preferences,
+        travel_info=travel_info,
+        travel_preference=travel_preference,
     )
 
     # ── 后处理：跨天餐厅去重 + 保留待排程占位 ──
@@ -7249,9 +7281,13 @@ def search_attraction():
 
 @app.route("/api/set_trip_config", methods=["POST"])
 def set_trip_config():
-    """设置多日行程配置：天数 + 目的地 + 交通方式，返回 Top20 热门 + 天气预调研。
+    """设置多日行程配置：天数 + 目的地 + 交通方式 + 旅行信息，返回 Top20 热门 + 天气预调研。
     请求: {days: 2, destination: "北京", transport: "地铁优先", start_date: "2026-07-15",
-           checkin_lat: 39.93, checkin_lng: 116.45}
+           checkin_lat: 39.93, checkin_lng: 116.45,
+           departure_city: "上海", outbound_type: "飞机", outbound_departure_time: "08:00",
+           outbound_arrival_time: "10:30", arrival_station: "北京大兴国际机场",
+           return_type: "高铁", return_departure_time: "16:00", return_station: "北京南站",
+           travel_preference: "公共交通"}
     """
     data = request.get_json(silent=True) or {}
 
@@ -7267,6 +7303,17 @@ def set_trip_config():
     checkin_lat = data.get("checkin_lat")
     checkin_lng = data.get("checkin_lng")
 
+    # ── 旅行信息（去程/返程）──
+    departure_city = data.get("departure_city", "")
+    outbound_type = data.get("outbound_type", "")
+    outbound_departure_time = data.get("outbound_departure_time", "")
+    outbound_arrival_time = data.get("outbound_arrival_time", "")
+    arrival_station = data.get("arrival_station", "")
+    return_type = data.get("return_type", "")
+    return_departure_time = data.get("return_departure_time", "")
+    return_station = data.get("return_station", "")
+    travel_preference = data.get("travel_preference", "公共交通")
+
     # 存储到 session_state
     session_state["trip_mode"] = "multi"
     session_state["trip_days"] = days
@@ -7275,6 +7322,16 @@ def set_trip_config():
     session_state["trip_start_date"] = start_date
     session_state["trip_checkin_lat"] = checkin_lat
     session_state["trip_checkin_lng"] = checkin_lng
+    # 旅行信息
+    session_state["trip_departure_city"] = departure_city
+    session_state["trip_outbound_type"] = outbound_type
+    session_state["trip_outbound_departure_time"] = outbound_departure_time
+    session_state["trip_outbound_arrival_time"] = outbound_arrival_time
+    session_state["trip_arrival_station"] = arrival_station
+    session_state["trip_return_type"] = return_type
+    session_state["trip_return_departure_time"] = return_departure_time
+    session_state["trip_return_station"] = return_station
+    session_state["trip_travel_preference"] = travel_preference
 
     # 生成带日期的 day label
     from datetime import datetime as _dt, timedelta as _td

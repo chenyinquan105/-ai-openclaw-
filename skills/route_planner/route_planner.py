@@ -41,7 +41,7 @@ def _weather_multiplier(weather: Optional[str]) -> float:
 
 def _transport_speed(mode: str) -> float:
     """交通方式 → 米/分钟"""
-    return {"步行": 80, "打车": 400, "地铁": 300, "公交": 180}.get(mode, 80)
+    return {"步行": 80, "打车": 400, "地铁": 300, "公交": 180, "公共交通": 250}.get(mode, 80)
 
 
 def plan_route(
@@ -49,6 +49,7 @@ def plan_route(
     waypoints: List[Dict[str, Any]],
     transport_preference: str = "步行优先",
     walking_tolerance_meters: int = 800,
+    travel_preference: str = "公共交通",
     weather_condition: str = None,
 ) -> dict:
     """
@@ -59,6 +60,7 @@ def plan_route(
         waypoints: 途经点列表 [{id, name, coord, duration_minutes}, ...]
         transport_preference: "步行优先"/"打车优先"/"地铁优先"
         walking_tolerance_meters: 步行容忍距离（米）
+        travel_preference: "公共交通" 或 "打车"，超出步行范围时的出行方式
         weather_condition: 天气状况字符串
 
     返回:
@@ -115,11 +117,15 @@ def plan_route(
     prev_lat, prev_lng = _parse_coord(start_coord)
 
     for i, (wp, dist) in enumerate(ordered):
-        # 交通模式判定
+        # 交通模式判定：步行容忍内→步行，超出→按出行喜好
         if dist <= effective_tolerance and transport_preference != "打车优先":
             mode = "步行"
-        elif transport_preference in ("打车优先", "地铁优先"):
-            mode = transport_preference.replace("优先", "")
+        elif transport_preference in ("打车优先",):
+            mode = "打车"
+        elif transport_preference in ("地铁优先",):
+            mode = "地铁"
+        elif travel_preference == "公共交通":
+            mode = "公共交通"
         else:
             mode = "打车"
 

@@ -133,11 +133,15 @@
 @keyframes sun-rotate { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
 .weather-sunny .cloud,
 .weather-sunny .rain-drop,
+.weather-sunny .snow-flake,
+.weather-sunny .fog-layer,
 .weather-sunny .lightning { display:none; }
 
 /* --- 雨天 --- */
 .weather-rainy .sun-core,
 .weather-rainy .sun-ray { display:none; }
+.weather-rainy .snow-flake,
+.weather-rainy .fog-layer { display:none; }
 .weather-rainy .cloud {
   display:block; position:absolute; top:12px; left:2px; width:44px; height:16px; z-index:1;
   background:#94a3b8; border-radius:20px;
@@ -193,6 +197,104 @@
   11%  { opacity:0.01; }
   15%  { opacity:0; }
   100% { opacity:0; }
+}
+
+/* --- 多云（云遮日） --- */
+.weather-cloudy .sun-ray { display:none; }
+.weather-cloudy .sun-core {
+  position:absolute; width:20px; height:20px; background:#fbbf24; border-radius:50%;
+  top:20px; left:6px; box-shadow:0 0 8px 2px rgba(251,191,36,0.35);
+  z-index:0;
+}
+.weather-cloudy .cloud {
+  display:block; position:absolute; top:8px; left:10px; width:34px; height:14px; z-index:1;
+  background:#cbd5e1; border-radius:18px;
+  animation:cloud-drift 6s ease-in-out infinite;
+}
+.weather-cloudy .cloud::before {
+  content:''; position:absolute; width:18px; height:18px; background:#cbd5e1; border-radius:50%;
+  top:-8px; left:3px;
+}
+.weather-cloudy .cloud::after {
+  content:''; position:absolute; width:14px; height:14px; background:#cbd5e1; border-radius:50%;
+  top:-6px; left:16px;
+}
+.weather-cloudy .rain-drop,
+.weather-cloudy .snow-flake,
+.weather-cloudy .fog-layer,
+.weather-cloudy .lightning { display:none; }
+
+/* --- 阴天（全云遮日） --- */
+.weather-overcast .sun-core,
+.weather-overcast .sun-ray { display:none; }
+.weather-overcast .cloud {
+  display:block; position:absolute; top:10px; left:0px; width:48px; height:18px; z-index:1;
+  background:#9ca3af; border-radius:22px;
+  animation:overcast-drift 8s ease-in-out infinite;
+}
+.weather-overcast .cloud::before {
+  content:''; position:absolute; width:24px; height:24px; background:#9ca3af; border-radius:50%;
+  top:-10px; left:2px;
+}
+.weather-overcast .cloud::after {
+  content:''; position:absolute; width:20px; height:20px; background:#9ca3af; border-radius:50%;
+  top:-8px; left:24px;
+}
+.weather-overcast .rain-drop,
+.weather-overcast .snow-flake,
+.weather-overcast .fog-layer,
+.weather-overcast .lightning { display:none; }
+@keyframes overcast-drift {
+  0%,100% { transform:translateX(0); }
+  50%     { transform:translateX(-2px); }
+}
+
+/* --- 雪天 --- */
+.weather-snow .sun-core,
+.weather-snow .sun-ray { display:none; }
+.weather-snow .cloud {
+  display:block; position:absolute; top:12px; left:2px; width:44px; height:16px; z-index:1;
+  background:#94a3b8; border-radius:20px;
+}
+.weather-snow .cloud::before {
+  content:''; position:absolute; width:22px; height:22px; background:#94a3b8; border-radius:50%;
+  top:-9px; left:5px;
+}
+.weather-snow .cloud::after {
+  content:''; position:absolute; width:18px; height:18px; background:#94a3b8; border-radius:50%;
+  top:-7px; left:19px;
+}
+.weather-snow .snow-flake {
+  display:block; position:absolute; top:28px; width:4px; height:4px; background:#e2e8f0;
+  border-radius:50%; box-shadow:0 0 3px 1px rgba(226,232,240,0.6);
+  animation:snow-fall var(--sd) linear infinite;
+}
+.weather-snow .rain-drop,
+.weather-snow .fog-layer,
+.weather-snow .lightning { display:none; }
+@keyframes snow-fall {
+  0%   { transform:translateY(0) translateX(0); opacity:0.9; }
+  25%  { transform:translateY(4px) translateX(2px); opacity:0.75; }
+  50%  { transform:translateY(9px) translateX(-1px); opacity:0.55; }
+  75%  { transform:translateY(13px) translateX(2px); opacity:0.3; }
+  100% { transform:translateY(18px) translateX(-2px); opacity:0; }
+}
+
+/* --- 雾/霾/沙尘 --- */
+.weather-foggy .sun-core,
+.weather-foggy .sun-ray { display:none; }
+.weather-foggy .cloud { display:none; }
+.weather-foggy .rain-drop { display:none; }
+.weather-foggy .snow-flake { display:none; }
+.weather-foggy .lightning { display:none; }
+.weather-foggy .fog-layer {
+  display:block; position:absolute; left:0; width:48px; height:6px; background:rgba(148,163,184,0.55);
+  border-radius:3px; animation:fog-roll 4s ease-in-out infinite;
+}
+@keyframes fog-roll {
+  0%,100% { opacity:0.35; transform:translateX(0); }
+  33%     { opacity:0.65; transform:translateX(2px); }
+  66%     { opacity:0.45; transform:translateX(-2px); }
 }
 @keyframes cloud-glow {
   0%   { box-shadow:0 0 0 rgba(255,255,255,0); }
@@ -295,14 +397,30 @@
  <!-- Weather type selector (always visible) -->
  <div id="weather-type-selector" class="space-y-1.5" style="opacity:0.4; pointer-events:none;">
    <label class="block text-[11px] text-gray-500">虚拟天气类型</label>
-   <div id="weather-radio-group" class="flex gap-2">
-     <label class="flex items-center gap-1.5 bg-gray-800 rounded-xl px-3 py-2 border border-gray-700 transition flex-1">
+   <div id="weather-radio-group" class="flex gap-1.5 flex-wrap">
+     <label class="flex items-center gap-1 bg-gray-800 rounded-lg px-2 py-1.5 border border-gray-700 transition">
        <input type="radio" name="virtual-weather-type" value="晴天" checked onchange="setVirtualWeatherType('晴天')" class="accent-yellow-400">
-       <span class="text-xs text-white">☀️ 晴天</span>
+       <span class="text-[11px] text-white">☀️</span>
      </label>
-     <label class="flex items-center gap-1.5 bg-gray-800 rounded-xl px-3 py-2 border border-gray-700 transition flex-1">
+     <label class="flex items-center gap-1 bg-gray-800 rounded-lg px-2 py-1.5 border border-gray-700 transition">
+       <input type="radio" name="virtual-weather-type" value="多云" onchange="setVirtualWeatherType('多云')" class="accent-yellow-400">
+       <span class="text-[11px] text-white">⛅</span>
+     </label>
+     <label class="flex items-center gap-1 bg-gray-800 rounded-lg px-2 py-1.5 border border-gray-700 transition">
+       <input type="radio" name="virtual-weather-type" value="阴天" onchange="setVirtualWeatherType('阴天')" class="accent-yellow-400">
+       <span class="text-[11px] text-white">☁️</span>
+     </label>
+     <label class="flex items-center gap-1 bg-gray-800 rounded-lg px-2 py-1.5 border border-gray-700 transition">
        <input type="radio" name="virtual-weather-type" value="雨天" onchange="setVirtualWeatherType('雨天')" class="accent-yellow-400">
-       <span class="text-xs text-white">🌧️ 雨天</span>
+       <span class="text-[11px] text-white">🌧️</span>
+     </label>
+     <label class="flex items-center gap-1 bg-gray-800 rounded-lg px-2 py-1.5 border border-gray-700 transition">
+       <input type="radio" name="virtual-weather-type" value="雪天" onchange="setVirtualWeatherType('雪天')" class="accent-yellow-400">
+       <span class="text-[11px] text-white">❄️</span>
+     </label>
+     <label class="flex items-center gap-1 bg-gray-800 rounded-lg px-2 py-1.5 border border-gray-700 transition">
+       <input type="radio" name="virtual-weather-type" value="雾霾" onchange="setVirtualWeatherType('雾霾')" class="accent-yellow-400">
+       <span class="text-[11px] text-white">🌫️</span>
      </label>
    </div>
  </div>
@@ -440,6 +558,21 @@
         <div class="rain-drop" style="left:36px; height:4px; animation-delay:0.95s; --rd:1.1s"></div>
         <div class="rain-drop" style="left:40px; height:4px; animation-delay:0.15s; --rd:1.4s"></div>
         <div class="rain-drop" style="left:40px; height:3px; animation-delay:0.65s; --rd:1.4s"></div>
+        <!-- 雪花 -->
+        <div class="snow-flake" style="left:4px; animation-delay:0s; --sd:1.5s"></div>
+        <div class="snow-flake" style="left:8px; animation-delay:0.4s; --sd:1.8s"></div>
+        <div class="snow-flake" style="left:12px; animation-delay:0.2s; --sd:1.3s"></div>
+        <div class="snow-flake" style="left:16px; animation-delay:0.7s; --sd:1.9s"></div>
+        <div class="snow-flake" style="left:20px; animation-delay:0.35s; --sd:1.6s"></div>
+        <div class="snow-flake" style="left:24px; animation-delay:0.55s; --sd:1.4s"></div>
+        <div class="snow-flake" style="left:28px; animation-delay:0.15s; --sd:1.75s"></div>
+        <div class="snow-flake" style="left:32px; animation-delay:0.6s; --sd:1.55s"></div>
+        <div class="snow-flake" style="left:36px; animation-delay:0.25s; --sd:1.85s"></div>
+        <div class="snow-flake" style="left:40px; animation-delay:0.5s; --sd:1.65s"></div>
+        <!-- 雾层 -->
+        <div class="fog-layer" style="top:10px; animation-delay:0s;"></div>
+        <div class="fog-layer" style="top:20px; animation-delay:-1.5s;"></div>
+        <div class="fog-layer" style="top:30px; animation-delay:-3s;"></div>
         <div class="lightning"></div>
        </div></span>
        <!-- 多日行程切换按钮 -->
@@ -480,49 +613,87 @@
       <!-- ===== 多日行程设置面板 ===== -->
       <div id="multi-day-setup-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden" style="background: rgba(0,0,0,0.5);">
         <div class="bg-white mx-4 rounded-[32px] shadow-2xl max-w-sm w-full max-h-[80vh] overflow-y-auto animate-fade-in">
-          <!-- Step 1: 基本设置 -->
-          <div id="multi-setup-step1" class="p-6">
-            <div class="text-center mb-5">
-              <div class="text-4xl mb-3">🗓️</div>
-              <h3 class="text-xl font-black text-gray-900">多日行程规划</h3>
-              <p class="text-xs text-gray-500 mt-1">告诉我您的旅行计划</p>
+          <!-- Step 1: 行程信息 -->
+          <div id="multi-setup-step1" class="p-5">
+            <div class="text-center mb-4">
+              <div class="text-3xl mb-2">🧳</div>
+              <h3 class="text-xl font-black text-gray-900">行程规划</h3>
+              <p class="text-xs text-gray-400 mt-1">填写旅行信息，智能安排行程</p>
             </div>
-            <!-- 📅 行程日期选择（天数自动按日期范围计算）-->
-            <div class="mb-4">
-              <label class="text-sm font-bold text-gray-600 mb-2 block">📅 选择行程日期</label>
-              <div id="multi-date-display" onclick="openDatePicker()" class="bg-gray-100 rounded-2xl px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-200 transition">
-                <span id="multi-date-text" class="text-sm font-bold text-gray-900">7月4日 周六 → 7月5日 周日</span>
-                <span class="text-gray-400 text-xs">📅</span>
-              </div>
-              <!-- 日历选择器弹窗 -->
-              <div id="multi-date-picker" class="hidden mt-2 bg-white rounded-2xl border border-gray-200 shadow-lg p-4">
-                <div class="flex items-center justify-between mb-2">
-                  <button onclick="changePickerMonth(-1)" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-sm font-bold transition">◀</button>
-                  <span id="multi-picker-month-label" class="text-sm font-black text-gray-900">2026年7月</span>
-                  <button onclick="changePickerMonth(1)" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-sm font-bold transition">▶</button>
+            <!-- 卡片 1: 基本信息 -->
+            <div class="bg-gray-50 rounded-2xl p-4 mb-4">
+              <h4 class="text-sm font-black text-gray-700 mb-3">📋 基本信息</h4>
+              <!-- 日期选择 -->
+              <div class="mb-3">
+                <label class="text-xs font-bold text-gray-500 mb-1 block">行程日期</label>
+                <div id="multi-date-display" onclick="openDatePicker()" class="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between cursor-pointer border border-gray-200 hover:border-yellow-300 transition">
+                  <span id="multi-date-text" class="text-sm font-bold text-gray-900">7月10日 周五 → 7月12日 周日</span>
+                  <span class="text-gray-400 text-xs">📅</span>
                 </div>
-                <p id="multi-picker-hint" class="text-[10px] text-yellow-600 text-center mb-2 font-medium">请点击选择出发日期</p>
-                <div class="grid grid-cols-7 gap-1 text-center mb-2">
-                  <span class="text-[10px] text-gray-400 font-medium">日</span><span class="text-[10px] text-gray-400 font-medium">一</span><span class="text-[10px] text-gray-400 font-medium">二</span><span class="text-[10px] text-gray-400 font-medium">三</span><span class="text-[10px] text-gray-400 font-medium">四</span><span class="text-[10px] text-gray-400 font-medium">五</span><span class="text-[10px] text-gray-400 font-medium">六</span>
+                <div id="multi-date-picker" class="hidden mt-2 bg-white rounded-2xl border border-gray-200 shadow-lg p-4">
+                  <div class="flex items-center justify-between mb-2">
+                    <button onclick="changePickerMonth(-1)" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-sm font-bold transition">◀</button>
+                    <span id="multi-picker-month-label" class="text-sm font-black text-gray-900">2026年7月</span>
+                    <button onclick="changePickerMonth(1)" class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-sm font-bold transition">▶</button>
+                  </div>
+                  <p id="multi-picker-hint" class="text-[10px] text-yellow-600 text-center mb-2 font-medium">请点击选择出发日期</p>
+                  <div class="grid grid-cols-7 gap-1 text-center mb-2">
+                    <span class="text-[10px] text-gray-400 font-medium">日</span><span class="text-[10px] text-gray-400 font-medium">一</span><span class="text-[10px] text-gray-400 font-medium">二</span><span class="text-[10px] text-gray-400 font-medium">三</span><span class="text-[10px] text-gray-400 font-medium">四</span><span class="text-[10px] text-gray-400 font-medium">五</span><span class="text-[10px] text-gray-400 font-medium">六</span>
+                  </div>
+                  <div id="multi-picker-days-grid" class="grid grid-cols-7 gap-1 text-center"></div>
+                  <button onclick="closeDatePicker()" class="w-full mt-3 text-xs text-gray-400 font-medium py-2 hover:text-gray-600 transition">关闭</button>
                 </div>
-                <div id="multi-picker-days-grid" class="grid grid-cols-7 gap-1 text-center"></div>
-                <button onclick="closeDatePicker()" class="w-full mt-3 text-xs text-gray-400 font-medium py-2 hover:text-gray-600 transition">关闭</button>
+              </div>
+              <!-- 出发城市 -->
+              <div class="mb-3">
+                <label class="text-xs font-bold text-gray-500 mb-1 block">🏠 出发城市</label>
+                <input type="text" id="multi-departure-city" placeholder="例如：上海" class="w-full bg-white rounded-xl px-3 py-2.5 text-sm font-medium outline-none border border-gray-200 focus:border-yellow-400 transition">
+              </div>
+              <!-- 目的地 -->
+              <div>
+                <label class="text-xs font-bold text-gray-500 mb-1 block">🎯 目的地城市</label>
+                <input type="text" id="multi-destination-input" value="北京" placeholder="输入城市名" class="w-full bg-white rounded-xl px-3 py-2.5 text-sm font-medium outline-none border border-gray-200 focus:border-yellow-400 transition">
               </div>
             </div>
-            <div class="mb-4">
-              <label class="text-sm font-bold text-gray-600 mb-2 block">📍 去哪里旅游？</label>
-              <input type="text" id="multi-destination-input" value="北京" placeholder="输入城市名" class="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-yellow-400 transition">
-            </div>
-            <div class="mb-5">
-              <label class="text-sm font-bold text-gray-600 mb-2 block">🚗 怎么出行？</label>
-              <div class="grid grid-cols-2 gap-2">
-                <button onclick="selectMultiTransport('步行优先', this)" class="multi-transport-btn py-2 px-3 rounded-2xl text-sm font-bold bg-yellow-400 text-black transition">🚶 步行优先</button>
-                <button onclick="selectMultiTransport('地铁优先', this)" class="multi-transport-btn py-2 px-3 rounded-2xl text-sm font-bold bg-gray-100 text-gray-600 transition">🚇 地铁优先</button>
-                <button onclick="selectMultiTransport('打车优先', this)" class="multi-transport-btn py-2 px-3 rounded-2xl text-sm font-bold bg-gray-100 text-gray-600 transition">🚗 打车优先</button>
-                <button onclick="selectMultiTransport('驾车', this)" class="multi-transport-btn py-2 px-3 rounded-2xl text-sm font-bold bg-gray-100 text-gray-600 transition">🚘 驾车</button>
+            <!-- 卡片 2: 去程交通 -->
+            <div class="bg-gray-50 rounded-2xl p-4 mb-4">
+              <h4 class="text-sm font-black text-gray-700 mb-3">✈️ 去程交通</h4>
+              <div class="flex gap-2 mb-3">
+                <button onclick="selectOutboundType('飞机', this)" class="outbound-btn py-2 px-4 rounded-2xl text-sm font-bold bg-gray-200 text-gray-600 transition">✈️ 飞机</button>
+                <button onclick="selectOutboundType('高铁', this)" class="outbound-btn py-2 px-4 rounded-2xl text-sm font-bold bg-gray-200 text-gray-600 transition">🚄 高铁</button>
+                <button onclick="selectOutboundType('火车', this)" class="outbound-btn py-2 px-4 rounded-2xl text-sm font-bold bg-gray-200 text-gray-600 transition">🚂 火车</button>
+              </div>
+              <div class="mb-3">
+                <label class="text-xs font-bold text-gray-500 mb-1 block">出发时间</label>
+                <input type="time" id="multi-outbound-departure" value="" class="w-full bg-white rounded-xl px-3 py-2.5 text-sm font-medium outline-none border border-gray-200 focus:border-yellow-400 transition">
+              </div>
+              <div class="mb-3">
+                <label class="text-xs font-bold text-gray-500 mb-1 block">到达时间 <span class="text-gray-400 font-normal">（可选）</span></label>
+                <input type="time" id="multi-outbound-arrival" value="" class="w-full bg-white rounded-xl px-3 py-2.5 text-sm font-medium outline-none border border-gray-200 focus:border-yellow-400 transition">
+              </div>
+              <div>
+                <label class="text-xs font-bold text-gray-500 mb-1 block">到达站点</label>
+                <input type="text" id="multi-arrival-station" placeholder="例如：北京大兴国际机场" class="w-full bg-white rounded-xl px-3 py-2.5 text-sm font-medium outline-none border border-gray-200 focus:border-yellow-400 transition">
               </div>
             </div>
-            <button onclick="goToMultiSetupStep2()" class="w-full bg-gray-900 text-yellow-400 font-black py-4 rounded-2xl hover:scale-95 transition-transform meituan-shadow">下一步：选想去的地方 →</button>
+            <!-- 卡片 3: 返程交通 -->
+            <div class="bg-gray-50 rounded-2xl p-4 mb-5">
+              <h4 class="text-sm font-black text-gray-700 mb-3">🔙 返程交通</h4>
+              <div class="flex gap-2 mb-3">
+                <button onclick="selectReturnType('飞机', this)" class="return-btn py-2 px-4 rounded-2xl text-sm font-bold bg-gray-200 text-gray-600 transition">✈️ 飞机</button>
+                <button onclick="selectReturnType('高铁', this)" class="return-btn py-2 px-4 rounded-2xl text-sm font-bold bg-gray-200 text-gray-600 transition">🚄 高铁</button>
+                <button onclick="selectReturnType('火车', this)" class="return-btn py-2 px-4 rounded-2xl text-sm font-bold bg-gray-200 text-gray-600 transition">🚂 火车</button>
+              </div>
+              <div class="mb-3">
+                <label class="text-xs font-bold text-gray-500 mb-1 block">返程出发时间</label>
+                <input type="time" id="multi-return-departure" value="" class="w-full bg-white rounded-xl px-3 py-2.5 text-sm font-medium outline-none border border-gray-200 focus:border-yellow-400 transition">
+              </div>
+              <div>
+                <label class="text-xs font-bold text-gray-500 mb-1 block">出发站点</label>
+                <input type="text" id="multi-return-station" placeholder="例如：北京大兴国际机场" class="w-full bg-white rounded-xl px-3 py-2.5 text-sm font-medium outline-none border border-gray-200 focus:border-yellow-400 transition">
+              </div>
+            </div>
+            <button onclick="goToMultiSetupStep2()" class="w-full bg-gray-900 text-yellow-400 font-black py-4 rounded-2xl hover:scale-95 transition-transform meituan-shadow">🪄 下一步：选择想去的地方 →</button>
             <button onclick="closeMultiDaySetup()" class="w-full mt-2 text-gray-400 text-sm font-medium py-2 hover:text-gray-600 transition">取消</button>
           </div>
           <!-- Step 2: 热门推荐 + 搜索添加 -->
@@ -960,6 +1131,16 @@ let multiCandidatePool = [];       // [{shop_id, name, category, lat, lng, coord
 let multiDayScheduleResult = null; // 排程结果缓存
 let multiActiveDayIndex = 0;
 let multiDayChatHistory = [];     // 多日聊天历史
+// --- 旅行信息（去程/返程）---
+let multiDepartureCity = '';
+let multiOutboundType = '';         // '飞机'/'高铁'/'火车'
+let multiOutboundDeparture = '';    // "14:30"
+let multiOutboundArrival = '';      // "16:45"
+let multiArrivalStation = '';       // "北京大兴国际机场"
+let multiReturnType = '';           // '飞机'/'高铁'/'火车'
+let multiReturnDeparture = '';      // "16:00"
+let multiReturnStation = '';        // 返程出发站点
+let multiTravelPreference = '公共交通'; // 从偏好读取：超出步行范围时的出行方式
 // --- 日期选择状态 ---
 let multiStartDate = null;   // 出发日期（null=未选，显示时兜底今天）
 let multiEndDate = null;     // 结束日期（null=未选）
@@ -4677,17 +4858,22 @@ function fetchRealWeather() {
   .then(function(data) {
     if (data.status === 'SUCCESS') {
       realWeatherCache = data;
-      updateWeatherLogo();
-      // 更新温度 badge
       var badge = document.getElementById('weather-temp-badge');
       if (badge) badge.textContent = data.weather.temperature_c + '°';
+    } else {
+      // API 返回错误 — 清除缓存，logo 根据虚拟天气或保持默认
+      console.log('Real weather API returned error: ' + (data.message || 'unknown'));
+      realWeatherCache = null;
     }
+    updateWeatherLogo();
   })
   .catch(function() {
-    // API 失败，兜底 21°C
+    // 网络失败 — 清除缓存，兜底 21°C
+    realWeatherCache = null;
     var badge = document.getElementById('weather-temp-badge');
     if (badge) badge.textContent = '21°';
     console.log('Real weather fetch failed, using 21°C fallback');
+    updateWeatherLogo();
   });
 }function getCurrentWeatherCondition() {
   if (virtualWeatherEnabled) {
@@ -4703,11 +4889,34 @@ function updateWeatherLogo() {
   var logo = document.getElementById('weather-dynamic-logo');
   if (!logo) return;
   var condition = getCurrentWeatherCondition();
-  var isRain = condition && (condition.indexOf('雨') !== -1 || condition.indexOf('暴') !== -1 || condition.indexOf('雷') !== -1);
-
-  if (isRain) {
+  if (!condition) {
+    // 没有天气数据时保持默认（但尝试获取真实天气）
+    logo.className = 'weather-icon weather-sunny';
+    return;
+  }
+  var c = condition;
+  // 雨/雷/暴 → rainy
+  if (c.indexOf('雨') !== -1 || c.indexOf('暴') !== -1 || c.indexOf('雷') !== -1) {
     logo.className = 'weather-icon weather-rainy';
-  } else {
+  }
+  // 雪 → snow
+  else if (c.indexOf('雪') !== -1) {
+    logo.className = 'weather-icon weather-snow';
+  }
+  // 雾/霾/沙/尘 → foggy
+  else if (c.indexOf('雾') !== -1 || c.indexOf('霾') !== -1 || c.indexOf('沙') !== -1 || c.indexOf('尘') !== -1) {
+    logo.className = 'weather-icon weather-foggy';
+  }
+  // 阴 → overcast
+  else if (c.indexOf('阴') !== -1) {
+    logo.className = 'weather-icon weather-overcast';
+  }
+  // 多云/少云 → cloudy
+  else if (c.indexOf('多云') !== -1 || c.indexOf('少云') !== -1) {
+    logo.className = 'weather-icon weather-cloudy';
+  }
+  // 晴 → sunny
+  else {
     logo.className = 'weather-icon weather-sunny';
   }
 }
@@ -6174,6 +6383,7 @@ function openOnboardingModal(mode, existingProfile) {
   var dcui = taste.cuisine_preference || [];
   var dwalk = commute.walking_tolerance_meters || 800;
   var dtrans = commute.transport_priority || '步行优先';
+  var dtravel = commute.travel_preference || '公共交通';
   var dprice = budget.price_level || '中端';
   var drating = budget.rating_cutoff || 4.0;
   var dcusbud = budget.custom_budget_per_person || '';
@@ -6251,6 +6461,11 @@ function openOnboardingModal(mode, existingProfile) {
       rp('onb_trans', '步行优先', '步行优先', dtrans === '步行优先') +
       rp('onb_trans', '打车优先', '打车优先', dtrans === '打车优先') +
       rp('onb_trans', '地铁优先', '地铁优先', dtrans === '地铁优先') +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;margin-top:8px;">出行喜好</p>' +
+    '<div>' +
+      rp('onb_travel_pref', '公共交通', '🚌 公共交通', dtravel === '公共交通') +
+      rp('onb_travel_pref', '打车', '🚗 打车', dtravel === '打车') +
     '</div>' +
   '</div>';
 
@@ -6447,6 +6662,9 @@ function submitOnboarding(isInit) {
   var transEl = document.querySelector('input[name="onb_trans"]:checked');
   var transVal = transEl ? transEl.value : '步行优先';
 
+  var travelPrefEl = document.querySelector('input[name="onb_travel_pref"]:checked');
+  var travelPrefVal = travelPrefEl ? travelPrefEl.value : '公共交通';
+
   // --- 收集预算 ---
   var priceEl = document.querySelector('input[name="onb_price"]:checked');
   var priceVal = priceEl ? priceEl.value : '中端';
@@ -6478,7 +6696,8 @@ function submitOnboarding(isInit) {
     },
     commute: {
       walking_tolerance_meters: walkVal,
-      transport_priority: transVal
+      transport_priority: transVal,
+      travel_preference: travelPrefVal
     },
     budget: {
       price_level: priceVal,
@@ -7815,7 +8034,11 @@ function toggleMultiDayMode() {
 
 function openMultiDaySetup() {
   console.log('[MultiDay] openMultiDaySetup');
-  multiDayTransport = '步行优先'; multiDayDestination = '北京'; multiCandidatePool = [];
+  multiDayTransport = '打车优先'; multiDayDestination = '北京'; multiCandidatePool = [];
+  // 重置旅行信息
+  multiDepartureCity = ''; multiOutboundType = ''; multiOutboundDeparture = '';
+  multiOutboundArrival = ''; multiArrivalStation = '';
+  multiReturnType = ''; multiReturnDeparture = ''; multiReturnStation = '';
   // 默认日期：今天 → 明天（2天）
   var today = new Date(); today.setHours(0,0,0,0);
   var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -7831,12 +8054,30 @@ function openMultiDaySetup() {
   if (elStep1) elStep1.classList.remove('hidden');
   if (elStep2) elStep2.classList.add('hidden');
   if (elModal) elModal.classList.remove('hidden');
-  // 重置交通按钮
-  var btns = document.querySelectorAll('.multi-transport-btn');
-  for (var i = 0; i < btns.length; i++) {
-    btns[i].className = btns[i].className.replace(/bg-yellow-400 text-black/g, 'bg-gray-100 text-gray-600');
+  // 清除输入
+  var elDepCity = document.getElementById('multi-departure-city');
+  if (elDepCity) elDepCity.value = '';
+  var elOutDep = document.getElementById('multi-outbound-departure');
+  if (elOutDep) elOutDep.value = '';
+  var elOutArr = document.getElementById('multi-outbound-arrival');
+  if (elOutArr) elOutArr.value = '';
+  var elArrSta = document.getElementById('multi-arrival-station');
+  if (elArrSta) elArrSta.value = '';
+  var elRetDep = document.getElementById('multi-return-departure');
+  if (elRetDep) elRetDep.value = '';
+  var elRetSta = document.getElementById('multi-return-station');
+  if (elRetSta) elRetSta.value = '';
+  // 重置交通类型 pill
+  var outBtns = document.querySelectorAll('.outbound-btn');
+  for (var i = 0; i < outBtns.length; i++) {
+    outBtns[i].className = outBtns[i].className.replace(/bg-yellow-400 text-black/g, 'bg-gray-200 text-gray-600');
   }
-  if (btns.length > 0) btns[0].className = btns[0].className.replace(/bg-gray-100 text-gray-600/g, 'bg-yellow-400 text-black');
+  var retBtns = document.querySelectorAll('.return-btn');
+  for (var i = 0; i < retBtns.length; i++) {
+    retBtns[i].className = retBtns[i].className.replace(/bg-yellow-400 text-black/g, 'bg-gray-200 text-gray-600');
+  }
+  // 自动从偏好读取出行方式
+  autoDetermineTransport();
 }
 
 function closeMultiDaySetup() {
@@ -8005,26 +8246,104 @@ function renderPickerGrid() {
   grid.innerHTML = html;
 }
 
-function selectMultiTransport(mode, btn) {
-  multiDayTransport = mode;
-  var btns = document.querySelectorAll('.multi-transport-btn');
+function selectOutboundType(type, btn) {
+  multiOutboundType = type;
+  var btns = document.querySelectorAll('.outbound-btn');
   for (var i = 0; i < btns.length; i++) {
-    btns[i].className = btns[i].className.replace(/bg-yellow-400 text-black/g, 'bg-gray-100 text-gray-600');
+    btns[i].className = btns[i].className.replace(/bg-yellow-400 text-black/g, 'bg-gray-200 text-gray-600');
   }
-  if (btn) btn.className = btn.className.replace(/bg-gray-100 text-gray-600/g, 'bg-yellow-400 text-black');
+  if (btn) btn.className = btn.className.replace(/bg-gray-200 text-gray-600/g, 'bg-yellow-400 text-black');
+}
+
+function selectReturnType(type, btn) {
+  multiReturnType = type;
+  var btns = document.querySelectorAll('.return-btn');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].className = btns[i].className.replace(/bg-yellow-400 text-black/g, 'bg-gray-200 text-gray-600');
+  }
+  if (btn) btn.className = btn.className.replace(/bg-gray-200 text-gray-600/g, 'bg-yellow-400 text-black');
+}
+
+function autoDetermineTransport() {
+  // 从偏好读取步行容忍距离和出行喜好，自动推算多日行程出行方式
+  fetch(API_BASE + '/api/profile/get')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var commute = (data.profile && data.profile.commute) || {};
+      var travelPref = commute.travel_preference || '公共交通';
+      var transportPriority = commute.transport_priority || '步行优先';
+      multiTravelPreference = travelPref;
+      // 出行喜好决定城内交通方式：公共交通→地铁优先，打车→打车优先
+      if (travelPref === '公共交通') {
+        multiDayTransport = '地铁优先';
+      } else {
+        multiDayTransport = '打车优先';
+      }
+      console.log('[MultiDay] auto transport: travelPref=' + travelPref + ', transport=' + multiDayTransport);
+    })
+    .catch(function() {
+      multiTravelPreference = '公共交通';
+      multiDayTransport = '地铁优先';
+    });
 }
 
 function goToMultiSetupStep2() {
-  var destInput = document.getElementById('multi-destination-input');
-  multiDayDestination = (destInput && destInput.value.trim()) ? destInput.value.trim() : '北京';
-  var label = document.getElementById('multi-dest-label');
-  if (label) label.textContent = multiDayDestination;
-  var step1 = document.getElementById('multi-setup-step1');
-  var step2 = document.getElementById('multi-setup-step2');
-  if (step1) step1.classList.add('hidden');
-  if (step2) step2.classList.remove('hidden');
-  console.log('[MultiDay] goToStep2, destination=' + multiDayDestination);
-  fetchPopularAttractions();
+  // 收集旅行信息
+  multiDayDestination = (document.getElementById('multi-destination-input')?.value?.trim()) || '北京';
+  multiDepartureCity = document.getElementById('multi-departure-city')?.value?.trim() || '';
+  multiOutboundDeparture = document.getElementById('multi-outbound-departure')?.value || '';
+  multiOutboundArrival = document.getElementById('multi-outbound-arrival')?.value || '';
+  multiArrivalStation = document.getElementById('multi-arrival-station')?.value?.trim() || '';
+  multiReturnDeparture = document.getElementById('multi-return-departure')?.value || '';
+  multiReturnStation = document.getElementById('multi-return-station')?.value?.trim() || '';
+
+  var startDateStr = '';
+  if (multiStartDate) {
+    startDateStr = multiStartDate.getFullYear() + '-' +
+      String(multiStartDate.getMonth()+1).padStart(2,'0') + '-' +
+      String(multiStartDate.getDate()).padStart(2,'0');
+  }
+
+  // 保存行程配置到后端（含旅行信息）
+  fetch(API_BASE + '/api/set_trip_config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      days: multiDayCount,
+      destination: multiDayDestination,
+      transport: multiDayTransport,
+      start_date: startDateStr,
+      departure_city: multiDepartureCity,
+      outbound_type: multiOutboundType,
+      outbound_departure_time: multiOutboundDeparture,
+      outbound_arrival_time: multiOutboundArrival,
+      arrival_station: multiArrivalStation,
+      return_type: multiReturnType,
+      return_departure_time: multiReturnDeparture,
+      return_station: multiReturnStation,
+      travel_preference: multiTravelPreference,
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.status === 'SUCCESS') {
+      // 切换到 Step 2: 景点选择
+      document.getElementById('multi-setup-step1').classList.add('hidden');
+      document.getElementById('multi-setup-step2').classList.remove('hidden');
+      document.getElementById('multi-dest-label').textContent = multiDayDestination;
+      fetchPopularAttractions();
+    } else {
+      alert('保存行程配置失败: ' + (data.message || '未知错误'));
+    }
+  })
+  .catch(function(e) {
+    console.error('[MultiDay] set_trip_config failed:', e);
+    // 降级：直接切换
+    document.getElementById('multi-setup-step1').classList.add('hidden');
+    document.getElementById('multi-setup-step2').classList.remove('hidden');
+    document.getElementById('multi-dest-label').textContent = multiDayDestination;
+    fetchPopularAttractions();
+  });
 }
 
 function goBackToMultiSetupStep1() {
@@ -8315,7 +8634,7 @@ async function executeSmartSchedule() {
     var res = await fetch(API_BASE + '/api/smart_schedule', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({start_time: '09:00', candidates: multiCandidatePool})
+      body: JSON.stringify({start_time: '09:00', candidates: multiCandidatePool, travel_preference: multiTravelPreference})
     });
     var data = await res.json();
     if (data.status === 'OVERCROWDED') {
