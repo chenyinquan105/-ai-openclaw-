@@ -1304,20 +1304,21 @@ class TestTravelPreferenceAndDoorToDoor:
         from multi_day_scheduler import _compute_day1_start
         skip, start, transit = _compute_day1_start({"outbound_arrival_time": "10:30"})
         assert skip is False
-        # 10:30 + 缓冲(出站15+交通20+入住30+休整30=95min) = 12:05, floor 10:00 → 12:05
-        # 12:05 落在午餐窗口 11:00-13:30 → 推迟到 13:30
-        assert start == "13:30"  # falls in lunch window, pushed to 13:30
+        # 酒店到达 = 10:30 + 出站15 + 交通20 + 入住30 = 11:35 < 12:00 → 不跳过
+        # start = max(11:35 + 休整30, 13:00) = max(12:05, 13:00) = 13:00
+        assert start == "13:00"
 
     def test_compute_day1_early_morning_arrival(self):
-        """很早到达 → 缓冲后不早于10:00"""
+        """很早到达 → 上午到酒店，下午开始游览"""
         from multi_day_scheduler import _compute_day1_start
         skip, start, transit = _compute_day1_start({"outbound_arrival_time": "08:00"})
         assert skip is False
-        # 08:00 + 95min = 09:35, floor 10:00
-        assert start == "10:00"
+        # 酒店到达 = 08:00 + 15 + 20 + 30 = 09:05 < 12:00 → 不跳过
+        # start = max(09:05 + 30, 13:00) = max(09:35, 13:00) = 13:00
+        assert start == "13:00"
 
     def test_compute_day1_noon_boundary(self):
-        """12:00边界：>=12:00跳过"""
+        """12:00到达：酒店到达(12:00+15+20+30=13:05)>=12:00 → 跳过"""
         from multi_day_scheduler import _compute_day1_start
         skip, start, transit = _compute_day1_start({"outbound_arrival_time": "12:00"})
         assert skip is True
@@ -1359,16 +1360,16 @@ class TestTravelPreferenceAndDoorToDoor:
         assert transit is None
 
     def test_compute_last_day_end_plane(self):
-        """飞机返程：提前120min"""
+        """飞机返程：统一提前150min"""
         from multi_day_scheduler import _compute_last_day_end
         end = _compute_last_day_end({"return_departure_time": "18:00", "return_type": "飞机"})
-        assert end == "16:00"  # 18:00 - 120min
+        assert end == "15:30"  # 18:00 - 150min
 
     def test_compute_last_day_end_train(self):
-        """高铁返程：提前60min"""
+        """高铁返程：统一提前150min"""
         from multi_day_scheduler import _compute_last_day_end
         end = _compute_last_day_end({"return_departure_time": "16:00", "return_type": "高铁"})
-        assert end == "15:00"  # 16:00 - 60min
+        assert end == "13:30"  # 16:00 - 150min
 
     def test_compute_last_day_end_no_info(self):
         """无返程信息 → 默认 22:00"""
@@ -1483,17 +1484,17 @@ class TestDoorToDoorFixes:
             make_shop("s4", "798", "scenic", 39.984, 116.495, opentime="09:00-22:00"),
         ]
         day_plan = {"route": [(39.908, 116.397), (39.916, 116.397), (39.999, 116.275), (39.882, 116.406), (39.908, 116.397)]}
-        # 传入严格的 bedtime_str="15:00"（模拟返程高铁16:00）
+        # 模拟返程高铁16:00 → 统一提前150min → bedtime=13:30
         result = _build_timeline(day_plan, shops, start_time_str="09:00",
-                                 bedtime_str="15:00", transport="驾车优先")
-        # 所有 VISIT 必须在 15:00 前结束
+                                 bedtime_str="13:30", transport="驾车优先")
+        # 所有 VISIT 必须在 13:30 前结束
         for n in result["timeline"]:
             if n.get("action") == "VISIT":
                 h, m = map(int, n["time"].split(":"))
                 end_time = h * 60 + m + n.get("duration_minutes", 0)
-                assert end_time <= 15 * 60, (
+                assert end_time <= 13 * 60 + 30, (
                     f"VISIT {n['memo']} 结束于 {end_time//60:02d}:{end_time%60:02d}，"
-                    f"不应超过 15:00"
+                    f"不应超过 13:30"
                 )
         # 应有被截断的店铺
         unassigned = result.get("unassigned_shops", [])
@@ -1514,8 +1515,8 @@ class TestDoorToDoorFixes:
                                  transport_preference="驾车优先", start_time_str="09:00",
                                  travel_info=travel_info)
         day = result["days"][0]
-        # 所有 VISIT 必须在 18:00 前结束（飞机20:00-120min=18:00）
-        bedtime_cap = 18 * 60  # 飞机提前120min
+        # 所有 VISIT 必须在 17:30 前结束（飞机20:00 - 统一提前150min = 17:30）
+        bedtime_cap = 17 * 60 + 30  # 飞机提前150min
         for n in day["timeline"]:
             if n.get("action") == "VISIT":
                 h, m = map(int, n["time"].split(":"))
@@ -1594,18 +1595,18 @@ class TestDoorToDoorFixes:
             )
 
     def test_day1_early_arrival_not_forced_to_14(self):
-        """Bug 5: 8:00 到达不再强制 14:00 开始"""
+        """Bug 5: 8:00到达 → 上午到酒店 → 下午13:00开始（不再强制14:00）"""
         from multi_day_scheduler import _compute_day1_start
         skip, start, transit = _compute_day1_start(
             {"outbound_arrival_time": "08:00", "outbound_type": "高铁", "arrival_station": "北京南站"},
             hotel_lat=HOTEL_LAT, hotel_lng=HOTEL_LNG,
         )
         assert skip is False
-        # 08:00 + 缓冲(15+10+30+30=85) = 09:25, floor 10:00
+        # 酒店到达 = 08:00 + 出站15 + 交通(实际计算) + 入住30 < 12:00 → 不跳过
+        # start = max(酒店到达 + 休整30, 13:00) = 13:00
         h, m = map(int, start.split(":"))
         start_min = h * 60 + m
-        assert start_min < 12 * 60, f"8:00到达不应14:00才开始，实际: {start}"
-        assert start_min >= 10 * 60, f"不应早于10:00，实际: {start}"
+        assert start_min == 13 * 60, f"上午到酒店下午开始，应为13:00，实际: {start}"
 
     def test_station_coord_lookup(self):
         """Bug 6: 站点坐标查找正常工作"""

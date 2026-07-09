@@ -176,6 +176,15 @@ STATION_COORDS = {
 }
 
 
+# ======================================================================
+# 门到门出行时间常量（统一用于飞机/高铁/火车）
+# ======================================================================
+HOME_TO_STATION_MIN = 90       # 家↔站点（高铁站/机场）默认交通时间（分钟）
+STATION_SECURITY_BUFFER = 60   # 进站安检 + 预防堵车缓冲时间（分钟）
+TOTAL_ADVANCE_MIN = 150        # 总提前量：HOME_TO_STATION(90) + SECURITY_BUFFER(60)
+MORNING_PREP_MIN = 45          # 起床后洗漱/收拾/早餐时间（分钟）
+
+
 def _lookup_station_coord(station_name: str):
     """根据站点名称查找坐标。支持模糊匹配（名称包含关键词即可）。
 
@@ -699,12 +708,14 @@ def _bind_meals_to_destinations(main_meal_shops: list, visitable_shops: list) ->
 def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
                     weather: dict = None, wake_time_str: str = "07:30",
                     bedtime_str: str = "22:00", week_day: int = 0,
-                    transport: str = "步行优先") -> dict:
+                    transport: str = "步行优先",
+                    travel_info: dict = None) -> dict:
     """
     智能时间线构建：就近用餐 + 休息缓冲 + 天气标记 + 营业时间感知。
 
     参数:
         transport: 用户选择的交通方式，用于活动间 travel 耗时估算
+        travel_info: 出行信息（用于出行日联动起床时间）
 
     返回:
       {"timeline": [...], "closed_conflicts": [...], "unknown_hours_shops": [...]}
@@ -748,28 +759,42 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
         if weather.get("day_temp", 25) > 35:
             weather_alert = (weather_alert or "") + " 🔥 高温，注意防暑"
 
-    # ── 智能起床时间（基于当天首个景点开门时间）──
-    earliest_open = None
-    earliest_open_name = ""
-    for shop in visitable_shops:
-        opentime_str = shop.get("opentime", "未知")
-        hours = _parse_opentime(opentime_str, week_day)
-        if hours:
-            if earliest_open is None or hours["open"] < earliest_open:
-                earliest_open = hours["open"]
-                earliest_open_name = shop.get("name", "")
+    # ── 智能起床时间 ──
+    # 出行日（有 travel_info）：起床 = 出门时间 - 洗漱准备时间（赶早班机自动提前）
+    if travel_info and travel_info.get("outbound_departure_time"):
+        outbound_dep = travel_info.get("outbound_departure_time", "")
+        dep_min = _time_str_to_minutes(outbound_dep) if outbound_dep else None
+        if dep_min is not None:
+            leave_home_min = dep_min - TOTAL_ADVANCE_MIN
+            wake_minutes = max(5 * 60, leave_home_min - MORNING_PREP_MIN)  # 不早于凌晨5:00
+            wake_memo = f"⏰ 起床（{outbound_dep}{travel_info.get('outbound_type','')}出发，提前准备）"
         else:
-            if opentime_str not in ("", "未知") or shop.get("category", "") not in MEAL_CATS:
-                unknown_hours_shops.append(shop.get("name", ""))
-
-    if earliest_open is not None:
-        # 起床 = 最早开门 - 60min（洗漱+早餐+交通），但不早于 06:30
-        wake_minutes = max(6 * 60 + 30, earliest_open - 60)
-        wake_memo = f"⏰ 起床（{earliest_open_name}{earliest_open//60:02d}:{earliest_open%60:02d}开门）"
+            wh, wm = map(int, wake_time_str.split(":"))
+            wake_minutes = wh * 60 + wm
+            wake_memo = "⏰ 起床"
     else:
-        wh, wm = map(int, wake_time_str.split(":"))
-        wake_minutes = wh * 60 + wm
-        wake_memo = "⏰ 起床"
+        # 非出行日：基于最早景点开门时间
+        earliest_open = None
+        earliest_open_name = ""
+        for shop in visitable_shops:
+            opentime_str = shop.get("opentime", "未知")
+            hours = _parse_opentime(opentime_str, week_day)
+            if hours:
+                if earliest_open is None or hours["open"] < earliest_open:
+                    earliest_open = hours["open"]
+                    earliest_open_name = shop.get("name", "")
+            else:
+                if opentime_str not in ("", "未知") or shop.get("category", "") not in MEAL_CATS:
+                    unknown_hours_shops.append(shop.get("name", ""))
+
+        if earliest_open is not None:
+            # 起床 = 最早开门 - 60min（洗漱+早餐+交通），但不早于 06:30
+            wake_minutes = max(6 * 60 + 30, earliest_open - 60)
+            wake_memo = f"⏰ 起床（{earliest_open_name}{earliest_open//60:02d}:{earliest_open%60:02d}开门）"
+        else:
+            wh, wm = map(int, wake_time_str.split(":"))
+            wake_minutes = wh * 60 + wm
+            wake_memo = "⏰ 起床"
 
     timeline.append({
         "time": f"{wake_minutes // 60:02d}:{wake_minutes % 60:02d}",
@@ -999,9 +1024,13 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
 
     # ── 弹性就寝时间 ──
     # 优先使用 bedtime_str 约束（返程日）；否则取最后活动+90min
+    # 晚返程（>=21:00出发）：就寝推迟到 departure-150min 之后（不需要早睡）
     if bedtime_cap < 22 * 60:
-        # 有返程约束：就寝时间在 bedtime_cap 之后 30min（收拾行李时间）
+        # 有返程约束：就寝在 bedtime_cap 后 30min（收拾行李）
         bedtime_minutes = bedtime_cap + 30
+        # 晚返程（>=21:00）→ 就寝不早于 departure-60min（到家晚）
+        if bedtime_cap >= 19 * 60 + 30:  # bedtime_cap = depart-150, 即 depart>=21:00
+            bedtime_minutes = max(bedtime_cap + 30, bedtime_cap + 60)
         bedtime_memo = "🌙 就寝（次日返程）"
     else:
         bedtime_minutes = current_minutes + 90
@@ -1035,8 +1064,25 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
             })
             current_minutes += dur + 10
 
-    # 按时间排序
-    timeline.sort(key=lambda t: _time_to_minutes(t.get("time", "00:00")))
+    # ── 排序：WAKE_UP 必须在最前、BEDTIME 必须在最后 ──
+    # 先分离 WAKE_UP / BEDTIME，其余按时间排序，再组合
+    wake_node = None
+    bedtime_node = None
+    rest_nodes = []
+    for t in timeline:
+        if t.get("action") == "WAKE_UP":
+            wake_node = t
+        elif t.get("action") == "BEDTIME":
+            bedtime_node = t
+        else:
+            rest_nodes.append(t)
+    rest_nodes.sort(key=lambda t: _time_to_minutes(t.get("time", "00:00")))
+    timeline = []
+    if wake_node:
+        timeline.append(wake_node)
+    timeline.extend(rest_nodes)
+    if bedtime_node:
+        timeline.append(bedtime_node)
 
     # ── 收集未排程的正餐店铺 → 供前端展示"待排程" ──
     unassigned_meals = []
@@ -1304,15 +1350,15 @@ def _time_str_to_minutes(t: str) -> int:
 
 
 def _compute_day1_start(travel_info: dict = None, hotel_lat: float = None, hotel_lng: float = None):
-    """根据到达时间判断 Day 1 是否排程及起始时间。
+    """根据酒店到达时间判断 Day 1 是否排程及起始时间。
 
     规则：
-      - 到达时间 < 12:00（上午）→ 计算实际可开始游览时间
-      - 到达时间 >= 12:00（下午/晚上）→ 跳过 Day 1
+      - 到达目的地 → 去酒店安顿行李 → 判定酒店到达时间
+      - 酒店到达 >= 12:00（中午之后）→ 跳过 Day 1
+      - 酒店到达 < 12:00（上午到酒店）→ 下午开始排程（>= 13:00）
       - 无到达时间 → 正常 09:00 开始
 
-    起始时间 = 到达时间 + 出站缓冲 + 站点到酒店交通 + 入住 + 休整
-    最早不早于 10:00（景点普遍开门时间）。
+    起始时间 = max(酒店到达 + 休整, 13:00)，即下午开始游览。
 
     返回: (should_skip_day1: bool, effective_start: str or None, station_to_hotel_min: int or None)
     """
@@ -1327,8 +1373,6 @@ def _compute_day1_start(travel_info: dict = None, hotel_lat: float = None, hotel
     except (ValueError, TypeError):
         return (False, "09:00", None)
     arrival_min = h * 60 + m
-    if arrival_min >= 12 * 60:  # 12:00 或之后到达 → 整天不排
-        return (True, None, None)
 
     # ── 动态缓冲计算 ──
     outbound_type = travel_info.get("outbound_type", "")
@@ -1342,7 +1386,6 @@ def _compute_day1_start(travel_info: dict = None, hotel_lat: float = None, hotel
     station_coord = _lookup_station_coord(arrival_station)
     if station_coord and hotel_lat is not None and hotel_lng is not None:
         dist_m = _haversine_m(station_coord[0], station_coord[1], hotel_lat, hotel_lng)
-        # 使用打车速度（从站点到酒店一般打车）
         station_to_hotel_min = max(10, int(dist_m / 667) + 1)
     else:
         # 无坐标时估算：机场 45min，火车站 20min
@@ -1353,29 +1396,28 @@ def _compute_day1_start(travel_info: dict = None, hotel_lat: float = None, hotel
     # 休整缓冲：30min（放行李、换衣服等）
     settle_buffer = 30
 
-    total_buffer = exit_buffer + station_to_hotel_min + checkin_buffer + settle_buffer
-    start_min = arrival_min + total_buffer
+    # ── 酒店到达时间 = 交通到达 + 出站 + 去酒店 + 入住 ──
+    hotel_arrival_min = arrival_min + exit_buffer + station_to_hotel_min + checkin_buffer
 
-    # 最早不早于 10:00（景点普遍开门时间）
-    start_min = max(10 * 60, start_min)
+    # 判定：酒店到达 >= 12:00 → 中午后才安顿好，当天不排行程
+    if hotel_arrival_min >= 12 * 60:
+        return (True, None, None)
 
-    # 如果起始时间落在午餐窗口(11:00-13:30)，推迟到午餐后
-    if 11 * 60 <= start_min < 13 * 60 + 30:
-        start_min = 13 * 60 + 30  # 13:30 午餐后开始
+    # 酒店到达 < 12:00 → 上午到酒店，下午开始游览（>= 13:00）
+    start_min = max(hotel_arrival_min + settle_buffer, 13 * 60)
 
     start_h, start_m = start_min // 60, start_min % 60
     return (False, f"{start_h:02d}:{start_m:02d}", station_to_hotel_min)
 
 
 def _compute_last_day_end(travel_info: dict = None):
-    """根据返程时间计算最后一天的行程结束上限。
+    """根据返程时间倒推最后一天的行程结束上限。
 
     规则：
-      - 飞机：返程出发 - 120min（机场提前量）
-      - 高铁/火车：返程出发 - 60min（车站提前量）
+      - 统一提前 150min（家到站点90min + 安检堵车缓冲60min）
       - 无返程信息 → 默认 22:00
 
-    返回: effective_end_time: str (如 "16:00")
+    返回: effective_end_time: str (如 "15:30")
     """
     if not travel_info:
         return "22:00"
@@ -1388,9 +1430,7 @@ def _compute_last_day_end(travel_info: dict = None):
     except (ValueError, TypeError):
         return "22:00"
     dep_min = h * 60 + m
-    return_type = travel_info.get("return_type", "")
-    buffer_min = 120 if return_type == "飞机" else 60
-    end_min = max(0, dep_min - buffer_min)
+    end_min = max(0, dep_min - TOTAL_ADVANCE_MIN)
     end_h, end_m = end_min // 60, end_min % 60
     return f"{end_h:02d}:{end_m:02d}"
 
@@ -1399,7 +1439,12 @@ def _build_travel_day_timeline(travel_info: dict, hotel_lat: float = None, hotel
     """构建 Day 1（出行日）的完整门到门时间线。
 
     生成节点序列：
-      LEAVE_HOME → TO_STATION → OUTBOUND_JOURNEY → ARRIVAL_TRANSIT → HOTEL_CHECKIN
+      WAKE_UP → LEAVE_HOME → TO_STATION → OUTBOUND_JOURNEY → ARRIVAL → ARRIVAL_TRANSIT → HOTEL_CHECKIN
+
+    时间逻辑：
+      - 出门时间 = 交通出发 - 150min（家到站点90min + 安检60min）
+      - 起床时间 = 出门时间 - 45min（洗漱收拾）
+      - 赶早班机自动提前起床
 
     用于 Day 1 被跳过（下午到达）或作为上午到达 Day 1 的前置节点。
     """
@@ -1414,37 +1459,44 @@ def _build_travel_day_timeline(travel_info: dict, hotel_lat: float = None, hotel
     departure_city = travel_info.get("departure_city", "")
 
     timeline = []
-
-    # 1. 从家出发（出发时间 - 到站交通 - 进站缓冲）
     dep_minutes = _time_str_to_minutes(outbound_dep) if outbound_dep else 8 * 60
-    # 进站缓冲：飞机 90min，高铁 60min，火车 45min
-    if outbound_type == "飞机":
-        station_buffer = 90
-    elif outbound_type == "高铁":
-        station_buffer = 60
-    else:
-        station_buffer = 45
-    # 家→站点交通时间（估算）
-    home_to_station = 45 if outbound_type == "飞机" else 30
-    leave_home_min = dep_minutes - station_buffer - home_to_station
+
+    # 统一时间常量
+    station_buffer = STATION_SECURITY_BUFFER   # 60min
+    home_to_station = HOME_TO_STATION_MIN       # 90min
+    leave_home_min = dep_minutes - TOTAL_ADVANCE_MIN  # 出发 - 150min
+    wake_min = leave_home_min - MORNING_PREP_MIN      # 出门 - 45min
+
+    # 0. 起床（赶早班机自动提前，由出发时间倒推计算）
+    transport_icon = '✈️' if outbound_type == '飞机' else '🚄'
+    timeline.append({
+        "time": f"{wake_min // 60:02d}:{wake_min % 60:02d}",
+        "action": "WAKE_UP",
+        "memo": f"⏰ 起床（{transport_icon} {outbound_type}{outbound_dep}出发，{departure_city or '出发城市'}）",
+        "category": "wake_up",
+        "shop_id": "",
+        "duration_minutes": 0,
+    })
+
+    # 1. 从家出发
     if leave_home_min > 0:
         timeline.append({
             "time": f"{leave_home_min // 60:02d}:{leave_home_min % 60:02d}",
             "action": "LEAVE_HOME",
-            "memo": f"🏠 从家出发（{departure_city or '出发城市'}）",
+            "memo": f"🏠 从家出发（{departure_city or '出发城市'} → 约{home_to_station}分钟到站点）",
             "category": "travel",
             "shop_id": "",
             "duration_minutes": 0,
         })
 
-    # 2. 到达出发站点
+    # 2. 到达出发站点（需提前60min进站安检）
     arrive_station_min = dep_minutes - station_buffer
     if arrive_station_min > 0:
-        station_name = travel_info.get("outbound_type", "") + "站"
+        station_icon = '✈️ 机场' if outbound_type == '飞机' else '🚄 车站'
         timeline.append({
             "time": f"{arrive_station_min // 60:02d}:{arrive_station_min % 60:02d}",
             "action": "TO_STATION",
-            "memo": f"🚗 到达出发站点 · 办理登机/进站",
+            "memo": f"🚗 到达出发{station_icon} · 安检/进站（提前{station_buffer}分钟）",
             "category": "travel",
             "shop_id": "",
             "duration_minutes": station_buffer,
@@ -1497,7 +1549,7 @@ def _build_travel_day_timeline(travel_info: dict, hotel_lat: float = None, hotel
     timeline.append({
         "time": f"{checkin_min // 60:02d}:{checkin_min % 60:02d}",
         "action": "HOTEL_CHECKIN",
-        "memo": f"🏨 办理入住（{outbound_type}{outbound_arrival}到达{arrival_station}）" if arrival_station else "🏨 办理入住",
+        "memo": f"🏨 办理入住 · 安顿行李（{outbound_type}{outbound_arrival}到达{arrival_station}）" if arrival_station else "🏨 办理入住 · 安顿行李",
         "category": "hotel",
         "shop_id": "",
         "duration_minutes": 30,
@@ -1509,7 +1561,11 @@ def _build_travel_day_timeline(travel_info: dict, hotel_lat: float = None, hotel
 
 
 def _build_return_timeline(travel_info: dict, hotel_lat: float = None, hotel_lng: float = None) -> list:
-    """构建最后一天返程链路：TO_STATION → RETURN_JOURNEY → ARRIVE_HOME。
+    """构建最后一天返程链路：TO_STATION → DEPARTURE → RETURN_JOURNEY → ARRIVE_HOME。
+
+    时间逻辑：
+      - 离开酒店 = 返程出发 - 150min（酒店到站点90min + 安检60min）
+      - 晚返程（>=21:00）自动推迟出发
 
     在最后一天的 timeline 末尾追加，确保用户能看到完整的返程规划。
     """
@@ -1524,42 +1580,41 @@ def _build_return_timeline(travel_info: dict, hotel_lat: float = None, hotel_lng
     timeline = []
     dep_minutes = _time_str_to_minutes(return_dep) if return_dep else 18 * 60
 
-    # 进站缓冲：飞机 90min，高铁 60min，火车 45min
-    if return_type == "飞机":
-        station_buffer = 90
-    elif return_type == "高铁":
-        station_buffer = 60
-    else:
-        station_buffer = 45
+    # 统一时间常量
+    station_buffer = STATION_SECURITY_BUFFER   # 60min
+    transit_min = HOME_TO_STATION_MIN           # 90min（默认酒店→站点）
 
-    # 酒店→站点交通时间
+    # 如能查到坐标，用实际距离计算
     station_coord = _lookup_station_coord(return_station)
-    transit_min = 30  # 默认
     if station_coord and hotel_lat is not None and hotel_lng is not None:
         dist_m = _haversine_m(hotel_lat, hotel_lng, station_coord[0], station_coord[1])
         transit_min = max(10, int(dist_m / 667) + 1)
-    elif return_type == "飞机":
-        transit_min = 45
 
-    # 1. 前往站点（需要提前 transit_min + station_buffer）
-    leave_hotel_min = dep_minutes - station_buffer - transit_min
+    leave_hotel_min = dep_minutes - TOTAL_ADVANCE_MIN  # 出发 - 150min
+
+    # 晚返程（>=21:00）：标记推迟
+    is_late_return = dep_minutes >= 21 * 60
+    late_memo_suffix = "（晚返程）" if is_late_return else ""
+
+    # 1. 离开酒店前往站点
     if leave_hotel_min > 0:
         timeline.append({
             "time": f"{leave_hotel_min // 60:02d}:{leave_hotel_min % 60:02d}",
             "action": "TO_STATION",
-            "memo": f"🚗 从酒店前往{return_station or '返程站点'}（约{transit_min}分钟）",
+            "memo": f"🚗 从酒店前往{return_station or '返程站点'}（约{transit_min}分钟）{late_memo_suffix}",
             "category": "travel",
             "shop_id": "",
             "duration_minutes": transit_min,
         })
 
-    # 2. 到达站点
+    # 2. 到达站点（需提前60min安检进站）
     arrive_station_min = dep_minutes - station_buffer
     if arrive_station_min > 0:
+        station_icon = '✈️ 机场' if return_type == '飞机' else '🚄 车站'
         timeline.append({
             "time": f"{arrive_station_min // 60:02d}:{arrive_station_min % 60:02d}",
             "action": "DEPARTURE",
-            "memo": f"🔙 到达{return_station or '站点'} · 办理登机/进站（{return_type}{return_dep}返程）",
+            "memo": f"🔙 到达{return_station or '站点'} · {station_icon}安检进站（{return_type}{return_dep}返程）",
             "category": "travel",
             "shop_id": "",
             "duration_minutes": station_buffer,
@@ -1576,15 +1631,14 @@ def _build_return_timeline(travel_info: dict, hotel_lat: float = None, hotel_lng
             "duration_minutes": 0,
         })
 
-    # 4. 到家
-    # 估算返程耗时：飞机 ~3h，高铁 ~5h，火车 ~8h
+    # 4. 到家（估算返程耗时 + 站点到家90min）
     if return_type == "飞机":
         journey_hours = 3
     elif return_type == "高铁":
         journey_hours = 5
     else:
         journey_hours = 8
-    arrive_home_min = dep_minutes + journey_hours * 60 + transit_min  # + 站点到家交通
+    arrive_home_min = dep_minutes + journey_hours * 60 + HOME_TO_STATION_MIN
     timeline.append({
         "time": f"{arrive_home_min // 60:02d}:{arrive_home_min % 60:02d}",
         "action": "ARRIVE_HOME",
@@ -1727,12 +1781,17 @@ def solve_multi_day(
 
         # Day 1 跳过判定（cluster 已重分配到其他天）
         if is_first_day and skip_day1:
-            arrival_str = (travel_info or {}).get("outbound_arrival_time", "")
-            outbound_type = (travel_info or {}).get("outbound_type", "")
-            outbound_dep = (travel_info or {}).get("outbound_departure_time", "")
-            arrival_station = (travel_info or {}).get("arrival_station", "")
-            # 生成门到门出行日时间线
+            # 生成门到门出行日时间线（纯交通日，下午到达酒店后不排行程）
             travel_timeline = _build_travel_day_timeline(travel_info, checkin_lat, checkin_lng)
+            # 追加 BEDTIME（到达日下午安顿休息）
+            travel_timeline.append({
+                "time": "22:00",
+                "action": "BEDTIME",
+                "memo": "🌙 就寝（到达日休息）",
+                "category": "bedtime",
+                "shop_id": "",
+                "duration_minutes": 0,
+            })
             day_results.append({
                 "day_index": i,
                 "label": f"第{i+1}天",
@@ -1787,36 +1846,69 @@ def solve_multi_day(
         # ── 阶段 4: 智能时间线构建（就近用餐 + 休息缓冲 + 天气标记 + 营业时间感知）──
         tl_result = _build_timeline(route_result, ordered_cluster, effective_start, day_weather,
                                      wake_time_str="07:30", bedtime_str=effective_bedtime,
-                                     week_day=(i % 7), transport=transport_preference)
+                                     week_day=(i % 7), transport=transport_preference,
+                                     travel_info=travel_info if is_first_day else None)
         timeline = tl_result["timeline"]
         closed_conflicts_day = tl_result.get("closed_conflicts", [])
         unknown_hours_day = tl_result.get("unknown_hours_shops", [])
 
-        # Day 1 到达日：插入门到门前置节点（LEAVE_HOME→TO_STATION→OUTBOUND→ARRIVAL→HOTEL_CHECKIN）
+        # Day 1 到达日：插入门到门前置节点（travel_timeline 自带 WAKE_UP，替换通用 WAKE_UP）
         if is_first_day and day1_start and travel_info:
             travel_timeline = _build_travel_day_timeline(travel_info, checkin_lat, checkin_lng)
-            # 找到 WAKE_UP 节点的位置，将门到门节点插入之前
-            wake_idx = -1
-            for j, node in enumerate(timeline):
-                if node.get("action") == "WAKE_UP":
-                    wake_idx = j
-                    break
-            # 保留完整的门到门节点（包括 HOTEL_CHECKIN）
-            if wake_idx >= 0:
-                # 门到门节点放在 WAKE_UP 之前
-                timeline = travel_timeline + timeline[wake_idx:]
-            else:
-                timeline = travel_timeline + timeline
+            # 酒店入住时间 = 旅途结束的截止线，之前的时间都在路上，不应有其他节点
+            checkin_node = next((n for n in travel_timeline if n.get("action") == "HOTEL_CHECKIN"), None)
+            travel_end_min = _time_str_to_minutes(checkin_node["time"]) if checkin_node else 12 * 60
+            # 保留路线节点 + 过滤：移除通用 WAKE_UP + 旅途中（入住前）的其他节点
+            post_travel = [n for n in timeline
+                           if n.get("action") != "WAKE_UP"
+                           and _time_str_to_minutes(n.get("time", "00:00")) >= travel_end_min]
+            timeline = travel_timeline + post_travel
 
         # 最后一天：插入返程链路（TO_STATION→RETURN_JOURNEY→ARRIVE_HOME）
         if is_last_day and travel_info:
             return_timeline = _build_return_timeline(travel_info, checkin_lat, checkin_lng)
-            # 移除旧的 DEPARTURE（如有），插入新的返程节点
-            timeline = [n for n in timeline if n.get("action") != "DEPARTURE"]
+            # 找到离开酒店的时间（返程开始），之后不能再有观光/用餐节点
+            leave_hotel_node = next((n for n in return_timeline if n.get("action") == "TO_STATION"), None)
+            return_start_min = _time_str_to_minutes(leave_hotel_node["time"]) if leave_hotel_node else 18 * 60
+            # 找到到家时间，用于计算最终就寝时间
+            arrive_home_node = next((n for n in return_timeline if n.get("action") == "ARRIVE_HOME"), None)
+            arrive_home_min = _time_str_to_minutes(arrive_home_node["time"]) if arrive_home_node else 22 * 60
+            # 移除旧的 DEPARTURE + 离开酒店后的节点（人在路上不能观光/用餐）
+            timeline = [n for n in timeline
+                        if n.get("action") != "DEPARTURE"
+                        and n.get("action") != "BEDTIME"
+                        and _time_str_to_minutes(n.get("time", "00:00")) < return_start_min]
             timeline.extend(return_timeline)
+            # 就寝时间 = 到家 + 30分钟收拾
+            bedtime_min = arrive_home_min + 30
+            bedtime_h, bedtime_m = bedtime_min // 60, bedtime_min % 60
+            timeline.append({
+                "time": f"{bedtime_h:02d}:{bedtime_m:02d}",
+                "action": "BEDTIME",
+                "memo": "🌙 就寝（到家休息）",
+                "category": "bedtime",
+                "shop_id": "",
+                "duration_minutes": 0,
+            })
 
-        # 重新排序
-        timeline.sort(key=lambda n: _time_str_to_minutes(n.get("time", "00:00")))
+        # ── 排序：WAKE_UP 在最前、BEDTIME 在最后，其余按时间 ──
+        wake_node = None
+        bedtime_node = None
+        rest_nodes = []
+        for n in timeline:
+            if n.get("action") == "WAKE_UP":
+                wake_node = n
+            elif n.get("action") == "BEDTIME":
+                bedtime_node = n
+            else:
+                rest_nodes.append(n)
+        rest_nodes.sort(key=lambda n: _time_str_to_minutes(n.get("time", "00:00")))
+        timeline = []
+        if wake_node:
+            timeline.append(wake_node)
+        timeline.extend(rest_nodes)
+        if bedtime_node:
+            timeline.append(bedtime_node)
         effective_day_index += 1
 
         # ── 阶段 5.5: 精修层（局部搜索优化，始终运行）──
@@ -2159,9 +2251,25 @@ def _refine_format_to_timeline(refined: list, original_timeline: list) -> list:
                 "opentime": "未知",
             })
 
-    # 按时间排序
-    result.sort(key=lambda t: _time_to_minutes(t.get("time", "00:00")))
-    return result
+    # 排序：WAKE_UP 在最前、BEDTIME 在最后，其余按时间
+    wake_node = None
+    bedtime_node = None
+    rest_nodes = []
+    for n in result:
+        if n.get("action") == "WAKE_UP":
+            wake_node = n
+        elif n.get("action") == "BEDTIME":
+            bedtime_node = n
+        else:
+            rest_nodes.append(n)
+    rest_nodes.sort(key=lambda t: _time_to_minutes(t.get("time", "00:00")))
+    sorted_result = []
+    if wake_node:
+        sorted_result.append(wake_node)
+    sorted_result.extend(rest_nodes)
+    if bedtime_node:
+        sorted_result.append(bedtime_node)
+    return sorted_result
 
 
 def _total_cost(timeline: list, all_shops: list, day_index: int = 0,
@@ -2367,11 +2475,12 @@ def _refine_timeline(timeline: list, all_shops: list,
 
 def solve(candidate_shops, num_days, checkin_lat, checkin_lng,
           transport="步行优先", start_time="09:00", max_hours=8.0,
-          weather_data=None, preferences=None):
+          weather_data=None, preferences=None, travel_info=None):
     """与 server.py 桥接的简化入口"""
     return solve_multi_day(
         candidate_shops, num_days,
         float(checkin_lat), float(checkin_lng),
         transport, start_time, max_hours,
-        weather_data, preferences
+        weather_data, preferences,
+        travel_info=travel_info
     )

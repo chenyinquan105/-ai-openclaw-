@@ -949,8 +949,8 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
                 else:
                     global_used_meal_ids.add(sid)
 
-        # 重新排序（去重替换可能改变节点，但时间不变）
-        timeline.sort(key=lambda n: _time_str_to_minutes(n.get("time", "00:00")))
+        # 重新排序（去重替换可能改变节点，保持 WAKE_UP 最前、BEDTIME 最后）
+        _sort_timeline_keep_wake_bedtime(timeline)
 
         # ── 插入 "返回酒店" 节点（紧跟最后一项活动之后，BEDTIME 之前）──
         bedtime_idx = -1
@@ -984,8 +984,8 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
                 "opentime": "未知",
             }
             timeline.insert(bedtime_idx, hotel_node)
-        # 重新排序确保时间正确
-        timeline.sort(key=lambda n: _time_str_to_minutes(n.get("time", "00:00")))
+        # 重新排序确保时间正确（保持 WAKE_UP 最前、BEDTIME 最后）
+        _sort_timeline_keep_wake_bedtime(timeline)
 
     # ── 后处理：闭店冲突 → 搜索替代品 ──
     closed_conflicts_resolved = []
@@ -1080,6 +1080,33 @@ def _safe_time_str(minutes: int) -> str:
     """分钟数 → "HH:MM"，钳制在 00:00-23:59"""
     m = max(0, min(minutes, 23 * 60 + 59))
     return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def _sort_timeline_keep_wake_bedtime(timeline: list) -> list:
+    """原地排序 timeline：WAKE_UP 最前、BEDTIME 最后、其余按时间。
+
+    与 multi_day_scheduler.py 中的排序逻辑保持一致，
+    防止纯时间排序破坏门到门出行链路的逻辑顺序。
+    """
+    wake_node = None
+    bedtime_node = None
+    rest = []
+    for n in timeline:
+        action = n.get("action", "")
+        if action == "WAKE_UP":
+            wake_node = n
+        elif action == "BEDTIME":
+            bedtime_node = n
+        else:
+            rest.append(n)
+    rest.sort(key=lambda x: _time_str_to_minutes(x.get("time", "00:00")))
+    timeline.clear()
+    if wake_node:
+        timeline.append(wake_node)
+    timeline.extend(rest)
+    if bedtime_node:
+        timeline.append(bedtime_node)
+    return timeline
 
 
 def _inject_multi_day_reminders(schedule_result: dict) -> dict:
@@ -7304,34 +7331,32 @@ def set_trip_config():
     checkin_lng = data.get("checkin_lng")
 
     # ── 旅行信息（去程/返程）──
-    departure_city = data.get("departure_city", "")
-    outbound_type = data.get("outbound_type", "")
-    outbound_departure_time = data.get("outbound_departure_time", "")
-    outbound_arrival_time = data.get("outbound_arrival_time", "")
-    arrival_station = data.get("arrival_station", "")
-    return_type = data.get("return_type", "")
-    return_departure_time = data.get("return_departure_time", "")
-    return_station = data.get("return_station", "")
-    travel_preference = data.get("travel_preference", "公共交通")
+    # 重要：仅当请求中实际包含该字段时才更新，防止后续调用（如 fetchPopularAttractions）
+    # 用空值覆盖用户已填写的航班/高铁信息
+    for _key, _session_key in [
+        ("departure_city", "trip_departure_city"),
+        ("outbound_type", "trip_outbound_type"),
+        ("outbound_departure_time", "trip_outbound_departure_time"),
+        ("outbound_arrival_time", "trip_outbound_arrival_time"),
+        ("arrival_station", "trip_arrival_station"),
+        ("return_type", "trip_return_type"),
+        ("return_departure_time", "trip_return_departure_time"),
+        ("return_station", "trip_return_station"),
+        ("travel_preference", "trip_travel_preference"),
+    ]:
+        if _key in data:
+            session_state[_session_key] = data[_key]
 
-    # 存储到 session_state
+    # 存储基础字段到 session_state
     session_state["trip_mode"] = "multi"
     session_state["trip_days"] = days
     session_state["trip_destination"] = destination
     session_state["trip_transport"] = transport
     session_state["trip_start_date"] = start_date
-    session_state["trip_checkin_lat"] = checkin_lat
-    session_state["trip_checkin_lng"] = checkin_lng
-    # 旅行信息
-    session_state["trip_departure_city"] = departure_city
-    session_state["trip_outbound_type"] = outbound_type
-    session_state["trip_outbound_departure_time"] = outbound_departure_time
-    session_state["trip_outbound_arrival_time"] = outbound_arrival_time
-    session_state["trip_arrival_station"] = arrival_station
-    session_state["trip_return_type"] = return_type
-    session_state["trip_return_departure_time"] = return_departure_time
-    session_state["trip_return_station"] = return_station
-    session_state["trip_travel_preference"] = travel_preference
+    if "checkin_lat" in data:
+        session_state["trip_checkin_lat"] = checkin_lat
+    if "checkin_lng" in data:
+        session_state["trip_checkin_lng"] = checkin_lng
 
     # 生成带日期的 day label
     from datetime import datetime as _dt, timedelta as _td
