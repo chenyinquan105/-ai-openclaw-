@@ -23,10 +23,13 @@ import copy
 # 导入惩罚函数模块（批次二：软约束模型）
 try:
     from scheduling_penalty import (meal_time_penalty, SKIP_PENALTY_BASE,
-                                      LAMBDA_TRAVEL, FATIGUE_COEFFICIENT, LAMBDA_FATIGUE)
+                                      LAMBDA_TRAVEL, FATIGUE_COEFFICIENT, LAMBDA_FATIGUE,
+                                      dynamic_fatigue_cost)
 except ImportError:
     # 回退：如果模块不存在，使用默认值（保持向后兼容）
     def meal_time_penalty(meal_type, proposed_minutes):
+        return 0.0
+    def dynamic_fatigue_cost(timeline, day_index=0, prev_day_fatigue=0):
         return 0.0
     SKIP_PENALTY_BASE = 200
     LAMBDA_TRAVEL = 0.3
@@ -1256,6 +1259,7 @@ def solve_multi_day(
             refined_timeline_raw = _refine_timeline(
                 _timeline_to_refine_format(timeline),
                 ordered_cluster,
+                day_index=i,
             )
             # 将精修后的时间线转回原有格式
             timeline = _refine_format_to_timeline(refined_timeline_raw, timeline)
@@ -1589,14 +1593,16 @@ def _refine_format_to_timeline(refined: list, original_timeline: list) -> list:
     return result
 
 
-def _total_cost(timeline: list, all_shops: list) -> float:
+def _total_cost(timeline: list, all_shops: list, day_index: int = 0,
+                 prev_day_fatigue: float = 0) -> float:
     """
     计算时间线的综合代价。
 
-    包含三项：
+    包含四项：
     1. 用餐时间偏离惩罚（午餐/晚餐偏离锚点）
     2. 未访问店铺的损失（SKIP_PENALTY_BASE × 权重）
     3. 通勤时间的机会成本（LAMBDA_TRAVEL × 通勤分钟数）
+    4. 动态体力消耗惩罚（使用 dynamic_fatigue_cost 替代旧 fatigue_cost）
     """
     cost = 0.0
 
@@ -1626,8 +1632,8 @@ def _total_cost(timeline: list, all_shops: list) -> float:
     for node in timeline:
         cost += LAMBDA_TRAVEL * node.get("travel_minutes", 0)
 
-    # 体力消耗惩罚
-    cost += fatigue_cost(timeline)
+    # 动态体力消耗惩罚（替代旧 fatigue_cost）
+    cost += dynamic_fatigue_cost(timeline, day_index, prev_day_fatigue)
 
     return cost
 
@@ -1745,7 +1751,7 @@ def _random_neighbor_move(timeline: list, killed_shops: list, all_shops: list) -
 
 
 def _refine_timeline(timeline: list, all_shops: list,
-                     max_iterations: int = None) -> list:
+                     max_iterations: int = None, day_index: int = 0) -> list:
     """
     局部搜索精修：在 _build_timeline 产出的基线时间线上，
     通过模拟退火尝试改善用餐时间和景点覆盖率。
@@ -1754,6 +1760,7 @@ def _refine_timeline(timeline: list, all_shops: list,
         timeline: 基线时间线（_build_timeline 产出）
         all_shops: 所有店铺（用于 _total_cost 计算）
         max_iterations: 最大迭代次数（默认使用 REFINE_MAX_ITERATIONS）
+        day_index: 天数索引（传递到动态体力模型）
 
     返回:
         优化后的 timeline（不修改原对象）
@@ -1765,13 +1772,13 @@ def _refine_timeline(timeline: list, all_shops: list,
         return list(timeline)
 
     current = copy.deepcopy(timeline)
-    current_cost = _total_cost(current, all_shops)
+    current_cost = _total_cost(current, all_shops, day_index=day_index)
     best = copy.deepcopy(current)
     best_cost = current_cost
 
     for i in range(max_iterations):
         neighbor = _random_neighbor_move(current, [], all_shops)
-        neighbor_cost = _total_cost(neighbor, all_shops)
+        neighbor_cost = _total_cost(neighbor, all_shops, day_index=day_index)
 
         if neighbor_cost < current_cost or random.random() < _accept_prob(current_cost, neighbor_cost, i, max_iterations):
             current = neighbor

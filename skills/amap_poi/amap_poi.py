@@ -455,6 +455,12 @@ class AmapPOIClient:
             return ("hair", "生活服务")
         if amap_type.startswith("08"):
             return ("laundry", "生活服务")
+        if amap_type.startswith("10"):
+            return ("hotel", "酒店")
+        if amap_type.startswith("11"):
+            return ("scenic", "景点")
+        if amap_type.startswith("14"):
+            return ("scenic", "公共设施")
         return ("restaurant", "其他")
 
     def _infer_human_needed(self, category: str) -> bool:

@@ -767,3 +767,528 @@ class TestNoKillBehavior:
         # 不应有任何 kill
         for task in day["task_list"]:
             assert task["status"] != "killed"
+
+
+# ======================================================================
+# 批次五 5.1: 动态体力模型 —— 时段乘数 γ_time
+# ======================================================================
+
+class TestTimeOfDayFatigueMultiplier:
+    """5.1 time_of_day_fatigue_multiplier: 13:00-15:00 烈日惩罚 ×1.3"""
+
+    def test_import_function(self):
+        """验证函数可从 scheduling_penalty 导入"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert callable(time_of_day_fatigue_multiplier)
+
+    def test_morning_returns_one(self):
+        """上午 9:00(540min) → 1.0，无烈日惩罚"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert time_of_day_fatigue_multiplier(540) == 1.0
+
+    def test_noon_returns_penalty(self):
+        """正午 13:00(780min) → 1.3，烈日惩罚生效"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert time_of_day_fatigue_multiplier(780) == 1.3
+
+    def test_mid_afternoon_returns_penalty(self):
+        """下午 14:30(870min) → 1.3，区间内任意时间"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert time_of_day_fatigue_multiplier(870) == 1.3
+
+    def test_evening_returns_one(self):
+        """傍晚 16:00(960min) → 1.0，区间外恢复"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert time_of_day_fatigue_multiplier(960) == 1.0
+
+    def test_boundary_before_noon_window(self):
+        """边界 12:59(779min) → 1.0，未进入烈日窗口"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert time_of_day_fatigue_multiplier(779) == 1.0
+
+    def test_boundary_after_noon_window(self):
+        """边界 15:01(901min) → 1.0，刚出烈日窗口"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert time_of_day_fatigue_multiplier(901) == 1.0
+
+    def test_early_morning_edge(self):
+        """极端早：00:00(0min) → 1.0"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert time_of_day_fatigue_multiplier(0) == 1.0
+
+    def test_late_night_edge(self):
+        """极端晚：23:59(1439min) → 1.0"""
+        from scheduling_penalty import time_of_day_fatigue_multiplier
+        assert time_of_day_fatigue_multiplier(1439) == 1.0
+
+
+# ======================================================================
+# 批次五 5.2: 动态体力模型 —— 多日累积乘数 δ_day
+# ======================================================================
+
+class TestMultiDayFatigueMultiplier:
+    """5.2 multi_day_fatigue_multiplier: 多日乳酸堆积滞后乘数 ×(1 + 0.25×prev/100)"""
+
+    def test_import_function(self):
+        """验证函数可从 scheduling_penalty 导入"""
+        from scheduling_penalty import multi_day_fatigue_multiplier
+        assert callable(multi_day_fatigue_multiplier)
+
+    def test_day_zero_no_accumulation(self):
+        """Day 0, prev_fatigue=50 → 1.0，第一天无累积"""
+        from scheduling_penalty import multi_day_fatigue_multiplier
+        assert multi_day_fatigue_multiplier(0, 50) == 1.0
+
+    def test_day_one_prev_not_tired(self):
+        """Day 1, prev_fatigue=0 → 1.0，前一天不累则不触发累积"""
+        from scheduling_penalty import multi_day_fatigue_multiplier
+        assert multi_day_fatigue_multiplier(1, 0) == 1.0
+
+    def test_day_one_prev_tired(self):
+        """Day 1, prev_fatigue=50 → 1.125，前一天疲劳触发累积乘数"""
+        from scheduling_penalty import multi_day_fatigue_multiplier
+        # δ = 1.0 + 0.25 × (50/100) = 1.125
+        expected = 1.0 + 0.25 * (50 / 100)
+        assert multi_day_fatigue_multiplier(1, 50) == pytest.approx(expected)
+
+    def test_day_two_continuous_accumulation(self):
+        """Day 2, prev_fatigue=60 → 1.15，连续累积加速"""
+        from scheduling_penalty import multi_day_fatigue_multiplier
+        # δ = 1.0 + 0.25 × (60/100) = 1.15
+        expected = 1.0 + 0.25 * (60 / 100)
+        assert multi_day_fatigue_multiplier(2, 60) == pytest.approx(expected)
+
+    def test_day_three_heavy_fatigue(self):
+        """Day 3, prev_fatigue=80 → 1.20，重度疲劳"""
+        from scheduling_penalty import multi_day_fatigue_multiplier
+        expected = 1.0 + 0.25 * (80 / 100)
+        assert multi_day_fatigue_multiplier(3, 80) == pytest.approx(expected)
+
+    def test_max_cap(self):
+        """prev_fatigue=200 → 应钳制在 MAX_MULTI_DAY_MULTIPLIER(2.0)"""
+        from scheduling_penalty import multi_day_fatigue_multiplier
+        result = multi_day_fatigue_multiplier(5, 200)
+        assert result <= 2.0, f"多日乘数应不超过上限 2.0，实际: {result}"
+
+    def test_prev_fatigue_negative_clamped(self):
+        """prev_fatigue 为负数时应 clamp 到 0"""
+        from scheduling_penalty import multi_day_fatigue_multiplier
+        result = multi_day_fatigue_multiplier(1, -10)
+        assert result == 1.0, f"负疲劳值应视为 0，实际: {result}"
+
+
+# ======================================================================
+# 批次五 5.3: 动态体力模型 —— dynamic_fatigue_cost
+# ======================================================================
+
+def _make_node(typ, category, start_minutes, duration_minutes, shop_id="s1"):
+    """快捷构造精修层格式的 timeline 节点"""
+    return {
+        "type": typ,
+        "shop_id": shop_id,
+        "category": category,
+        "start_minutes": start_minutes,
+        "duration_minutes": duration_minutes,
+        "travel_minutes": 0,
+    }
+
+
+def _make_many_visits(n, category="scenic", duration=180, base_start=480, interval=120):
+    """构造足够多的 VISIT 节点以触发体力惩罚（n>=20可触达 <30 区）"""
+    tl = []
+    for i in range(n):
+        tl.append(_make_node("VISIT", category, base_start + i * interval, duration, f"s{i}"))
+    return tl
+
+
+class TestDynamicFatigueCost:
+    """5.3 dynamic_fatigue_cost: 组合 γ_time + δ_day 的动态体力消耗"""
+
+    def test_import_function(self):
+        """验证函数可从 scheduling_penalty 导入"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        assert callable(dynamic_fatigue_cost)
+
+    def test_empty_timeline_returns_zero(self):
+        """空时间线 → cost=0"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        assert dynamic_fatigue_cost([]) == 0.0
+
+    def test_single_scenic_morning_day0(self):
+        """上午 scenic: 不会触发 penalty（体力仍在 30 以上）"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        tl = [_make_node("VISIT", "scenic", 540, 180)]
+        cost = dynamic_fatigue_cost(tl)
+        assert cost >= 0
+
+    def test_noon_penalty_higher_than_morning(self):
+        """20个 scenic 全部在正午(γ×1.3) vs 全部在上午(γ×1.0)，正午消耗更大"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        # interval=0 让所有节点同时开始，全部享受相同的 γ_time
+        tl_morning = _make_many_visits(20, "scenic", 180, 540, 0)
+        tl_noon = _make_many_visits(20, "scenic", 180, 810, 0)
+        cost_morning = dynamic_fatigue_cost(tl_morning)
+        cost_noon = dynamic_fatigue_cost(tl_noon)
+        assert cost_noon > cost_morning, (
+            f"正午消耗 ({cost_noon:.1f}) 应 > 上午消耗 ({cost_morning:.1f})"
+        )
+
+    def test_day2_cost_higher_than_day0(self):
+        """20个 scenic Day2+prev60(δ=1.15) > Day0(δ=1.0)"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        tl = _make_many_visits(20, "scenic", 180, 480, 60)
+        cost_day0 = dynamic_fatigue_cost(tl, day_index=0, prev_day_fatigue=0)
+        cost_day2 = dynamic_fatigue_cost(tl, day_index=2, prev_day_fatigue=60)
+        assert cost_day2 > cost_day0, (
+            f"Day2 消耗 ({cost_day2:.1f}) 应 > Day0 消耗 ({cost_day0:.1f})"
+        )
+
+    def test_noon_on_day2_compounds(self):
+        """正午 + Day2: γ_time×1.3 × δ_day×1.15 叠加 > 单一乘数"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        tl = _make_many_visits(20, "scenic", 180, 540, 60)
+        tl_noon_day2 = _make_many_visits(20, "scenic", 180, 810, 60)
+        cost_base = dynamic_fatigue_cost(tl, day_index=0, prev_day_fatigue=0)
+        cost_compounded = dynamic_fatigue_cost(tl_noon_day2, day_index=2, prev_day_fatigue=60)
+        assert cost_compounded > cost_base * 1.3, (
+            f"叠加消耗 ({cost_compounded:.1f}) 应 > 基准×1.3 ({cost_base * 1.3:.1f})"
+        )
+
+    def test_rest_node_recovers_fatigue(self):
+        """25个 scenic 有休息 vs 24个 scenic 无休息：有休息的惩罚更低"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        # 无休息：24 个连续 scenic
+        tl_no_rest = _make_many_visits(24, "scenic", 180, 480, 60)
+        # 有休息：25 个 scenic 但中间插入 LUNCH 恢复
+        tl_with_rest = _make_many_visits(25, "scenic", 180, 480, 60)
+        tl_with_rest.insert(10, {
+            "type": "LUNCH", "shop_id": "r1", "category": "restaurant",
+            "start_minutes": 720, "duration_minutes": 60, "travel_minutes": 0,
+        })
+        cost_no_rest = dynamic_fatigue_cost(tl_no_rest)
+        cost_with_rest = dynamic_fatigue_cost(tl_with_rest)
+        # 有休息的多1个scenic但体力恢复得多 → 惩罚更低
+        assert cost_with_rest < cost_no_rest, (
+            f"有休息 ({cost_with_rest:.1f}) 应 < 无休息 ({cost_no_rest:.1f})"
+        )
+
+    def test_below_30_triggers_quadratic_penalty(self):
+        """25 个 scenic 让体力降到 30 以下，触发二次惩罚"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        tl = _make_many_visits(25, "scenic", 180, 480, 60)
+        cost = dynamic_fatigue_cost(tl)
+        assert cost > 0, f"25个scenic应触发体力惩罚，实际 cost={cost}"
+
+    def test_non_visit_nodes_ignored(self):
+        """LUNCH/DINNER/REST/BEDTIME 不直接产生体力消耗"""
+        from scheduling_penalty import dynamic_fatigue_cost
+        tl = [
+            _make_node("VISIT", "scenic", 540, 180),
+            {"type": "LUNCH", "shop_id": "", "category": "restaurant",
+             "start_minutes": 720, "duration_minutes": 60, "travel_minutes": 0},
+            {"type": "DINNER", "shop_id": "", "category": "restaurant",
+             "start_minutes": 1110, "duration_minutes": 60, "travel_minutes": 0},
+            {"type": "BEDTIME", "shop_id": "", "category": "bedtime",
+             "start_minutes": 1380, "duration_minutes": 0, "travel_minutes": 0},
+        ]
+        cost = dynamic_fatigue_cost(tl)
+        assert cost >= 0
+
+    def test_old_fatigue_cost_still_callable(self):
+        """旧 fatigue_cost 仍可调用（向后兼容，定义在 multi_day_scheduler 中）"""
+        from multi_day_scheduler import fatigue_cost
+        assert callable(fatigue_cost)
+        tl = [_make_node("VISIT", "scenic", 540, 180)]
+        result = fatigue_cost(tl)
+        import math
+        assert math.isfinite(result)
+
+
+# ======================================================================
+# 批次六 6.1: 酒店决策引擎
+# ======================================================================
+
+class TestHotelDecision:
+    """6.1 hotel_decision: 换房ROI判定 + 两种住宿策略"""
+
+    def test_module_imports(self):
+        """验证 hotel_decision 模块可导入"""
+        import hotel_decision
+        assert hasattr(hotel_decision, "should_switch_hotel")
+        assert hasattr(hotel_decision, "determine_strategy")
+        assert callable(hotel_decision.should_switch_hotel)
+        assert callable(hotel_decision.determine_strategy)
+
+    # ── should_switch_hotel ──
+
+    def test_fatigue_veto(self):
+        """fatigue=0.8 ≥ 0.7 → 一票否决，不换房"""
+        from hotel_decision import should_switch_hotel
+        should, reason = should_switch_hotel(fatigue=0.8, time_saved_single=120, time_saved_cumulative=150)
+        assert should is False
+        assert "fatigue" in reason.lower()
+
+    def test_fatigue_exactly_at_threshold(self):
+        """fatigue=0.7 (恰好阈值) → 否决"""
+        from hotel_decision import should_switch_hotel
+        should, reason = should_switch_hotel(fatigue=0.7, time_saved_single=120, time_saved_cumulative=150)
+        assert should is False
+
+    def test_below_single_day_threshold(self):
+        """fatigue=0.3, single_saved=30 < 60 → 省时不足，不换"""
+        from hotel_decision import should_switch_hotel
+        should, reason = should_switch_hotel(fatigue=0.3, time_saved_single=30, time_saved_cumulative=50)
+        assert should is False
+
+    def test_single_day_above_threshold(self):
+        """fatigue=0.3, single_saved=70 ≥ 60 → 触发换房"""
+        from hotel_decision import should_switch_hotel
+        should, reason = should_switch_hotel(fatigue=0.3, time_saved_single=70, time_saved_cumulative=50)
+        assert should is True
+        assert "roi" in reason.lower()
+
+    def test_cumulative_above_threshold_only(self):
+        """single=30 < 60 但 cumulative=100 ≥ 90 → 触发换房"""
+        from hotel_decision import should_switch_hotel
+        should, reason = should_switch_hotel(fatigue=0.3, time_saved_single=30, time_saved_cumulative=100)
+        assert should is True
+
+    def test_both_metrics_below_threshold(self):
+        """single=40, cumulative=70 → 都不达标，不换"""
+        from hotel_decision import should_switch_hotel
+        should, reason = should_switch_hotel(fatigue=0.3, time_saved_single=40, time_saved_cumulative=70)
+        assert should is False
+
+    # ── determine_strategy ──
+
+    def test_switch_early_end_low_fatigue(self):
+        """end=18:00 < 20:00, fatigue=0.2 < 0.3 → switch（推荐换房）"""
+        from hotel_decision import determine_strategy
+        strategy = determine_strategy(fatigue=0.2, end_time_minutes=1080)  # 18:00
+        assert strategy == "switch"
+
+    def test_sustained_late_end(self):
+        """end=20:30 >= 20:00 → sustained（不换房），即使体力好"""
+        from hotel_decision import determine_strategy
+        strategy = determine_strategy(fatigue=0.2, end_time_minutes=1230)  # 20:30
+        assert strategy == "sustained"
+
+    def test_sustained_high_fatigue(self):
+        """fatigue=0.5 >= 0.3 → sustained，即使结束早"""
+        from hotel_decision import determine_strategy
+        strategy = determine_strategy(fatigue=0.5, end_time_minutes=1080)  # 18:00
+        assert strategy == "sustained"
+
+    def test_sustained_both_bad(self):
+        """end晚 + fatigue高 → sustained"""
+        from hotel_decision import determine_strategy
+        strategy = determine_strategy(fatigue=0.6, end_time_minutes=1350)  # 22:30
+        assert strategy == "sustained"
+
+    # ── 边界 ──
+
+    def test_strategy_boundary_end_time(self):
+        """end=1200 (20:00) 不满足 < 1200 → sustained; 1199 → switch"""
+        from hotel_decision import determine_strategy
+        assert determine_strategy(0.2, 1200) == "sustained"
+        assert determine_strategy(0.2, 1199) == "switch"  # 19:59
+
+    def test_strategy_boundary_fatigue(self):
+        """fatigue=0.3 边界：<0.3 switch, >=0.3 sustained"""
+        from hotel_decision import determine_strategy
+        assert determine_strategy(0.29, 1080) == "switch"
+        assert determine_strategy(0.3, 1080) == "sustained"
+
+    def test_constants_match_spec(self):
+        """验证阈值与规格文档一致"""
+        from hotel_decision import THETA_FATIGUE, DELTA_T_SINGLE_DAY, DELTA_T_CUMULATIVE
+        assert THETA_FATIGUE == 0.7
+        assert DELTA_T_SINGLE_DAY == 60
+        assert DELTA_T_CUMULATIVE == 90
+
+
+# ======================================================================
+# 批次七 7.1: RPE 画像系统
+# ======================================================================
+
+class TestRPEProfile:
+    """7.1 rpe_profile: Onboarding画像 + 夜间RPE反馈"""
+
+    def test_module_imports(self):
+        """验证 rpe_profile 模块可导入"""
+        import rpe_profile
+        assert hasattr(rpe_profile, "create_rpe_profile")
+        assert hasattr(rpe_profile, "apply_rpe_feedback")
+        assert callable(rpe_profile.create_rpe_profile)
+        assert callable(rpe_profile.apply_rpe_feedback)
+
+    # ── create_rpe_profile ──
+
+    def test_couple_with_daily_exercise(self):
+        """情侣出行 + 日常运动 → E_max=70, mental=1.0"""
+        from rpe_profile import create_rpe_profile
+        profile = create_rpe_profile(companion="情侣出行", fitness_level="日常运动")
+        assert profile["e_max"] == 70
+        assert profile["mental_multiplier"] == 1.0
+
+    def test_family_with_little_exercise(self):
+        """带娃 + 很少运动 → E_max=50, mental=1.3"""
+        from rpe_profile import create_rpe_profile
+        profile = create_rpe_profile(companion="带娃", fitness_level="很少运动")
+        assert profile["e_max"] == 50
+        assert profile["mental_multiplier"] == pytest.approx(1.3)
+
+    def test_solo_with_high_fitness(self):
+        """独自出行 + 经常运动 → E_max=90, mental=0.9"""
+        from rpe_profile import create_rpe_profile
+        profile = create_rpe_profile(companion="独自出行", fitness_level="经常运动")
+        assert profile["e_max"] == 90
+        assert profile["mental_multiplier"] == pytest.approx(0.9)
+
+    def test_unknown_companion_raises(self):
+        """无效同伴类型 → ValueError"""
+        from rpe_profile import create_rpe_profile
+        import pytest
+        with pytest.raises(ValueError, match="同伴"):
+            create_rpe_profile(companion="invalid", fitness_level="日常运动")
+
+    def test_unknown_fitness_raises(self):
+        """无效体力段位 → ValueError"""
+        from rpe_profile import create_rpe_profile
+        import pytest
+        with pytest.raises(ValueError, match="体力"):
+            create_rpe_profile(companion="情侣出行", fitness_level="invalid")
+
+    # ── apply_rpe_feedback ──
+
+    def test_green_feedback_no_change(self):
+        """🟢 满格 → E_max 不变"""
+        from rpe_profile import create_rpe_profile, apply_rpe_feedback
+        profile = create_rpe_profile("情侣出行", "日常运动")
+        result = apply_rpe_feedback(profile, "green")
+        assert result["e_max"] == profile["e_max"]
+        assert result["mental_multiplier"] == profile["mental_multiplier"]
+
+    def test_yellow_feedback_reduces(self):
+        """🟡 告急 → E_max × 0.85"""
+        from rpe_profile import create_rpe_profile, apply_rpe_feedback
+        profile = create_rpe_profile("情侣出行", "日常运动")
+        result = apply_rpe_feedback(profile, "yellow")
+        assert result["e_max"] == pytest.approx(profile["e_max"] * 0.85)
+        assert result["rpe_status"] == "yellow"
+
+    def test_red_feedback_cuts_and_inserts_rest(self):
+        """🔴 断电 → E_max × 0.65，插入休息标记"""
+        from rpe_profile import create_rpe_profile, apply_rpe_feedback
+        profile = create_rpe_profile("情侣出行", "日常运动")
+        result = apply_rpe_feedback(profile, "red")
+        assert result["e_max"] == pytest.approx(profile["e_max"] * 0.65)
+        assert result["rpe_status"] == "red"
+        assert result.get("force_rest_minutes", 0) >= 60, "🔴 应强制插入 ≥60min 休息"
+
+    def test_multiple_yellow_compounds(self):
+        """连续 🟡 乘数叠加：0.85 × 0.85"""
+        from rpe_profile import create_rpe_profile, apply_rpe_feedback
+        profile = create_rpe_profile("情侣出行", "日常运动")
+        day1 = apply_rpe_feedback(profile, "yellow")
+        day2 = apply_rpe_feedback(day1, "yellow")
+        assert day2["e_max"] < day1["e_max"]
+        assert day2["mental_multiplier"] > profile["mental_multiplier"], "疲劳日多，精神乘数上升"
+
+    def test_e_max_has_floor(self):
+        """连续 🔴 不会让 E_max 低于 20（地板）"""
+        from rpe_profile import create_rpe_profile, apply_rpe_feedback
+        profile = create_rpe_profile("独自出行", "经常运动")  # E_max=90
+        for _ in range(10):
+            profile = apply_rpe_feedback(profile, "red")
+        assert profile["e_max"] >= 20, f"E_max 不应低于 20，实际: {profile['e_max']}"
+
+    def test_mental_multiplier_has_ceiling(self):
+        """mental_multiplier 有上限 1.5"""
+        from rpe_profile import create_rpe_profile, apply_rpe_feedback
+        profile = create_rpe_profile("带娃", "很少运动")
+        for _ in range(10):
+            profile = apply_rpe_feedback(profile, "red")
+        assert profile["mental_multiplier"] <= 1.5, f"mental 不应超过 1.5，实际: {profile['mental_multiplier']}"
+
+
+# ======================================================================
+# 批次八 8.1: 集成 —— 动态体力模型接入 _total_cost + _refine_timeline
+# ======================================================================
+
+class TestDynamicFatigueIntegration:
+    """8.1 验证 _total_cost 使用 dynamic_fatigue_cost 替代旧 fatigue_cost"""
+
+    def test_total_cost_accepts_day_index(self):
+        """_total_cost 应接受 day_index 参数"""
+        from multi_day_scheduler import _total_cost
+        timeline = [
+            {"type": "VISIT", "shop_id": "s1", "start_minutes": 540, "category": "scenic",
+             "duration_minutes": 180, "travel_minutes": 0},
+            {"type": "LUNCH", "start_minutes": 720, "shop_id": "r1"},
+            {"type": "DINNER", "start_minutes": 1110, "shop_id": "r2"},
+        ]
+        all_shops = [make_shop("s1", "A", "scenic", 39.9, 116.4)]
+        cost_day0 = _total_cost(timeline, all_shops, day_index=0)
+        cost_day3 = _total_cost(timeline, all_shops, day_index=3, prev_day_fatigue=80)
+        import math
+        assert math.isfinite(cost_day0)
+        assert math.isfinite(cost_day3)
+
+    def test_same_timeline_day3_costs_more_than_day0(self):
+        """同样时间线，Day3(prev=80) 的 total_cost > Day0（多日累积效应）"""
+        from multi_day_scheduler import _total_cost
+        # 大量活动确保体力惩罚触达
+        tl = _make_many_visits(25, "scenic", 180, 480, 60)
+        tl.append({"type": "LUNCH", "start_minutes": 720, "shop_id": "r1"})
+        tl.append({"type": "DINNER", "start_minutes": 1110, "shop_id": "r2"})
+        all_shops = [make_shop(f"s{i}", f"景点{i}", "scenic", 39.9, 116.4) for i in range(25)]
+
+        cost_day0 = _total_cost(tl, all_shops, day_index=0, prev_day_fatigue=0)
+        cost_day3 = _total_cost(tl, all_shops, day_index=3, prev_day_fatigue=80)
+
+        assert cost_day3 > cost_day0, (
+            f"Day3 cost ({cost_day3:.1f}) 应 > Day0 cost ({cost_day0:.1f})，多日累积应被计入"
+        )
+
+    def test_total_cost_day_index_defaults_to_zero(self):
+        """不传 day_index 时默认为 0（向后兼容）"""
+        from multi_day_scheduler import _total_cost
+        tl = [_make_node("VISIT", "scenic", 540, 180)]
+        all_shops = [make_shop("s1", "A", "scenic", 39.9, 116.4)]
+        cost = _total_cost(tl, all_shops)
+        import math
+        assert math.isfinite(cost)
+
+    def test_refine_timeline_accepts_day_index(self):
+        """_refine_timeline 应接受 day_index 参数"""
+        from multi_day_scheduler import _refine_timeline
+        tl = [
+            {"type": "VISIT", "shop_id": "s1", "start_minutes": 540, "category": "scenic",
+             "duration_minutes": 180, "travel_minutes": 10},
+            {"type": "LUNCH", "start_minutes": 720, "shop_id": "r1"},
+            {"type": "VISIT", "shop_id": "s2", "start_minutes": 840, "category": "scenic",
+             "duration_minutes": 180, "travel_minutes": 10},
+            {"type": "DINNER", "start_minutes": 1110, "shop_id": "r2"},
+        ]
+        all_shops = [
+            make_shop("s1", "A", "scenic", 39.9, 116.4),
+            make_shop("s2", "B", "scenic", 39.9, 116.4),
+        ]
+        result = _refine_timeline(tl, all_shops, max_iterations=10, day_index=2)
+        assert len(result) >= len(tl)  # 精修不丢失节点
+
+    def test_multi_day_solve_does_not_crash(self):
+        """多日排程跑通，不崩溃（已有回归保护）"""
+        shops = [
+            make_shop("s1", "故宫", "scenic", 39.916, 116.397, opentime="08:30-17:00"),
+            make_shop("s2", "颐和园", "scenic", 39.999, 116.275, opentime="07:00-19:00"),
+            make_shop("s3", "天坛", "scenic", 39.882, 116.406, opentime="08:00-20:00"),
+            make_shop("r1", "烤鸭", "restaurant", 39.896, 116.397),
+        ]
+        result = solve_multi_day(shops, num_days=2, checkin_lat=HOTEL_LAT, checkin_lng=HOTEL_LNG,
+                                 transport_preference="驾车优先", start_time_str="09:00")
+        assert len(result["days"]) == 2
+        for day in result["days"]:
+            assert "timeline" in day
+            assert len(day["timeline"]) > 0

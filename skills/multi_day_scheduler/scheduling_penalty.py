@@ -92,3 +92,101 @@ def meal_time_penalty(meal_type: str, proposed_minutes: float) -> float:
         base = cfg["a1"] * (cfg["tolerable_half_width"] - cfg["comfort_half_width"])
         overflow = cfg["a2"] * (d - cfg["tolerable_half_width"])
         return base + overflow
+
+
+# ======================================================================
+# 动态体力模型 —— 时段乘数 γ_time
+# ======================================================================
+
+# 烈日暴晒窗口（13:00-15:00），此时间段体力消耗 ×1.3
+NOON_FATIGUE_WINDOW = (780, 900)  # 13:00-15:00，单位：分钟
+NOON_FATIGUE_MULTIPLIER = 1.3
+
+
+def time_of_day_fatigue_multiplier(minutes: float) -> float:
+    """
+    返回给定时刻的体力消耗时段乘数 γ_time。
+
+    参数:
+        minutes: 一天中的分钟数（0-1440）
+
+    返回:
+        1.0（默认）或 1.3（13:00-15:00 烈日暴晒窗口）
+    """
+    if NOON_FATIGUE_WINDOW[0] <= minutes <= NOON_FATIGUE_WINDOW[1]:
+        return NOON_FATIGUE_MULTIPLIER
+    return 1.0
+
+
+# ======================================================================
+# 动态体力模型 —— 多日累积乘数 δ_day
+# ======================================================================
+
+MAX_MULTI_DAY_MULTIPLIER = 2.0
+MULTI_DAY_ACCUMULATION_RATE = 0.25  # 前日疲劳每 1 单位增加 0.0025 的乘数
+
+
+def multi_day_fatigue_multiplier(day_index: int, prev_day_fatigue: float) -> float:
+    """
+    计算多日乳酸堆积滞后乘数 δ_day。
+
+    第 0 天无累积，第 N+1 天的基础体力消耗乘以 (1 + 0.25 × prev/100)，
+    模拟连续出行时的乳酸堆积效应。
+
+    参数:
+        day_index: 天数索引（0=第一天）
+        prev_day_fatigue: 前一天结束时的累积疲劳值（0-100 尺度）
+
+    返回:
+        乘数（1.0-2.0），上限钳制在 MAX_MULTI_DAY_MULTIPLIER
+    """
+    if day_index <= 0:
+        return 1.0
+    clamped = max(0.0, prev_day_fatigue)
+    multiplier = 1.0 + MULTI_DAY_ACCUMULATION_RATE * (clamped / 100.0)
+    return min(multiplier, MAX_MULTI_DAY_MULTIPLIER)
+
+
+# ======================================================================
+# 动态体力模型 —— 动态体力消耗计算
+# ======================================================================
+
+def dynamic_fatigue_cost(timeline: list, day_index: int = 0,
+                          prev_day_fatigue: float = 0) -> float:
+    """
+    计算动态体力消耗惩罚值，组合 γ_time（时段）和 δ_day（多日累积）。
+
+    体力初始为 100，每项 VISIT 活动消耗体力：
+        品类系数 × (duration/60) × γ_time(start) × δ_day(day_index, prev_day_fatigue)
+
+    休息/用餐节点恢复体力。体力低于 30 时产生二次惩罚。
+
+    参数:
+        timeline: 精修层格式的 timeline 节点列表
+        day_index: 天数索引（0=第一天）
+        prev_day_fatigue: 前一天结束时的累积疲劳值
+
+    返回:
+        体力惩罚值（>=0）
+    """
+    fatigue_level = 100.0
+    total_penalty = 0.0
+
+    delta = multi_day_fatigue_multiplier(day_index, prev_day_fatigue)
+
+    for node in timeline:
+        if node.get("type") == "VISIT":
+            cat = node.get("category", "default")
+            coef = FATIGUE_COEFFICIENT.get(cat, FATIGUE_COEFFICIENT.get("default", 0.8))
+            dur_hours = node.get("duration_minutes", 60) / 60.0
+            start_min = node.get("start_minutes", 540)
+            gamma = time_of_day_fatigue_multiplier(start_min)
+
+            fatigue_level -= coef * dur_hours * gamma * delta
+
+            if fatigue_level < 30:
+                total_penalty += (30 - fatigue_level) ** 2
+        elif node.get("type") in ("LUNCH", "DINNER", "REST", "BREAKFAST"):
+            fatigue_level = min(100.0, fatigue_level + 10)
+
+    return LAMBDA_FATIGUE * total_penalty

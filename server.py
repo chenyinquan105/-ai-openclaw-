@@ -33,6 +33,8 @@ from skills.route_planner.route_planner import plan_route as _skill_route_planne
 from skills.queue_monitor.queue_monitor import handle as _skill_queue_monitor
 from skills.weather_extractor.weather_extractor import extract_weather as _skill_weather_extractor
 from skills.multi_day_scheduler.multi_day_scheduler import solve_multi_day as _skill_multi_day_schedule
+from skills.multi_day_scheduler.hotel_decision import should_switch_hotel, determine_strategy
+from skills.multi_day_scheduler.scheduling_penalty import dynamic_fatigue_cost, time_of_day_fatigue_multiplier
 
 app = Flask(__name__, static_folder=os.path.join(base_dir, "static"))
 CORS(app)
@@ -479,6 +481,377 @@ def _auto_search_alternatives(shop_name, category, lat, lng, destination):
         return []
 
 
+def _auto_search_hotels(lat, lng, destination, radius=5000, limit=5):
+    """使用高德 API 搜索指定坐标附近的酒店。
+    返回按评分降序排列的酒店列表。
+    """
+    try:
+        city = destination or "北京"
+        result = _amap_client.search_nearby(
+            lng=lng, lat=lat,
+            keywords="酒店",
+            category="hotel",
+            offset=min(limit * 3, 25),
+            radius=radius,
+        )
+        shops = result.get("shops", []) if isinstance(result, dict) else []
+        # 过滤：只保留名称中包含酒店/宾馆/民宿/旅馆/客栈的
+        hotel_keywords = ["酒店", "宾馆", "民宿", "旅馆", "客栈", "青旅", "如家", "汉庭", "全季"]
+        hotels = [
+            s for s in shops
+            if any(kw in (s.get("name", "") or "") for kw in hotel_keywords)
+        ]
+        # 去重（按名称）
+        seen = set()
+        unique = []
+        for h in hotels:
+            name = h.get("name", "")
+            if name and name not in seen:
+                seen.add(name)
+                unique.append(h)
+        unique.sort(key=lambda s: s.get("rating", 0) or 0, reverse=True)
+        return unique[:limit]
+    except Exception as e:
+        print(f"[auto_search_hotels] 失败: {e}", flush=True)
+        return []
+
+
+def _auto_search_hotels_for_day(day_data, checkin_lat, checkin_lng, destination):
+    """为某天的活动重心搜索附近酒店。
+    优先用当天 task_list 的几何中心，回退到 checkin 坐标。
+    """
+    lats, lngs = [], []
+    for t in day_data.get("task_list", []):
+        try:
+            lats.append(float(t.get("lat", 0)))
+            lngs.append(float(t.get("lng", 0)))
+        except (ValueError, TypeError):
+            pass
+    if lats and lngs:
+        centroid_lat = sum(lats) / len(lats)
+        centroid_lng = sum(lngs) / len(lngs)
+    else:
+        centroid_lat = float(checkin_lat)
+        centroid_lng = float(checkin_lng)
+    return _auto_search_hotels(centroid_lat, centroid_lng, destination)
+
+
+def _compute_day_fatigue_detail(timeline, day_index=0, prev_day_fatigue=0.0):
+    """计算当天行程的详细体力消耗分析。
+
+    基于实际 itinerary（景点数、类型、时长、时间段）计算疲劳度，
+    返回包含消耗明细、等级标签、活动统计的丰富数据结构。
+
+    参数:
+        timeline: 精修层格式的节点列表（action/category/duration_minutes/time）
+        day_index: 天数索引（0=第一天）
+        prev_day_fatigue: 前一天累积的 raw fatigue 值（用于多日累积）
+
+    返回:
+        {
+            "fatigue_level": float,       # 最终体力值 0-100
+            "fatigue_pct": float,         # 消耗百分比 0-1
+            "fatigue_label": str,         # 轻松/适中/较累/很累/极度疲劳
+            "fatigue_raw": float,         # 原始 penalty（保持向后兼容）
+            "breakdown": [...],           # 每项活动消耗明细
+            "activity_summary": {...},    # 各类活动计数
+            "multi_day_multiplier": float,# 多日累积系数
+            "noon_activities": int,       # 正午(13-15时)活动数
+        }
+    """
+    from skills.multi_day_scheduler.scheduling_penalty import (
+        time_of_day_fatigue_multiplier,
+        multi_day_fatigue_multiplier, LAMBDA_FATIGUE,
+    )
+
+    # ── 展示用体力系数（独立于优化器的 FATIGUE_COEFFICIENT）──
+    # 设计目标：1h 景点 ≈ 7% 全天体力，让数字符合真人体验
+    DISPLAY_FATIGUE_COEFFICIENT = {
+        "scenic": 7.0,       # 景点最累，走路+站立
+        "gym": 6.0,          # 健身高强度
+        "shopping": 4.0,     # 逛街走路但不紧张
+        "default": 3.5,      # 未分类活动
+        "cinema": 1.5,       # 坐着看
+        "hair": 1.5,         # 理发
+        "pet": 1.5,          # 宠物
+        "cafe": 1.0,         # 咖啡厅=放松
+        "restaurant": 1.0,   # 吃饭接近休息
+        "hotpot": 1.0,
+        "japanese": 1.0,
+        "laundry": 1.0,
+        "breakfast": 0.5,    # 早餐最轻松
+    }
+
+    # 将 server timeline 转为 refined 格式（与 dynamic_fatigue_cost 一致）
+    refined = []
+    for node in timeline:
+        action = node.get("action", "")
+        time_str = node.get("time", "00:00")
+        try:
+            h, m = map(int, time_str.split(":"))
+            start_minutes = h * 60 + m
+        except (ValueError, TypeError):
+            start_minutes = 540  # 默认 9:00
+
+        if action == "VISIT":
+            refined.append({
+                "type": "VISIT",
+                "category": node.get("category", "default"),
+                "duration_minutes": node.get("duration_minutes", 60),
+                "start_minutes": start_minutes,
+                "shop_id": node.get("shop_id", ""),
+                "memo": node.get("memo", ""),
+            })
+        elif action in ("LUNCH", "DINNER", "REST", "BREAKFAST",
+                        "LUNCH_NEEDED", "DINNER_NEEDED", "BREAKFAST_NEEDED"):
+            refined.append({
+                "type": action,
+                "start_minutes": start_minutes,
+            })
+
+    # ── 计算体力消耗 ──
+    fatigue_level = 100.0
+    cumulative_drain = 0.0
+    total_penalty = 0.0
+    delta = multi_day_fatigue_multiplier(day_index, prev_day_fatigue)
+    breakdown = []
+    activity_summary = {}
+    noon_count = 0
+    MEAL_RECOVERY = 2  # 每餐恢复量（吃顿饭能缓缓，但不能重置上午的疲劳）
+
+    for node in refined:
+        if node.get("type") == "VISIT":
+            cat = node.get("category", "default")
+            coef = DISPLAY_FATIGUE_COEFFICIENT.get(cat, DISPLAY_FATIGUE_COEFFICIENT.get("default", 3.5))
+            dur_hours = node.get("duration_minutes", 60) / 60.0
+            start_min = node.get("start_minutes", 540)
+            gamma = time_of_day_fatigue_multiplier(start_min)
+
+            drain = coef * dur_hours * gamma * delta
+            fatigue_level -= drain
+            cumulative_drain += drain
+
+            if fatigue_level < 30:
+                total_penalty += (30 - fatigue_level) ** 2
+
+            # 活动名提取（去掉 emoji 前缀）
+            memo = node.get("memo", "")
+            name = memo or node.get("shop_id", "未知")
+            # 提取中文名（memo 格式如 "📍 故宫"）
+            for prefix in ["📍 ", "⚠️ ", "🚫 "]:
+                if name.startswith(prefix):
+                    name = name[len(prefix):]
+
+            # 统计类别
+            cat_label = cat
+            activity_summary[cat_label] = activity_summary.get(cat_label, 0) + 1
+
+            # 正午活动
+            if 780 <= start_min <= 900:
+                noon_count += 1
+
+            breakdown.append({
+                "name": name[:20],
+                "category": cat,
+                "drain": round(drain, 1),
+                "start_time": f"{start_min // 60:02d}:{start_min % 60:02d}",
+                "duration_hours": round(dur_hours, 1),
+                "is_noon": 780 <= start_min <= 900,
+            })
+        elif node.get("type") in ("LUNCH", "DINNER", "REST", "BREAKFAST",
+                                   "LUNCH_NEEDED", "DINNER_NEEDED", "BREAKFAST_NEEDED"):
+            fatigue_level = min(100.0, fatigue_level + MEAL_RECOVERY)
+
+    # ── 最终值计算 ──
+    # 疲劳百分比基于累积消耗（MAX_DAILY_DRAIN=100 → 1:1 映射，100 点 = 100%）
+    MAX_DAILY_DRAIN = 100.0
+    fatigue_pct = round(min(1.0, cumulative_drain / MAX_DAILY_DRAIN), 3)
+    fatigue_level = max(0.0, min(100.0, fatigue_level))
+    fatigue_raw = LAMBDA_FATIGUE * total_penalty
+
+    # 等级标签（基于累积消耗，与用餐恢复无关）
+    if cumulative_drain < 15:
+        label = "轻松"
+    elif cumulative_drain < 30:
+        label = "适中"
+    elif cumulative_drain < 50:
+        label = "较累"
+    elif cumulative_drain < 70:
+        label = "很累"
+    else:
+        label = "极度疲劳"
+
+    # breakdown 按消耗降序排列，只保留有消耗的
+    breakdown.sort(key=lambda x: x["drain"], reverse=True)
+
+    return {
+        "fatigue_level": round(fatigue_level, 1),
+        "fatigue_pct": fatigue_pct,
+        "fatigue_label": label,
+        "fatigue_raw": round(fatigue_raw, 1),
+        "cumulative_drain": round(cumulative_drain, 1),
+        "breakdown": breakdown,
+        "activity_summary": activity_summary,
+        "multi_day_multiplier": round(delta, 2),
+        "noon_activities": noon_count,
+    }
+
+
+def _make_strategy_reasoning(strategy: str, fatigue_detail: dict,
+                              end_time_minutes: int, reason: str) -> str:
+    """根据疲劳分析和策略生成人类可读的策略推理文案。"""
+    fatigue_pct = int(fatigue_detail.get("fatigue_pct", 0) * 100)
+    fatigue_label = fatigue_detail.get("fatigue_label", "")
+    summary = fatigue_detail.get("activity_summary", {})
+    scenic_count = summary.get("scenic", 0)
+    shopping_count = summary.get("shopping", 0)
+    total_activities = sum(summary.values())
+    multi_day = fatigue_detail.get("multi_day_multiplier", 1.0)
+
+    # 基础描述
+    parts = []
+    if scenic_count > 0:
+        parts.append(f"{scenic_count}个景点")
+    if shopping_count > 0:
+        parts.append(f"{shopping_count}处购物")
+    other_count = total_activities - scenic_count - shopping_count
+    if other_count > 0:
+        parts.append(f"{other_count}项其他活动")
+
+    activity_desc = "、".join(parts) if parts else f"{total_activities}项活动"
+
+    base = f"今日{activity_desc}，预计消耗{fatigue_pct}%体力（{fatigue_label}）"
+
+    if multi_day > 1.05:
+        base += f"，多日累积系数×{multi_day}"
+
+    # 策略特定文案
+    if strategy == "switch":
+        end_h = end_time_minutes // 60
+        end_m = end_time_minutes % 60
+        return f"{base}，行程在{end_h:02d}:{end_m:02d}前结束，体力充足，建议换房以减少通勤时间"
+    else:  # sustained
+        end_h = end_time_minutes // 60
+        end_m = end_time_minutes % 60
+        if fatigue_pct >= 30:
+            return f"{base}，体力消耗较大，建议坚守原酒店休息"
+        elif end_time_minutes >= 1200:
+            return f"{base}，行程结束较晚（{end_h:02d}:{end_m:02d}），建议坚守原酒店，避免深夜搬行李"
+        else:
+            return f"{base}，建议坚守原酒店，减少换房麻烦"
+
+
+def _compute_hotel_decisions(result_days, checkin_lat, checkin_lng, destination):
+    """根据每日排程结果计算酒店决策。
+
+    对每天 timeline 计算动态体力消耗，然后调用 hotel_decision 模块
+    判断是否需要换酒店、采用什么策略。
+
+    返回:
+        [{"day_index": 0, "strategy": "sustained", "should_switch": False,
+          "reason": "", "fatigue": 0.0, "end_time_minutes": 1200,
+          "hotel_options": [...]}, ...]
+    """
+    decisions = []
+    prev_day_fatigue = 0.0
+    cumulative_time_saved = 0.0
+
+    for i, day in enumerate(result_days):
+        timeline = day.get("timeline", [])
+
+        # ── 使用 _compute_day_fatigue_detail 替代旧 dynamic_fatigue_cost ──
+        fatigue_detail = _compute_day_fatigue_detail(timeline, i, prev_day_fatigue)
+        fatigue_normalized = fatigue_detail["fatigue_pct"]  # 0-1，基于实际消耗
+
+        # 计算当日结束时间
+        end_time_minutes = 1200  # 默认 20:00
+        for node in reversed(timeline):
+            t = node.get("time", "")
+            try:
+                h, m = map(int, t.split(":"))
+                end_time_minutes = h * 60 + m
+                break
+            except (ValueError, TypeError):
+                pass
+
+        # 计算新酒店 vs 原酒店的时间节省
+        time_saved_single = 0.0
+        hotel_options = _auto_search_hotels_for_day(day, checkin_lat, checkin_lng, destination)
+        if hotel_options:
+            import math
+            def _haversine_km(lat1, lng1, lat2, lng2):
+                R = 6371
+                phi1, phi2 = math.radians(lat1), math.radians(lat2)
+                dphi = math.radians(lat2 - lat1)
+                dlambda = math.radians(lng2 - lng1)
+                a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+                return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+            lats, lngs = [], []
+            for t in day.get("task_list", []):
+                try:
+                    lats.append(float(t.get("lat", 0)))
+                    lngs.append(float(t.get("lng", 0)))
+                except (ValueError, TypeError):
+                    pass
+            if lats and lngs:
+                centroid_lat = sum(lats) / len(lats)
+                centroid_lng = sum(lngs) / len(lngs)
+            else:
+                centroid_lat = float(checkin_lat)
+                centroid_lng = float(checkin_lng)
+
+            dist_to_original = _haversine_km(centroid_lat, centroid_lng, float(checkin_lat), float(checkin_lng))
+            best_hotel = hotel_options[0]
+            best_lat = float(best_hotel.get("lat", checkin_lat))
+            best_lng = float(best_hotel.get("lng", checkin_lng))
+            dist_to_new = _haversine_km(centroid_lat, centroid_lng, best_lat, best_lng)
+            time_saved_single = max(0.0, (dist_to_original - dist_to_new) / 20.0 * 60.0)
+            cumulative_time_saved += time_saved_single
+
+        # 调用 hotel_decision
+        should_switch, reason = should_switch_hotel(
+            fatigue_normalized, time_saved_single, cumulative_time_saved
+        )
+        strategy = determine_strategy(
+            fatigue_normalized, end_time_minutes
+        )
+
+        # 如果决策是换房，确保有酒店选项
+        if strategy == "switch" and not hotel_options:
+            strategy = "sustained"
+            should_switch = False
+            reason = "no_hotel_available"
+
+        # 动态生成策略推理文案
+        strategy_reasoning = _make_strategy_reasoning(
+            strategy, fatigue_detail, end_time_minutes, reason
+        )
+
+        decisions.append({
+            "day_index": i,
+            "strategy": strategy,
+            "should_switch": should_switch,
+            "reason": reason,
+            "fatigue": fatigue_normalized,
+            "fatigue_raw": fatigue_detail["fatigue_raw"],
+            "fatigue_level": fatigue_detail["fatigue_level"],
+            "fatigue_label": fatigue_detail["fatigue_label"],
+            "fatigue_breakdown": fatigue_detail["breakdown"][:5],  # 前5项主要消耗
+            "activity_summary": fatigue_detail["activity_summary"],
+            "multi_day_multiplier": fatigue_detail["multi_day_multiplier"],
+            "strategy_reasoning": strategy_reasoning,
+            "end_time_minutes": end_time_minutes,
+            "time_saved_single": round(time_saved_single, 1),
+            "time_saved_cumulative": round(cumulative_time_saved, 1),
+            "hotel_options": hotel_options[:3] if should_switch else [],
+        })
+
+        prev_day_fatigue = fatigue_detail["cumulative_drain"]
+
+    return decisions
+
+
 def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
                              transport, start_time):
     """调用多日排程引擎，将候选池中的店铺分配到每天。并自动补全三餐+处理闭店冲突。"""
@@ -547,6 +920,41 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
         # 重新排序（去重替换可能改变节点，但时间不变）
         timeline.sort(key=lambda n: _time_str_to_minutes(n.get("time", "00:00")))
 
+        # ── 插入 "返回酒店" 节点（紧跟最后一项活动之后，BEDTIME 之前）──
+        bedtime_idx = -1
+        for j, node in enumerate(timeline):
+            if node.get("action") == "BEDTIME":
+                bedtime_idx = j
+                break
+        if bedtime_idx >= 0:
+            # 找到 BEDTIME 之前最晚的活动节点，计算酒店时间 = 最后活动结束时间 + 通勤缓冲
+            last_activity_end = 19 * 60  # 兜底：最早 19:00
+            for j in range(bedtime_idx):
+                node = timeline[j]
+                action = node.get("action", "")
+                if action in ("VISIT", "LUNCH", "DINNER", "REST", "BREAKFAST",
+                              "LUNCH_NEEDED", "DINNER_NEEDED", "BREAKFAST_NEEDED"):
+                    t = _time_str_to_minutes(node.get("time", "00:00"))
+                    dur = node.get("duration_minutes", 30)
+                    end_t = t + dur + 15  # +15min 通勤缓冲
+                    if end_t > last_activity_end:
+                        last_activity_end = end_t
+            # 不晚于 BEDTIME 前 15 分钟
+            bt = _time_str_to_minutes(timeline[bedtime_idx].get("time", "22:00"))
+            hotel_time = _safe_time_str(min(last_activity_end, bt - 15))
+            hotel_node = {
+                "time": hotel_time,
+                "action": "HOTEL_PENDING",
+                "memo": "🏨 返回酒店（待安排）",
+                "category": "hotel",
+                "shop_id": "",
+                "duration_minutes": 30,
+                "opentime": "未知",
+            }
+            timeline.insert(bedtime_idx, hotel_node)
+        # 重新排序确保时间正确
+        timeline.sort(key=lambda n: _time_str_to_minutes(n.get("time", "00:00")))
+
     # ── 后处理：闭店冲突 → 搜索替代品 ──
     closed_conflicts_resolved = []
     for cc in result.get("closed_conflicts", []):
@@ -571,6 +979,59 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
     result["closed_conflicts"] = closed_conflicts_resolved
     result["auto_meals_added"] = auto_meals_added
 
+    # ── 酒店决策：计算换房策略 + 搜索附近酒店 ──
+    try:
+        hotel_decisions = _compute_hotel_decisions(
+            result.get("days", []), checkin_lat, checkin_lng, destination
+        )
+        # 注入到 algorithm_metadata
+        result.setdefault("algorithm_metadata", {})["hotel_decisions"] = hotel_decisions
+        # 为每天注入酒店信息（包含完整疲劳分析）
+        for dec in hotel_decisions:
+            di = dec["day_index"]
+            if di < len(result["days"]):
+                result["days"][di]["hotel_info"] = {
+                    "strategy": dec["strategy"],
+                    "should_switch": dec["should_switch"],
+                    "reason": dec["reason"],
+                    "fatigue": dec["fatigue"],
+                    "fatigue_level": dec.get("fatigue_level", 0),
+                    "fatigue_label": dec.get("fatigue_label", ""),
+                    "fatigue_breakdown": dec.get("fatigue_breakdown", []),
+                    "activity_summary": dec.get("activity_summary", {}),
+                    "multi_day_multiplier": dec.get("multi_day_multiplier", 1.0),
+                    "strategy_reasoning": dec.get("strategy_reasoning", ""),
+                    "hotel_options": dec["hotel_options"],
+                }
+        print(f"[multi_day] 酒店决策完成, 共{len(hotel_decisions)}天, "
+              f"换房建议: {sum(1 for d in hotel_decisions if d['should_switch'])}天", flush=True)
+    except Exception as e:
+        print(f"[multi_day] 酒店决策失败: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        # ── 兜底：即使酒店搜索失败，也要为每天注入疲劳预测 ──
+        try:
+            prev_fatigue = 0.0
+            for di, day in enumerate(result.get("days", [])):
+                fd = _compute_day_fatigue_detail(day.get("timeline", []), di, prev_fatigue)
+                prev_fatigue = fd["cumulative_drain"]
+                result["days"][di]["hotel_info"] = {
+                    "strategy": "sustained",
+                    "should_switch": False,
+                    "reason": "fallback",
+                    "fatigue": fd["fatigue_pct"],
+                    "fatigue_level": fd["fatigue_level"],
+                    "fatigue_label": fd["fatigue_label"],
+                    "fatigue_breakdown": fd["breakdown"][:5],
+                    "activity_summary": fd["activity_summary"],
+                    "multi_day_multiplier": fd["multi_day_multiplier"],
+                    "strategy_reasoning": f"今日{fatigue_label}（{int(fd['fatigue_pct']*100)}%），酒店信息暂时无法获取",
+                    "hotel_options": [],
+                }
+            print(f"[multi_day] 疲劳预测兜底完成, 共{len(result.get('days', []))}天", flush=True)
+        except Exception as e2:
+            print(f"[multi_day] 疲劳兜底也失败: {e2}", flush=True)
+
     return result
 
 
@@ -581,6 +1042,12 @@ def _time_str_to_minutes(time_str: str) -> int:
         return h * 60 + m
     except (ValueError, TypeError):
         return 0
+
+
+def _safe_time_str(minutes: int) -> str:
+    """分钟数 → "HH:MM"，钳制在 00:00-23:59"""
+    m = max(0, min(minutes, 23 * 60 + 59))
+    return f"{m // 60:02d}:{m % 60:02d}"
 
 
 def _inject_multi_day_reminders(schedule_result: dict) -> dict:
@@ -6295,7 +6762,7 @@ def chat_stream():
                         "role": "system",
                         "content": (
                             f"[系统已自动搜索] 用户想知道「{place}」附近有什么。"
-                            f"已通过高德地图在{place}周边（坐标 {geo_result['lng']},{geo_result['lat']}）"
+                            f"已在{place}周边（坐标 {geo_result['lng']},{geo_result['lat']}）"
                             f"搜索，共找到 {total} 家商户。"
                             f"排名靠前的有：{shop_list_str}等。"
                             f"你现在是纯文本模式，请按以下格式用温暖自然的语气回复（1-3句话即可）："
@@ -7589,6 +8056,253 @@ def schedule_review_answer():
         print(f"[审查问答] LLM 调用失败: {e}", flush=True)
         return jsonify({"phase": "done", "days": schedule.get("days", []), "fallback": True})
 
+
+
+# ======================================================================
+# 酒店搜索 + 选择 API
+# ======================================================================
+
+@app.route("/api/search_hotels_for_day", methods=["POST"])
+def api_search_hotels_for_day():
+    """搜索某天的策略感知酒店推荐。
+    请求: {day_index: 0}
+    返回: {strategy, strategy_label, search_center, hotels: [{shop_id, name, rating,
+           price_level, price_range, address, phone, distance, opentime, lat, lng}]}
+    """
+    data = request.get_json(silent=True) or {}
+    day_idx = int(data.get("day_index", 0))
+    days = session_state.get("days", [])
+    if day_idx < 0 or day_idx >= len(days):
+        return jsonify({"error": f"无效的天索引: {day_idx}"}), 400
+
+    day = days[day_idx]
+    checkin_lat = float(session_state.get("trip_checkin_lat", 39.93))
+    checkin_lng = float(session_state.get("trip_checkin_lng", 116.45))
+    destination = session_state.get("trip_destination", "北京")
+
+    # ── 确定策略 ──
+    result_days = [{
+        "day_index": d.get("day_index", i),
+        "timeline": d.get("schedule_result", {}).get("timeline", d.get("timeline", [])),
+        "task_list": d.get("task_list", d.get("schedule_result", {}).get("task_list", [])),
+    } for i, d in enumerate(days)]
+
+    decisions = _compute_hotel_decisions(result_days, checkin_lat, checkin_lng, destination)
+    dec = decisions[day_idx] if day_idx < len(decisions) else None
+
+    if not dec:
+        return jsonify({"error": "无法计算酒店决策"}), 500
+
+    strategy = dec["strategy"]
+
+    # ── 策略感知搜索中心 ──
+    search_lat, search_lng = checkin_lat, checkin_lng
+    search_radius = 3000
+
+    if strategy == "switch":
+        # 当天 centroid
+        lats, lngs = [], []
+        for t in day.get("task_list", []):
+            try:
+                lats.append(float(t.get("lat", 0)))
+                lngs.append(float(t.get("lng", 0)))
+            except (ValueError, TypeError):
+                pass
+        if lats and lngs:
+            search_lat = sum(lats) / len(lats)
+            search_lng = sum(lngs) / len(lngs)
+
+    # sustained: 使用 checkin 坐标，已默认
+
+    # ── 搜索酒店 ──
+    raw_hotels = _auto_search_hotels(search_lat, search_lng, destination,
+                                      radius=search_radius, limit=15)
+
+    # ── 按价格分层，每层选评分最高的 1 家 ──
+    hotels_with_price = []
+    for h in raw_hotels:
+        cost = _extract_hotel_price(h)
+        hotels_with_price.append((h, cost))
+
+    # 价格分层: 高档(>500), 中档(200-500), 经济(100-200), 民宿/青旅(<100)
+    tiers = [
+        ("luxury", "高档", 500, 99999),
+        ("mid", "中档", 200, 500),
+        ("economy", "经济", 100, 200),
+        ("budget", "民宿/青旅", 0, 100),
+    ]
+
+    selected = []
+    seen_ids = set()
+    for tier_key, tier_label, lo, hi in tiers:
+        candidates = [(h, c) for h, c in hotels_with_price if lo <= c < hi and h.get("shop_id", "") not in seen_ids]
+        candidates.sort(key=lambda x: x[0].get("rating", 0) or 0, reverse=True)
+        if candidates:
+            h, cost = candidates[0]
+            seen_ids.add(h.get("shop_id", ""))
+            selected.append(_format_hotel_response(h, cost, tier_key, tier_label, search_lat, search_lng))
+
+    # 如果某些层级没有，用未用的酒店补足到 5 家
+    remaining = [(h, c) for h, c in hotels_with_price if h.get("shop_id", "") not in seen_ids]
+    remaining.sort(key=lambda x: x[0].get("rating", 0) or 0, reverse=True)
+    for h, cost in remaining:
+        if len(selected) >= 5:
+            break
+        if h.get("shop_id", "") in seen_ids:
+            continue
+        seen_ids.add(h.get("shop_id", ""))
+        tier = _guess_tier(cost)
+        selected.append(_format_hotel_response(h, cost, tier[0], tier[1], search_lat, search_lng))
+
+    # 策略名映射
+    strategy_labels = {
+        "sustained": "🟢 不换房",
+        "switch": "🔵 推荐换房",
+    }
+
+    return jsonify({
+        "strategy": strategy,
+        "strategy_label": strategy_labels.get(strategy, strategy),
+        "strategy_reason": dec.get("strategy_reasoning",
+                          f"疲劳度 {int(dec['fatigue']*100)}%, "
+                          f"单日省时 {dec.get('time_saved_single', 0):.0f}min, "
+                          f"累计省时 {dec.get('time_saved_cumulative', 0):.0f}min"),
+        "fatigue_pct": int(dec["fatigue"] * 100),
+        "fatigue_label": dec.get("fatigue_label", ""),
+        "search_center": {"lat": search_lat, "lng": search_lng},
+        "search_radius": search_radius,
+        "hotels": selected,
+        "day_index": day_idx,
+    })
+
+
+def _extract_hotel_price(hotel: dict) -> float:
+    """从高德返回的酒店数据中提取价格（人均/起价）。
+    优先 biz_ext.cost，其次 signature_dishes 中的 price。
+    """
+    # 尝试从 signature_dishes 提取 cost
+    dishes = hotel.get("signature_dishes", []) or []
+    costs = []
+    for d in dishes:
+        c = d.get("price", 0)
+        if isinstance(c, (int, float)) and c > 0:
+            costs.append(float(c))
+    if costs:
+        return min(costs)  # 取最低价格作为起价
+    # 酒店类默认价格的合理估计（无法从API获取时按评分估算）
+    rating = hotel.get("rating", 0) or 0
+    if rating >= 4.5:
+        return 500
+    elif rating >= 4.0:
+        return 300
+    elif rating >= 3.0:
+        return 150
+    else:
+        return 80
+
+
+def _guess_tier(cost: float) -> tuple:
+    """根据价格猜测档次"""
+    if cost >= 500:
+        return ("luxury", "高档")
+    elif cost >= 200:
+        return ("mid", "中档")
+    elif cost >= 100:
+        return ("economy", "经济")
+    else:
+        return ("budget", "民宿/青旅")
+
+
+def _format_hotel_response(hotel: dict, cost: float, tier_key: str,
+                            tier_label: str, center_lat: float, center_lng: float) -> dict:
+    """格式化酒店响应数据"""
+    import math
+    def _haversine_m(lat1, lng1, lat2, lng2):
+        R = 6371000
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        dphi = math.radians(lat2 - lat1)
+        dlambda = math.radians(lng2 - lng1)
+        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    dist = hotel.get("distance") or _haversine_m(
+        center_lat, center_lng,
+        float(hotel.get("lat", center_lat)), float(hotel.get("lng", center_lng))
+    )
+    return {
+        "shop_id": hotel.get("shop_id", ""),
+        "name": hotel.get("name", "未知酒店"),
+        "rating": hotel.get("rating", 0) or 0,
+        "price_level": tier_key,
+        "price_label": tier_label,
+        "price_range": f"¥{int(cost)}起" if cost > 0 else "价格未知",
+        "address": hotel.get("address", "") or hotel.get("business_area", "") or "",
+        "phone": hotel.get("phone", "") or "",
+        "distance": round(dist, 0) if dist else 0,
+        "opentime": hotel.get("opentime", "未知"),
+        "lat": hotel.get("lat", center_lat),
+        "lng": hotel.get("lng", center_lng),
+    }
+
+
+@app.route("/api/select_hotel", methods=["POST"])
+def api_select_hotel():
+    """用户为某天选择酒店。
+    请求: {day_index: 0, hotel: {shop_id, name, address, ...}}
+    返回: {status: "OK", day_index: 0, hotel_name: "..."}
+    """
+    data = request.get_json(silent=True) or {}
+    day_idx = int(data.get("day_index", 0))
+    hotel = data.get("hotel", {}) or {}
+
+    days = session_state.get("days", [])
+    if day_idx < 0 or day_idx >= len(days):
+        return jsonify({"error": f"无效的天索引: {day_idx}"}), 400
+
+    hotel_name = hotel.get("name", "")
+    hotel_address = hotel.get("address", "")
+
+    # ── 更新 session_state 中的 schedule_result ──
+    day = days[day_idx]
+    schedule = day.get("schedule_result", {})
+    timeline = schedule.get("timeline", day.get("timeline", []))
+
+    updated = False
+    for node in timeline:
+        if node.get("action") in ("HOTEL_PENDING", "HOTEL_CHECKIN"):
+            node["action"] = "HOTEL_CHECKIN"
+            node["memo"] = f"🏨 {hotel_name}"
+            node["shop_id"] = hotel.get("shop_id", "")
+            node["category"] = "hotel"
+            node["opentime"] = hotel.get("opentime", "未知")
+            if hotel_address:
+                node["detail"] = hotel_address
+            updated = True
+            break
+
+    if updated:
+        schedule["timeline"] = timeline
+        day["schedule_result"] = schedule
+        # 同时更新 day 级别的 hotel_info
+        if "hotel_info" not in day:
+            day["hotel_info"] = {}
+        day["hotel_info"]["selected_hotel"] = {
+            "shop_id": hotel.get("shop_id", ""),
+            "name": hotel_name,
+            "address": hotel_address,
+            "rating": hotel.get("rating", 0),
+            "price_label": hotel.get("price_label", ""),
+            "phone": hotel.get("phone", ""),
+        }
+        session_state["days"] = days
+        print(f"[select_hotel] Day {day_idx}: 选择酒店 '{hotel_name}'", flush=True)
+
+    return jsonify({
+        "status": "OK",
+        "day_index": day_idx,
+        "hotel_name": hotel_name,
+        "timeline": timeline,  # 返回更新后的时间线供前端刷新
+    })
 
 
 @app.route("/api/switch_day", methods=["POST"])

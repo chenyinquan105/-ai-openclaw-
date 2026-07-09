@@ -2526,3 +2526,230 @@ NameError: name 'destination' is not defined
 [2026-07-08 19:57:35 +0800] [75417] [INFO] Handling signal: term
 [2026-07-08 19:58:05 +0800] [75419] [INFO] Worker exiting (pid: 75419)
 [2026-07-08 19:58:05 +0800] [75417] [INFO] Shutting down: Master
+[2026-07-09 14:23:55 +0800] [88965] [INFO] Starting gunicorn 26.0.0
+[2026-07-09 14:23:55 +0800] [88965] [INFO] Listening at: http://0.0.0.0:5000 (88965)
+[2026-07-09 14:23:55 +0800] [88965] [INFO] Using worker: gthread
+[2026-07-09 14:23:55 +0800] [88971] [INFO] Booting worker with pid: 88971
+[2026-07-09 14:23:55 +0800] [88965] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[排程审查前] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        故宫博物院 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D1  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D1  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D1  13:30 VISIT        天坛公园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D1  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D1  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D1  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        颐和园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D2  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D2  13:33 VISIT        八达岭长城 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D2  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D2  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[排程审查前] VISIT节点(5): ['D1:BJ_scenic_001:故宫博物院 🌧️ 建议带伞 🕐 营业时间', 'D1:BJ_scenic_003:天坛公园 🌧️ 建议带伞 🕐 营业时间未', 'D1:BJ_shop_001:王府井步行街 🕐 营业时间未知', 'D2:BJ_scenic_002:颐和园 ⛈️ 天气影响，注意安全 🕐 营', 'D2:BJ_scenic_004:八达岭长城 ⛈️ 天气影响，注意安全 🕐']
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[排程审查后] VISIT节点(5): ['D1:BJ_scenic_001:故宫博物院 🌧️ 建议带伞 🕐 营业时间', 'D1:BJ_scenic_003:天坛公园 🌧️ 建议带伞 🕐 营业时间未', 'D1:BJ_shop_001:王府井步行街 🕐 营业时间未知', 'D2:BJ_scenic_002:颐和园 ⛈️ 天气影响，注意安全 🕐 营', 'D2:BJ_scenic_004:八达岭长城 ⛈️ 天气影响，注意安全 🕐']
+[排程审查后] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        故宫博物院 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D1  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D1  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D1  13:30 VISIT        天坛公园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D1  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D1  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D1  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        颐和园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D2  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D2  13:33 VISIT        八达岭长城 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D2  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D2  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[完整性验证] ✅ 所有 5 个非餐目的地均存在于 timeline
+[2026-07-09 14:47:27 +0800] [89495] [INFO] Starting gunicorn 26.0.0
+[2026-07-09 14:47:27 +0800] [89495] [INFO] Listening at: http://0.0.0.0:5000 (89495)
+[2026-07-09 14:47:27 +0800] [89495] [INFO] Using worker: gthread
+[2026-07-09 14:47:27 +0800] [89498] [INFO] Booting worker with pid: 89498
+[2026-07-09 14:47:27 +0800] [89495] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[amap_weather] 预报API异常: HTTPSConnectionPool(host='restapi.amap.com', port=443): Read timed out. (read timeout=15)
+[auto_search_hotels] 失败: 高德API网络错误: HTTPSConnectionPool(host='restapi.amap.com', port=443): Max retries exceeded with url: /v3/place/around?location=116.14750000000001%2C40.179&radius=5000&offset=15&extensions=all&keywords=%E9%85%92%E5%BA%97&key=2fcafad5545b07de4cfff658d6630076 (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1081)')))
+[multi_day] 酒店决策完成, 共2天, 换房建议: 0天
+[排程审查前] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        故宫博物院 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D1  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D1  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D1  13:30 VISIT        天坛公园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D1  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D1  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D1  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        颐和园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D2  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D2  13:33 VISIT        八达岭长城 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D2  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D2  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[排程审查前] VISIT节点(5): ['D1:BJ_scenic_001:故宫博物院 🌧️ 建议带伞 🕐 营业时间', 'D1:BJ_scenic_003:天坛公园 🌧️ 建议带伞 🕐 营业时间未', 'D1:BJ_shop_001:王府井步行街 🕐 营业时间未知', 'D2:BJ_scenic_002:颐和园 ⛈️ 天气影响，注意安全 🕐 营', 'D2:BJ_scenic_004:八达岭长城 ⛈️ 天气影响，注意安全 🕐']
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[排程审查后] VISIT节点(5): ['D1:BJ_scenic_001:故宫博物院 🌧️ 建议带伞 🕐 营业时间', 'D1:BJ_scenic_003:天坛公园 🌧️ 建议带伞 🕐 营业时间未', 'D1:BJ_shop_001:王府井步行街 🕐 营业时间未知', 'D2:BJ_scenic_002:颐和园 ⛈️ 天气影响，注意安全 🕐 营', 'D2:BJ_scenic_004:八达岭长城 ⛈️ 天气影响，注意安全 🕐']
+[排程审查后] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        故宫博物院 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D1  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D1  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D1  13:30 VISIT        天坛公园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D1  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D1  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D1  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        颐和园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D2  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D2  13:33 VISIT        八达岭长城 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D2  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D2  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[完整性验证] ✅ 所有 5 个非餐目的地均存在于 timeline
+[2026-07-09 15:31:38 +0800] [90313] [INFO] Starting gunicorn 26.0.0
+[2026-07-09 15:31:38 +0800] [90313] [INFO] Listening at: http://0.0.0.0:5000 (90313)
+[2026-07-09 15:31:38 +0800] [90313] [INFO] Using worker: gthread
+[2026-07-09 15:31:38 +0800] [90315] [INFO] Booting worker with pid: 90315
+[2026-07-09 15:31:38 +0800] [90313] [INFO] Control socket listening at /Users/kaijimima1234/.gunicorn/gunicorn.ctl
+[OpenClaw Bridge] 已注册 13 个 Skill
+[auto_search_hotels] 失败: 高德API网络错误: HTTPSConnectionPool(host='restapi.amap.com', port=443): Read timed out. (read timeout=10)
+[multi_day] 酒店决策完成, 共2天, 换房建议: 0天
+[排程审查前] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        颐和园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D1  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D1  13:33 VISIT        八达岭长城 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D1  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D1  19:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D1  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        故宫博物院 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D2  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D2  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D2  13:30 VISIT        天坛公园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D2  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D2  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D2  21:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D2  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[排程审查前] VISIT节点(5): ['D1:BJ_scenic_002:颐和园 🌧️ 建议带伞 🕐 营业时间未知', 'D1:BJ_scenic_004:八达岭长城 🌧️ 建议带伞 🕐 营业时间', 'D2:BJ_scenic_001:故宫博物院 ⛈️ 天气影响，注意安全 🕐', 'D2:BJ_scenic_003:天坛公园 ⛈️ 天气影响，注意安全 🕐 ', 'D2:BJ_shop_001:王府井步行街 🕐 营业时间未知']
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[排程审查后] VISIT节点(5): ['D1:BJ_scenic_002:颐和园 🌧️ 建议带伞 🕐 营业时间未知', 'D1:BJ_scenic_004:八达岭长城 🌧️ 建议带伞 🕐 营业时间', 'D2:BJ_scenic_001:故宫博物院 ⛈️ 天气影响，注意安全 🕐', 'D2:BJ_scenic_003:天坛公园 ⛈️ 天气影响，注意安全 🕐 ', 'D2:BJ_shop_001:王府井步行街 🕐 营业时间未知']
+[排程审查后] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        颐和园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D1  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D1  13:33 VISIT        八达岭长城 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D1  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D1  19:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D1  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        故宫博物院 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D2  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D2  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D2  13:30 VISIT        天坛公园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D2  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D2  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D2  21:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D2  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[完整性验证] ✅ 所有 5 个非餐目的地均存在于 timeline
+[multi_day] 酒店决策完成, 共2天, 换房建议: 1天
+[排程审查前] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        故宫博物院 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D1  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D1  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D1  13:30 VISIT        天坛公园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D1  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D1  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D1  21:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D1  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        颐和园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D2  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D2  13:33 VISIT        八达岭长城 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D2  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D2  19:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D2  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[排程审查前] VISIT节点(5): ['D1:BJ_scenic_001:故宫博物院 🌧️ 建议带伞 🕐 营业时间', 'D1:BJ_scenic_003:天坛公园 🌧️ 建议带伞 🕐 营业时间未', 'D1:BJ_shop_001:王府井步行街 🕐 营业时间未知', 'D2:BJ_scenic_002:颐和园 ⛈️ 天气影响，注意安全 🕐 营', 'D2:BJ_scenic_004:八达岭长城 ⛈️ 天气影响，注意安全 🕐']
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[排程审查后] VISIT节点(5): ['D1:BJ_scenic_001:故宫博物院 🌧️ 建议带伞 🕐 营业时间', 'D1:BJ_scenic_003:天坛公园 🌧️ 建议带伞 🕐 营业时间未', 'D1:BJ_shop_001:王府井步行街 🕐 营业时间未知', 'D2:BJ_scenic_002:颐和园 ⛈️ 天气影响，注意安全 🕐 营', 'D2:BJ_scenic_004:八达岭长城 ⛈️ 天气影响，注意安全 🕐']
+[排程审查后] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        故宫博物院 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D1  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D1  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D1  13:30 VISIT        天坛公园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D1  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D1  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D1  21:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D1  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        颐和园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D2  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D2  13:33 VISIT        八达岭长城 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D2  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D2  19:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D2  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[完整性验证] ✅ 所有 5 个非餐目的地均存在于 timeline
+[multi_day] 酒店决策完成, 共2天, 换房建议: 1天
+[排程审查前] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        故宫博物院 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D1  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D1  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D1  13:30 VISIT        天坛公园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D1  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D1  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D1  21:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D1  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        颐和园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D2  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D2  13:33 VISIT        八达岭长城 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D2  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D2  19:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D2  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[排程审查前] VISIT节点(5): ['D1:BJ_scenic_001:故宫博物院 🌧️ 建议带伞 🕐 营业时间', 'D1:BJ_scenic_003:天坛公园 🌧️ 建议带伞 🕐 营业时间未', 'D1:BJ_shop_001:王府井步行街 🕐 营业时间未知', 'D2:BJ_scenic_002:颐和园 ⛈️ 天气影响，注意安全 🕐 营', 'D2:BJ_scenic_004:八达岭长城 ⛈️ 天气影响，注意安全 🕐']
+[json_parse] _llm_review_schedule 未找到 JSON，回退空审查: 
+[排程审查后] VISIT节点(5): ['D1:BJ_scenic_001:故宫博物院 🌧️ 建议带伞 🕐 营业时间', 'D1:BJ_scenic_003:天坛公园 🌧️ 建议带伞 🕐 营业时间未', 'D1:BJ_shop_001:王府井步行街 🕐 营业时间未知', 'D2:BJ_scenic_002:颐和园 ⛈️ 天气影响，注意安全 🕐 营', 'D2:BJ_scenic_004:八达岭长城 ⛈️ 天气影响，注意安全 🕐']
+[排程审查后] === 完整时间线 ===
+  D1  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D1  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D1  09:15 VISIT        故宫博物院 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_001, cat=scenic)
+  D1  11:25 LUNCH        🍽️ 午餐：全聚德烤鸭(前门店) (shop_id=BJ_res_001, cat=restaurant)
+  D1  12:55 REST         ☕ 午休片刻 (shop_id=, cat=rest)
+  D1  13:30 VISIT        天坛公园 🌧️ 建议带伞 🕐 营业时间未知 (shop_id=BJ_scenic_003, cat=scenic)
+  D1  17:10 DINNER       🍽️ 晚餐：聚宝源(牛街总店) (shop_id=BJ_res_005, cat=hotpot)
+  D1  19:15 VISIT        王府井步行街 🕐 营业时间未知 (shop_id=BJ_shop_001, cat=shopping)
+  D1  21:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D1  22:25 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+  D2  07:30 WAKE_UP      ⏰ 起床 (shop_id=, cat=wake_up)
+  D2  07:50 BREAKFAST_NEEDED 🥐 早餐（待添加） (shop_id=, cat=breakfast)
+  D2  09:15 VISIT        颐和园 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_002, cat=scenic)
+  D2  12:00 LUNCH_NEEDED ⚠️ 午餐（待补充） (shop_id=, cat=lunch_needed)
+  D2  13:33 VISIT        八达岭长城 ⛈️ 天气影响，注意安全 🕐 营业时间未知 (shop_id=BJ_scenic_004, cat=scenic)
+  D2  18:00 DINNER_NEEDED ⚠️ 晚餐（待补充） (shop_id=, cat=dinner_needed)
+  D2  19:00 HOTEL_PENDING 🏨 返回酒店（待安排） (shop_id=, cat=hotel)
+  D2  21:00 BEDTIME      🌙 就寝 (shop_id=, cat=bedtime)
+[完整性验证] ✅ 所有 5 个非餐目的地均存在于 timeline
