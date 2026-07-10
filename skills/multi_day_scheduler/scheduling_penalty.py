@@ -43,6 +43,7 @@ LAMBDA_TRAVEL = 0.3
 # ======================================================================
 
 FATIGUE_COEFFICIENT = {
+    # 活动类
     "scenic": 1.5,
     "shopping": 1.0,
     "cinema": 0.5,
@@ -56,6 +57,11 @@ FATIGUE_COEFFICIENT = {
     "pet": 0.4,
     "laundry": 0.3,
     "default": 0.8,
+    # 交通类（display 系数 ÷ 4.67 映射到优化器尺度）
+    "travel_walk": 0.85,    # 步行赶路  → display 4.0
+    "travel_plane": 0.65,   # 飞机      → display 3.0
+    "travel_car": 0.3,      # 汽车/打车 → display 1.5
+    "travel_train": 0.2,    # 高铁/火车 → display 1.0
 }
 
 # 体力惩罚权重（供 _total_cost 使用）
@@ -151,12 +157,41 @@ def multi_day_fatigue_multiplier(day_index: int, prev_day_fatigue: float) -> flo
 # 动态体力模型 —— 动态体力消耗计算
 # ======================================================================
 
+def _classify_travel_category(action: str, memo: str = "") -> str:
+    """根据 action 和 memo 判断交通方式的体力类别。
+
+    返回 FATIGUE_COEFFICIENT / DISPLAY_FATIGUE_COEFFICIENT 的 key。
+    """
+    # 去程/返程：从 memo 识别飞机 vs 高铁
+    if action in ("OUTBOUND_JOURNEY", "RETURN_JOURNEY"):
+        if "飞机" in memo:
+            return "travel_plane"
+        if "高铁" in memo or "火车" in memo:
+            return "travel_train"
+        # 默认按汽车处理（短途大巴等）
+        return "travel_car"
+
+    # 步行回酒店
+    if action == "HOTEL_PENDING":
+        return "travel_walk"
+
+    # 汽车接送（家→站、站→酒店）
+    if action in ("LEAVE_HOME", "TO_STATION", "ARRIVAL_TRANSIT"):
+        return "travel_car"
+
+    # 站内步行（到达、出发、到家）
+    if action in ("ARRIVAL", "DEPARTURE", "ARRIVE_HOME"):
+        return "travel_walk"
+
+    return "travel_car"
+
+
 def dynamic_fatigue_cost(timeline: list, day_index: int = 0,
                           prev_day_fatigue: float = 0) -> float:
     """
     计算动态体力消耗惩罚值，组合 γ_time（时段）和 δ_day（多日累积）。
 
-    体力初始为 100，每项 VISIT 活动消耗体力：
+    体力初始为 100，每项 VISIT + 交通 活动消耗体力：
         品类系数 × (duration/60) × γ_time(start) × δ_day(day_index, prev_day_fatigue)
 
     休息/用餐节点恢复体力。体力低于 30 时产生二次惩罚。
@@ -175,7 +210,9 @@ def dynamic_fatigue_cost(timeline: list, day_index: int = 0,
     delta = multi_day_fatigue_multiplier(day_index, prev_day_fatigue)
 
     for node in timeline:
-        if node.get("type") == "VISIT":
+        node_type = node.get("type") or node.get("action", "")
+
+        if node_type == "VISIT":
             cat = node.get("category", "default")
             coef = FATIGUE_COEFFICIENT.get(cat, FATIGUE_COEFFICIENT.get("default", 0.8))
             dur_hours = node.get("duration_minutes", 60) / 60.0
@@ -186,7 +223,31 @@ def dynamic_fatigue_cost(timeline: list, day_index: int = 0,
 
             if fatigue_level < 30:
                 total_penalty += (30 - fatigue_level) ** 2
-        elif node.get("type") in ("LUNCH", "DINNER", "REST", "BREAKFAST"):
+        elif node_type in ("LUNCH", "DINNER", "REST", "BREAKFAST",
+                           "LUNCH_NEEDED", "DINNER_NEEDED", "BREAKFAST_NEEDED"):
             fatigue_level = min(100.0, fatigue_level + 10)
+        elif node_type in ("LEAVE_HOME", "TO_STATION", "OUTBOUND_JOURNEY",
+                           "ARRIVAL", "ARRIVAL_TRANSIT", "HOTEL_PENDING",
+                           "RETURN_JOURNEY", "DEPARTURE", "ARRIVE_HOME"):
+            # 交通节点：按交通方式取系数 × 时长
+            travel_cat = _classify_travel_category(node_type, node.get("memo", ""))
+            coef = FATIGUE_COEFFICIENT.get(travel_cat, 0.3)
+            dur_hours = node.get("duration_minutes", 30) / 60.0
+            start_min = node.get("start_minutes", node.get("time") and _parse_time_minutes(node.get("time", "09:00")) or 540)
+            gamma = time_of_day_fatigue_multiplier(start_min)
+
+            fatigue_level -= coef * dur_hours * gamma * delta
+
+            if fatigue_level < 30:
+                total_penalty += (30 - fatigue_level) ** 2
 
     return LAMBDA_FATIGUE * total_penalty
+
+
+def _parse_time_minutes(time_str: str) -> int:
+    """将 HH:MM 字符串转为分钟数。"""
+    try:
+        h, m = map(int, time_str.split(":"))
+        return h * 60 + m
+    except (ValueError, TypeError):
+        return 540

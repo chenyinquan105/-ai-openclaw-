@@ -565,11 +565,13 @@ def _compute_day_fatigue_detail(timeline, day_index=0, prev_day_fatigue=0.0):
     from skills.multi_day_scheduler.scheduling_penalty import (
         time_of_day_fatigue_multiplier,
         multi_day_fatigue_multiplier, LAMBDA_FATIGUE,
+        _classify_travel_category,
     )
 
     # ── 展示用体力系数（独立于优化器的 FATIGUE_COEFFICIENT）──
     # 设计目标：1h 景点 ≈ 7% 全天体力，让数字符合真人体验
     DISPLAY_FATIGUE_COEFFICIENT = {
+        # 活动类
         "scenic": 7.0,       # 景点最累，走路+站立
         "gym": 6.0,          # 健身高强度
         "shopping": 4.0,     # 逛街走路但不紧张
@@ -583,10 +585,18 @@ def _compute_day_fatigue_detail(timeline, day_index=0, prev_day_fatigue=0.0):
         "japanese": 1.0,
         "laundry": 1.0,
         "breakfast": 0.5,    # 早餐最轻松
+        # 交通类（%全天体力/小时）
+        "travel_walk": 4.0,    # 步行赶路
+        "travel_plane": 3.0,   # 飞机：值机安检+拥挤+气压
+        "travel_car": 1.5,     # 汽车/打车：轻微消耗
+        "travel_train": 1.0,   # 高铁/火车：最舒适
     }
 
     # 将 server timeline 转为 refined 格式（与 dynamic_fatigue_cost 一致）
     refined = []
+    TRAVEL_ACTIONS = {"LEAVE_HOME", "TO_STATION", "OUTBOUND_JOURNEY", "ARRIVAL",
+                      "ARRIVAL_TRANSIT", "HOTEL_PENDING", "RETURN_JOURNEY",
+                      "DEPARTURE", "ARRIVE_HOME"}
     for node in timeline:
         action = node.get("action", "")
         time_str = node.get("time", "00:00")
@@ -610,6 +620,14 @@ def _compute_day_fatigue_detail(timeline, day_index=0, prev_day_fatigue=0.0):
             refined.append({
                 "type": action,
                 "start_minutes": start_minutes,
+            })
+        elif action in TRAVEL_ACTIONS:
+            refined.append({
+                "type": "TRAVEL",
+                "action": action,
+                "duration_minutes": node.get("duration_minutes", 30),
+                "start_minutes": start_minutes,
+                "memo": node.get("memo", ""),
             })
 
     # ── 计算体力消耗 ──
@@ -664,6 +682,42 @@ def _compute_day_fatigue_detail(timeline, day_index=0, prev_day_fatigue=0.0):
         elif node.get("type") in ("LUNCH", "DINNER", "REST", "BREAKFAST",
                                    "LUNCH_NEEDED", "DINNER_NEEDED", "BREAKFAST_NEEDED"):
             fatigue_level = min(100.0, fatigue_level + MEAL_RECOVERY)
+        elif node.get("type") == "TRAVEL":
+            action = node.get("action", "")
+            memo = node.get("memo", "")
+            travel_cat = _classify_travel_category(action, memo)
+            coef = DISPLAY_FATIGUE_COEFFICIENT.get(travel_cat, DISPLAY_FATIGUE_COEFFICIENT.get("default", 3.5))
+            dur_hours = node.get("duration_minutes", 30) / 60.0
+            start_min = node.get("start_minutes", 540)
+            gamma = time_of_day_fatigue_multiplier(start_min)
+
+            drain = coef * dur_hours * gamma * delta
+            fatigue_level -= drain
+            cumulative_drain += drain
+
+            if fatigue_level < 30:
+                total_penalty += (30 - fatigue_level) ** 2
+
+            # 交通名提取
+            travel_name = memo or action
+            for prefix in ["✈️ ", "🚄 ", "🚗 ", "🏠 ", "🛬 ", "🔙 ", "🏨 "]:
+                if travel_name.startswith(prefix):
+                    travel_name = travel_name[len(prefix):]
+            travel_label = {"travel_walk": "步行", "travel_plane": "飞机", "travel_car": "汽车", "travel_train": "高铁"}.get(travel_cat, "交通")
+
+            activity_summary[travel_label] = activity_summary.get(travel_label, 0) + 1
+
+            if 780 <= start_min <= 900:
+                noon_count += 1
+
+            breakdown.append({
+                "name": travel_name[:20],
+                "category": travel_label,
+                "drain": round(drain, 1),
+                "start_time": f"{start_min // 60:02d}:{start_min % 60:02d}",
+                "duration_hours": round(dur_hours, 1),
+                "is_noon": 780 <= start_min <= 900,
+            })
 
     # ── 最终值计算 ──
     # 疲劳百分比基于累积消耗（MAX_DAILY_DRAIN=100 → 1:1 映射，100 点 = 100%）
@@ -953,37 +1007,43 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
         _sort_timeline_keep_wake_bedtime(timeline)
 
         # ── 插入 "返回酒店" 节点（紧跟最后一项活动之后，BEDTIME 之前）──
-        bedtime_idx = -1
-        for j, node in enumerate(timeline):
-            if node.get("action") == "BEDTIME":
-                bedtime_idx = j
-                break
-        if bedtime_idx >= 0:
-            # 找到 BEDTIME 之前最晚的活动节点，计算酒店时间 = 最后活动结束时间 + 通勤缓冲
-            last_activity_end = 19 * 60  # 兜底：最早 19:00
-            for j in range(bedtime_idx):
-                node = timeline[j]
-                action = node.get("action", "")
-                if action in ("VISIT", "LUNCH", "DINNER", "REST", "BREAKFAST",
-                              "LUNCH_NEEDED", "DINNER_NEEDED", "BREAKFAST_NEEDED"):
-                    t = _time_str_to_minutes(node.get("time", "00:00"))
-                    dur = node.get("duration_minutes", 30)
-                    end_t = t + dur + 15  # +15min 通勤缓冲
-                    if end_t > last_activity_end:
-                        last_activity_end = end_t
-            # 不晚于 BEDTIME 前 15 分钟
-            bt = _time_str_to_minutes(timeline[bedtime_idx].get("time", "22:00"))
-            hotel_time = _safe_time_str(min(last_activity_end, bt - 15))
-            hotel_node = {
-                "time": hotel_time,
-                "action": "HOTEL_PENDING",
-                "memo": "🏨 返回酒店（待安排）",
-                "category": "hotel",
-                "shop_id": "",
-                "duration_minutes": 30,
-                "opentime": "未知",
-            }
-            timeline.insert(bedtime_idx, hotel_node)
+        # 最后一天有返程交通时跳过：用户坐飞机/火车回家，不需要酒店
+        has_return_journey = any(
+            n.get("action") in ("TO_STATION", "DEPARTURE", "RETURN_JOURNEY", "ARRIVE_HOME")
+            for n in timeline
+        )
+        if not has_return_journey:
+            bedtime_idx = -1
+            for j, node in enumerate(timeline):
+                if node.get("action") == "BEDTIME":
+                    bedtime_idx = j
+                    break
+            if bedtime_idx >= 0:
+                # 找到 BEDTIME 之前最晚的活动节点，计算酒店时间 = 最后活动结束时间 + 通勤缓冲
+                last_activity_end = 19 * 60  # 兜底：最早 19:00
+                for j in range(bedtime_idx):
+                    node = timeline[j]
+                    action = node.get("action", "")
+                    if action in ("VISIT", "LUNCH", "DINNER", "REST", "BREAKFAST",
+                                  "LUNCH_NEEDED", "DINNER_NEEDED", "BREAKFAST_NEEDED"):
+                        t = _time_str_to_minutes(node.get("time", "00:00"))
+                        dur = node.get("duration_minutes", 30)
+                        end_t = t + dur + 15  # +15min 通勤缓冲
+                        if end_t > last_activity_end:
+                            last_activity_end = end_t
+                # 不晚于 BEDTIME 前 15 分钟
+                bt = _time_str_to_minutes(timeline[bedtime_idx].get("time", "22:00"))
+                hotel_time = _safe_time_str(min(last_activity_end, bt - 15))
+                hotel_node = {
+                    "time": hotel_time,
+                    "action": "HOTEL_PENDING",
+                    "memo": "🏨 返回酒店（待安排）",
+                    "category": "hotel",
+                    "shop_id": "",
+                    "duration_minutes": 30,
+                    "opentime": "未知",
+                }
+                timeline.insert(bedtime_idx, hotel_node)
         # 重新排序确保时间正确（保持 WAKE_UP 最前、BEDTIME 最后）
         _sort_timeline_keep_wake_bedtime(timeline)
 

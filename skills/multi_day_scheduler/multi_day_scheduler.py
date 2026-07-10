@@ -1034,7 +1034,7 @@ def _build_timeline(day_plan: dict, shops: list, start_time_str: str = "09:00",
         bedtime_memo = "🌙 就寝（次日返程）"
     else:
         bedtime_minutes = current_minutes + 90
-        bedtime_minutes = max(21 * 60, bedtime_minutes)
+        bedtime_minutes = max(22 * 60 + 30, bedtime_minutes)
         bedtime_memo = "🌙 就寝"
 
     timeline.append({
@@ -1507,7 +1507,7 @@ def _build_travel_day_timeline(travel_info: dict, hotel_lat: float = None, hotel
         timeline.append({
             "time": outbound_dep,
             "action": "OUTBOUND_JOURNEY",
-            "memo": f"{'✈️' if outbound_type == '飞机' else '🚄'} {outbound_type}{outbound_dep}出发 → {outbound_arrival or '?'}到达",
+            "memo": f"{'✈️' if outbound_type == '飞机' else '🚄'} {outbound_type}{outbound_dep}出发",
             "category": "travel",
             "shop_id": "",
             "duration_minutes": 0,
@@ -1549,7 +1549,7 @@ def _build_travel_day_timeline(travel_info: dict, hotel_lat: float = None, hotel
     timeline.append({
         "time": f"{checkin_min // 60:02d}:{checkin_min % 60:02d}",
         "action": "HOTEL_CHECKIN",
-        "memo": f"🏨 办理入住 · 安顿行李（{outbound_type}{outbound_arrival}到达{arrival_station}）" if arrival_station else "🏨 办理入住 · 安顿行李",
+        "memo": "🏨 办理入住 · 安顿行李",
         "category": "hotel",
         "shop_id": "",
         "duration_minutes": 30,
