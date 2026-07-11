@@ -32,7 +32,7 @@ from skills.task_reminder_skill import task_reminder_skill as reminder_skill
 from skills.route_planner.route_planner import plan_route as _skill_route_planner
 from skills.queue_monitor.queue_monitor import handle as _skill_queue_monitor
 from skills.weather_extractor.weather_extractor import extract_weather as _skill_weather_extractor
-from skills.multi_day_scheduler.multi_day_scheduler import solve_multi_day as _skill_multi_day_schedule
+from skills.multi_day_scheduler.multi_day_scheduler import solve_multi_day as _skill_multi_day_schedule, CATEGORY_DURATIONS, _l3_loosest_day_backfill
 from skills.multi_day_scheduler.hotel_decision import should_switch_hotel, determine_strategy
 from skills.multi_day_scheduler.scheduling_penalty import dynamic_fatigue_cost, time_of_day_fatigue_multiplier
 
@@ -909,8 +909,309 @@ def _compute_hotel_decisions(result_days, checkin_lat, checkin_lng, destination)
     return decisions
 
 
+def _l3_capacity_scan_and_dump(unassigned, days, checkin_lat, checkin_lng, transport="步行优先"):
+    """Phase 6: L3 容量余量扫描 + 极简打卡倒灌。
+
+    将所有未分配店铺以 is_backup=True 强制插入每天时间线的空隙中。
+    这是排程的最后一道防线 —— 宁可挤一点，也不能丢店铺。
+
+    算法：
+    1. 扫描每天 timeline，找出所有可用时间空隙（gap = 前节点结束到后节点开始）
+    2. 对每个 unassigned shop，按容量降序扫描每天，找到能容纳它的 gap
+    3. 插入为 VISIT 节点，标记 is_backup=True
+    4. 为 backup 店铺估算旅行时间（haversine 到相邻节点的距离 / 步行速度）
+
+    Returns: (days, still_unassigned, backup_count)
+    """
+    import math
+
+    # ── 辅助：时间字符串 ↔ 分钟 ──
+    def _t2m(t_str):
+        try:
+            h, m = map(int, str(t_str).split(":"))
+            return h * 60 + m
+        except (ValueError, TypeError):
+            return 12 * 60
+
+    def _m2t(m):
+        m = max(0, min(23 * 60 + 59, m))
+        return f"{m // 60:02d}:{m % 60:02d}"
+
+    # ── 辅助：Haversine 距离（米）──
+    def _dist_m(lat1, lng1, lat2, lng2):
+        try:
+            R = 6371000
+            phi1, phi2 = math.radians(float(lat1)), math.radians(float(lat2))
+            dphi = math.radians(float(lat2) - float(lat1))
+            dlambda = math.radians(float(lng2) - float(lng1))
+            a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+            return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        except (ValueError, TypeError):
+            return 5000  # 坐标缺失时保守估计 5km
+
+    if not unassigned:
+        return days, [], 0
+
+    # ── 品类默认时长（与 scheduler 保持一致）──
+    CAT_DUR = {
+        "scenic": 180, "restaurant": 60, "hotpot": 90, "cafe": 30,
+        "shopping": 90, "cinema": 120, "hotel": 480,
+        "lunch_needed": 60, "dinner_needed": 60, "breakfast_needed": 30,
+        "museum": 120, "park": 90, "default": 60,
+    }
+
+    # ── 构建每天的时间线节点索引，用于快速查找相邻节点坐标 ──
+    day_nodes = []  # [(node, day_index), ...] for all non-special actions
+    for di, day in enumerate(days):
+        nodes = []
+        for n in day.get("timeline", []):
+            nodes.append(n)
+        day_nodes.append(nodes)
+
+    # ── 对每个 unassigned shop，找最优插入位置 ──
+    still_unassigned = []
+    backup_count = 0
+
+    for us in unassigned:
+        shop_id = us.get("shop_id", "")
+        shop_name = us.get("name", us.get("shop_name", shop_id))
+        shop_cat = us.get("category", "default")
+        shop_lat = us.get("lat", checkin_lat)
+        shop_lng = us.get("lng", checkin_lng)
+        shop_dur = us.get("duration_minutes", CAT_DUR.get(shop_cat, 60))
+
+        # 尝试插入到每天
+        best_insert = None  # (day_idx, position, gap_minutes, insert_time)
+
+        for di, day in enumerate(days):
+            timeline = day.get("timeline", [])
+            if not timeline:
+                continue
+
+            # 找 TO_STATION 时间作为硬截止（离开日不能超过此时间）
+            cutoff_min = 24 * 60  # 默认无限制
+            for n in timeline:
+                if n.get("action") == "TO_STATION":
+                    cutoff_min = _t2m(n.get("time", "22:00"))
+                    break
+
+            for j in range(len(timeline) - 1):
+                prev_node = timeline[j]
+                next_node = timeline[j + 1]
+
+                # 跳过特殊动作：不插入到 WAKE_UP 前、TO_STATION/RETURN_JOURNEY 节点之间
+                if next_node.get("action") in ("WAKE_UP",):
+                    continue
+                if prev_node.get("action") in ("BEDTIME",):
+                    continue
+                # 不在 travel 节点之间插入
+                if prev_node.get("action") in ("TO_STATION", "RETURN_JOURNEY", "ARRIVE_HOME", "DEPARTURE"):
+                    continue
+                if next_node.get("action") in ("TO_STATION", "RETURN_JOURNEY", "ARRIVE_HOME", "DEPARTURE"):
+                    continue
+
+                # 计算 gap
+                prev_time = _t2m(prev_node.get("time", "09:00"))
+                prev_dur = prev_node.get("duration_minutes", 0)
+                prev_end = prev_time + prev_dur
+
+                next_time = _t2m(next_node.get("time", "22:00"))
+
+                gap = next_time - prev_end
+                if gap <= 0:
+                    continue
+
+                # 估算通勤时间
+                prev_lat = prev_node.get("lat", checkin_lat)
+                prev_lng = prev_node.get("lng", checkin_lng)
+                next_lat = next_node.get("lat", checkin_lat)
+                next_lng = next_node.get("lng", checkin_lng)
+
+                travel_to = _dist_m(prev_lat, prev_lng, shop_lat, shop_lng) / 80  # 80m/min ≈ 步行
+                travel_from = _dist_m(shop_lat, shop_lng, next_lat, next_lng) / 80
+                travel_buffer = int(travel_to + travel_from)
+                # 极简模式：通勤缓冲不超过 gap 的 1/3，保证至少能塞入
+                travel_buffer = min(travel_buffer, max(0, gap // 3))
+
+                needed = shop_dur + travel_buffer
+                if gap >= needed:
+                    # 选择剩余容量最大的 gap（gap - needed 最大）
+                    slack = gap - needed
+                    if best_insert is None or slack > best_insert[3]:
+                        insert_time = prev_end + int(travel_to * 0.6)  # 偏向前节点
+                        # 插入时间 + 持续时间不能超过当天硬截止
+                        if insert_time + shop_dur > cutoff_min:
+                            continue
+                        best_insert = (di, j + 1, slack, insert_time)
+
+        if best_insert is not None:
+            di, pos, slack, insert_time = best_insert
+            # 构建 backup 节点
+            backup_node = {
+                "time": _m2t(insert_time),
+                "action": "VISIT",
+                "memo": f"📋 备选：{shop_name}（{us.get('unassigned_type', 'backup')}恢复）",
+                "category": shop_cat,
+                "shop_id": shop_id,
+                "duration_minutes": shop_dur,
+                "opentime": us.get("opentime", "未知"),
+                "is_backup": True,  # Phase 6: 标记为备选打卡
+                "lat": shop_lat,
+                "lng": shop_lng,
+            }
+            days[di]["timeline"].insert(pos, backup_node)
+            backup_count += 1
+            print(f"[L3倒灌] ✅ '{shop_name}' ({shop_id}) → 第{di+1}天 {_m2t(insert_time)} "
+                  f"(gap剩余{slack}min, dur={shop_dur}min)", flush=True)
+        else:
+            still_unassigned.append(us)
+            print(f"[L3倒灌] ❌ '{shop_name}' ({shop_id}) 无法塞入任何一天的时间空隙", flush=True)
+
+    # ── 所有天重新按时间排序（保持 WAKE_UP 最前、BEDTIME 最后）──
+    for day in days:
+        timeline = day.get("timeline", [])
+        wake_node = None
+        bedtime_node = None
+        rest = []
+        for n in timeline:
+            if n.get("action") == "WAKE_UP":
+                wake_node = n
+            elif n.get("action") == "BEDTIME":
+                bedtime_node = n
+            else:
+                rest.append(n)
+        rest.sort(key=lambda n: _t2m(n.get("time", "00:00")))
+        day["timeline"] = []
+        if wake_node:
+            day["timeline"].append(wake_node)
+        day["timeline"].extend(rest)
+        if bedtime_node:
+            day["timeline"].append(bedtime_node)
+
+    return days, still_unassigned, backup_count
+
+
+def _llm_estimate_shop_durations(candidate_pool: list) -> tuple:
+    """排程前：让 LLM 搜索/估算每个店铺的实际耗时、体力消耗和适配前往时间。
+
+    对每个候选店铺，LLM 基于自身知识（知名景点有训练数据）估算：
+    - duration_minutes: 实际游玩耗时（分钟）
+    - fatigue_weight: 体力消耗权重（1-10，1=轻松散步，10=极度消耗体力）
+    - suitable_time: 适配前往时间（"day"=适合白天, "night"=适合夜间, "both"=白天夜间均可）
+
+    搜不到的店铺回退到 CATEGORY_DURATIONS 品类默认值。
+
+    Returns:
+        (dynamic_durations: dict, fatigue_weights: dict, suitable_times: dict)
+        - dynamic_durations: {shop_id: minutes}
+        - fatigue_weights: {shop_id: weight}
+        - suitable_times: {shop_id: "day"|"night"|"both"}
+    """
+    if not candidate_pool:
+        return {}, {}, {}
+
+    _ensure_agent()
+
+    # 构建店铺列表文本
+    shops_text = ""
+    for i, s in enumerate(candidate_pool):
+        sid = s.get("shop_id", f"unknown_{i}")
+        name = s.get("name", "未知")
+        cat = s.get("category", "unknown")
+        addr = s.get("address", "")
+        coord = s.get("coord", "")
+        shops_text += f"{i+1}. id={sid} | 名称={name} | 品类={cat}"
+        if addr:
+            shops_text += f" | 地址={addr}"
+        if coord:
+            shops_text += f" | 坐标={coord}"
+        shops_text += "\n"
+
+    system_prompt = f"""你是一个专业的旅行规划数据助手。你的任务是为以下每个目的地估算**实际游玩耗时**、**体力消耗权重**和**适配前往时间段**。
+
+请基于你对这些地点的了解（包括知名度、规模、实际游览所需时间、适合白天还是晚上）进行估算：
+
+**耗时估算规则：**
+- 大型景区（如故宫、颐和园、八达岭长城等）：通常 180-360 分钟
+- 中型景区/公园（如天坛、圆明园等）：通常 120-240 分钟
+- 小型景点/步行街/商圈（如王府井、南锣鼓巷等）：通常 60-120 分钟
+- 博物馆：通常 90-180 分钟
+- 购物中心/商圈：通常 60-120 分钟
+- 餐厅：通常 60-90 分钟
+- 咖啡馆/饮品店：通常 30-45 分钟
+
+**体力消耗权重（1-10）：**
+- 1-3：轻松（逛街、咖啡馆、平路公园）
+- 4-6：适中（中型景区、博物馆、有少量台阶）
+- 7-8：较累（大型景区、需要较多步行）
+- 9-10：很累（爬山、长城、大型户外徒步）
+
+**适配前往时间（suitable_time）：**
+- "day"：只适合白天前往（如故宫、天坛、爬山类景点、博物馆等白天开放的场所）
+- "night"：只适合/更适合夜间前往（如夜市、酒吧街、灯光秀、夜景观景点）
+- "both"：白天夜间均可（如商圈步行街、餐厅等全天候场所）
+
+只输出JSON，格式如下，不要任何其他文字：
+{{
+  "estimates": [
+    {{"shop_id": "xxx", "duration_minutes": 180, "fatigue_weight": 5, "suitable_time": "day", "reason": "一句话理由"}},
+    ...
+  ]
+}}
+
+以下是需要估算的目的地列表：
+{shops_text}"""
+
+    try:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": "请逐一估算以上所有目的地的耗时和体力消耗，只输出JSON。"},
+        ]
+        msg = agent._call_llm(messages, max_tokens=8000, response_format={"type": "json_object"})
+        content = msg.content or ""
+
+        # 提取 JSON
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if not json_match:
+            print(f"[LLM耗时估算] ⚠️ 响应中未找到JSON，回退品类默认值", flush=True)
+            return {}, {}, {}
+
+        data = json.loads(json_match.group(0))
+        estimates = data.get("estimates", [])
+
+        dynamic_durations = {}
+        fatigue_weights = {}
+        suitable_times = {}
+        for est in estimates:
+            sid = est.get("shop_id", "")
+            dur = est.get("duration_minutes")
+            fw = est.get("fatigue_weight")
+            st = est.get("suitable_time")
+            reason = est.get("reason", "")
+            if sid:
+                if dur is not None and isinstance(dur, (int, float)) and dur > 0:
+                    dynamic_durations[sid] = int(dur)
+                if fw is not None and isinstance(fw, (int, float)) and 1 <= fw <= 10:
+                    fatigue_weights[sid] = float(fw)
+                if st in ("day", "night", "both"):
+                    suitable_times[sid] = st
+                print(f"[LLM耗时估算] {sid}: dur={dur}min, fatigue={fw}, suitable={st} — {reason}", flush=True)
+
+        print(f"[LLM耗时估算] ✅ 完成：{len(dynamic_durations)} 个耗时 + {len(fatigue_weights)} 个体力 + {len(suitable_times)} 个时间段", flush=True)
+        return dynamic_durations, fatigue_weights, suitable_times
+
+    except Exception as e:
+        print(f"[LLM耗时估算] ❌ 失败: {e}，回退品类默认值", flush=True)
+        import traceback
+        traceback.print_exc()
+        return {}, {}, {}
+
+
 def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
-                             transport, start_time):
+                             transport, start_time,
+                             dynamic_durations=None, fatigue_weights=None,
+                             suitable_times=None):
     """调用多日排程引擎，将候选池中的店铺分配到每天。并自动补全三餐+处理闭店冲突。"""
     # 转换候选池格式：确保有 lat/lng，保留 opentime
     shops = []
@@ -967,6 +1268,31 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
     travel_preference = session_state.get("trip_travel_preference",
         preferences.get("commute", {}).get("travel_preference", "公共交通"))
 
+    # ── Amap 地理编码回调：为缺坐标的 shop 调用高德 API 补全 ──
+    def _geocode_shop(name, address):
+        """通过高德 API 根据名称+地址查询坐标"""
+        try:
+            # 优先后端已加载的 Amap client
+            from skills.amap_poi.amap_poi import AmapPOIClient
+            _gc_client = AmapPOIClient()
+            geo_result = _gc_client.geocode(address=address or name, city="")
+            if geo_result and isinstance(geo_result, dict):
+                loc = geo_result.get("location", "")
+                if "," in loc:
+                    parts = loc.split(",")
+                    return (float(parts[1]), float(parts[0]))  # (lat, lng)
+            # 回退：用 search_poi 搜索
+            search_result = _gc_client.search_poi(keywords=name, city="")
+            if search_result and isinstance(search_result, list) and len(search_result) > 0:
+                first = search_result[0]
+                loc = first.get("location", "")
+                if "," in loc:
+                    parts = loc.split(",")
+                    return (float(parts[1]), float(parts[0]))
+        except Exception:
+            pass
+        return None
+
     result = _skill_multi_day_schedule(
         shops, trip_days,
         float(checkin_lat), float(checkin_lng),
@@ -975,6 +1301,10 @@ def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
         preferences=preferences,
         travel_info=travel_info,
         travel_preference=travel_preference,
+        dynamic_durations=dynamic_durations,
+        fatigue_weights=fatigue_weights,
+        suitable_times=suitable_times,
+        geocode_callback=_geocode_shop,
     )
 
     # ── 后处理：跨天餐厅去重 + 保留待排程占位 ──
@@ -7538,7 +7868,7 @@ def smart_schedule():
 
     # ── 事前检查：POI 数量 vs 天数是否合理 ──
     import math
-    MAX_SCENIC_PER_DAY = 2  # 每天景点上限（只算 scenic，不含饭店/购物中心）
+    MAX_SCENIC_PER_DAY = 5  # 每天景点上限（只算 scenic，不含饭店/购物中心）
     scenic_count = sum(1 for s in candidate_pool if s.get("category", "") == "scenic")
     overcrowded_warning = None
     overcrowded_action = data.get("overcrowded_action", "")
@@ -7565,12 +7895,27 @@ def smart_schedule():
         session_state["trip_checkin_lat"] = checkin_lat
         session_state["trip_checkin_lng"] = checkin_lng
 
+    # ── Phase 0: LLM 实时搜索/估算每个店铺的实际耗时和体力消耗 ──
+    dynamic_durations, fatigue_weights, suitable_times = _llm_estimate_shop_durations(candidate_pool)
+
+    # ── 应用用户从问题反馈面板选择的 suitable_time 覆盖 ──
+    suitable_time_overrides = session_state.pop("suitable_time_overrides", {})
+    if suitable_time_overrides:
+        for sid, override_st in suitable_time_overrides.items():
+            if sid in suitable_times:
+                print(f"[suitable_time覆盖] {sid}: {suitable_times[sid]} → {override_st}", flush=True)
+            suitable_times[sid] = override_st
+        print(f"[suitable_time覆盖] 已应用 {len(suitable_time_overrides)} 个覆盖", flush=True)
+
     # 调用排程引擎
     try:
         result = _run_multi_day_schedule(
             candidate_pool, trip_days,
             checkin_lat, checkin_lng,
-            transport, start_time
+            transport, start_time,
+            dynamic_durations=dynamic_durations,
+            fatigue_weights=fatigue_weights,
+            suitable_times=suitable_times,
         )
     except Exception as e:
         import traceback
@@ -7746,48 +8091,187 @@ def smart_schedule():
 
     if missing_from_timeline:
         print(f"[完整性验证] ❌ {len(missing_from_timeline)} 个非餐目的地缺失于 timeline: {[(sid, name) for sid, name, _ in missing_from_timeline]}", flush=True)
-        # 尝试恢复：在最后一天追加缺失的 VISIT 节点
-        last_day = result["days"][-1] if result.get("days") else None
-        if last_day:
-            last_timeline = last_day.get("timeline", [])
-            for sid, name, cat in missing_from_timeline:
-                # 检查这个 shop 是否在 task_list 中（task_list 用 task_id 而非 shop_id）
-                found_in_task = False
-                for d in result["days"]:
-                    for t in d.get("task_list", []):
-                        if t.get("shop_id") == sid or t.get("task_id") == sid:
-                            found_in_task = True
-                            break
-                if found_in_task:
-                    last_timeline.append({
-                        "time": "10:00",
-                        "action": "VISIT",
-                        "memo": f"⚠️ 恢复：{name}（系统检测到缺失，已自动补回）",
-                        "category": cat,
-                        "shop_id": sid,
-                        "duration_minutes": 60,
-                        "opentime": "未知",
-                    })
-                    print(f"[完整性验证] 已恢复 '{name}' ({sid}) 到最后一天 timeline", flush=True)
+        # ── 跨天分配恢复：按每天剩余容量合理分布，而非全堆到最后一天 ──
+        def _time_to_min(t_str):
+            try:
+                parts = t_str.split(":")
+                return int(parts[0]) * 60 + int(parts[1])
+            except (ValueError, IndexError, AttributeError):
+                return 600  # 默认10:00
+
+        def _min_to_time(m):
+            return f"{max(0, min(23, m // 60)):02d}:{max(0, min(59, m % 60)):02d}"
+
+        # 计算每天剩余容量（bedtime - 最后一个非BEDTIME活动的结束时间）
+        # 同时扫描日间所有 gap，选最大可用容量（不只是就寝前）
+        day_capacities = []
+        for d in result.get("days", []):
+            timeline = d.get("timeline", [])
+            # 找 BEDTIME
+            bedtime = 22 * 60
+            for n in timeline:
+                if n.get("action") == "BEDTIME":
+                    bedtime = _time_to_min(n.get("time", "22:00"))
+                    break
+
+            # 计算 last_end（排除 BEDTIME 节点）
+            last_end = 10 * 60
+            for n in timeline:
+                if n.get("action") == "BEDTIME":
+                    continue  # 不纳入活动结束时间计算
+                t = _time_to_min(n.get("time", "10:00"))
+                dur = n.get("duration_minutes", 0)
+                end = t + dur
+                if end > last_end:
+                    last_end = end
+
+            # 扫描日间所有相邻节点间的 gap（不只是就寝前）
+            max_gap = 0
+            # 添加就寝前 gap
+            pre_bedtime_gap = max(0, bedtime - last_end)
+            max_gap = max(max_gap, pre_bedtime_gap)
+
+            # 扫描节点间 gap
+            sorted_nodes = sorted(
+                [n for n in timeline if n.get("action") != "BEDTIME"],
+                key=lambda n: _time_to_min(n.get("time", "10:00"))
+            )
+            for j in range(len(sorted_nodes) - 1):
+                prev_t = _time_to_min(sorted_nodes[j].get("time", "10:00"))
+                prev_dur = sorted_nodes[j].get("duration_minutes", 0)
+                prev_end = prev_t + prev_dur
+                next_t = _time_to_min(sorted_nodes[j + 1].get("time", "10:00"))
+                gap = next_t - prev_end
+                if gap > max_gap:
+                    max_gap = gap
+
+            day_capacities.append(max_gap)
+
+        # 按容量降序排列天的索引
+        sorted_day_indices = sorted(range(len(day_capacities)),
+                                    key=lambda i: day_capacities[i], reverse=True)
+
+        for sid, name, cat in missing_from_timeline:
+            found_in_task = False
+            for d in result["days"]:
+                for t in d.get("task_list", []):
+                    if t.get("shop_id") == sid or t.get("task_id") == sid:
+                        found_in_task = True
+                        break
+            if not found_in_task:
+                print(f"[完整性验证] ⚠️ '{name}' ({sid}) 既不在 timeline 也不在 task_list 中！", flush=True)
+                continue
+
+            # 选剩余容量最大的天
+            best_day_idx = sorted_day_indices[0]
+            best_day = result["days"][best_day_idx]
+            best_timeline = best_day.get("timeline", [])
+
+            # 计算该天最后一个非BEDTIME活动的结束时间（排除BEDTIME节点）
+            last_visit_end = 10 * 60
+            for n in best_timeline:
+                if n.get("action") == "BEDTIME":
+                    continue  # 排除BEDTIME节点
+                t = _time_to_min(n.get("time", "10:00"))
+                ndur = n.get("duration_minutes", 0)
+                if t + ndur > last_visit_end:
+                    last_visit_end = t + ndur
+
+            # 使用正确的品类时长（优先用 LLM 估算值）
+            dur = dynamic_durations.get(sid, CATEGORY_DURATIONS.get(cat, 60))
+
+            # 找 bedtime 时间，确保插入不在就寝后
+            best_bedtime = 22 * 60
+            for n in best_timeline:
+                if n.get("action") == "BEDTIME":
+                    best_bedtime = _time_to_min(n.get("time", "22:00"))
+                    break
+
+            # 插入时间 = 最后活动结束 + 15min 缓冲，但必须在就寝前
+            insert_time = last_visit_end + 15
+            if insert_time + dur > best_bedtime:
+                # 如果插入后会超过就寝时间，尝试往前放到就寝前
+                insert_time = max(last_visit_end + 5, best_bedtime - dur - 5)
+            if insert_time + dur > best_bedtime:
+                # 仍然超了就寝 → 极简打卡模式（10min）
+                dur = 10
+                insert_time = best_bedtime - 15
+
+            best_timeline.append({
+                "time": _min_to_time(insert_time),
+                "action": "VISIT",
+                "memo": f"⚠️ 补入：{name}（系统自动分配至第{best_day_idx+1}天）",
+                "category": cat,
+                "shop_id": sid,
+                "duration_minutes": dur,
+                "opentime": "未知",
+            })
+            # 更新该天容量
+            day_capacities[best_day_idx] = max(0, day_capacities[best_day_idx] - dur - 15)
+            # 重新排序容量（简单重排即可）
+            sorted_day_indices.sort(key=lambda i: day_capacities[i], reverse=True)
+            print(f"[完整性验证] 已恢复 '{name}' ({sid}) → 第{best_day_idx+1}天 {_min_to_time(insert_time)} (dur={dur}min)", flush=True)
+
+        # 所有天的 timeline 重新按时间排序（保护 WAKE_UP 最前、BEDTIME 最后）
+        for d in result["days"]:
+            timeline = d.get("timeline", [])
+            wake_node = None
+            bedtime_node = None
+            rest = []
+            for n in timeline:
+                if n.get("action") == "WAKE_UP":
+                    wake_node = n
+                elif n.get("action") == "BEDTIME":
+                    bedtime_node = n
                 else:
-                    print(f"[完整性验证] ⚠️ '{name}' ({sid}) 既不在 timeline 也不在 task_list 中！", flush=True)
-            last_timeline.sort(key=lambda n: (lambda t: int(t.split(":")[0])*60 + int(t.split(":")[1]))(n.get("time", "00:00")) if ":" in str(n.get("time", "")) else 600)
-            last_day["timeline"] = last_timeline
-            # 重新验证
-            timeline_visit_ids2 = set()
-            for day in result.get("days", []):
-                for n in day.get("timeline", []):
-                    if n.get("action") == "VISIT" and n.get("shop_id"):
-                        timeline_visit_ids2.add(n.get("shop_id"))
-            still_missing = [sid for sid in all_non_meal_shops if sid not in timeline_visit_ids2]
-            if still_missing:
-                print(f"[完整性验证] ⚠️ 恢复后仍有 {len(still_missing)} 个缺失: {still_missing}", flush=True)
-            else:
-                print(f"[完整性验证] ✅ 恢复后所有非餐目的地均已存在于 timeline", flush=True)
+                    rest.append(n)
+            rest.sort(key=lambda n: (lambda t: int(t.split(":")[0])*60 + int(t.split(":")[1]))(n.get("time", "00:00")) if ":" in str(n.get("time", "")) else 600)
+            d["timeline"] = []
+            if wake_node:
+                d["timeline"].append(wake_node)
+            d["timeline"].extend(rest)
+            if bedtime_node:
+                d["timeline"].append(bedtime_node)
+
+        # 重新验证
+        timeline_visit_ids2 = set()
+        for day in result.get("days", []):
+            for n in day.get("timeline", []):
+                if n.get("action") == "VISIT" and n.get("shop_id"):
+                    timeline_visit_ids2.add(n.get("shop_id"))
+        still_missing = [sid for sid in all_non_meal_shops if sid not in timeline_visit_ids2]
+        if still_missing:
+            print(f"[完整性验证] ⚠️ 恢复后仍有 {len(still_missing)} 个缺失: {still_missing}", flush=True)
         else:
-            print(f"[完整性验证] ❌ 无法恢复：result 中没有 day 数据", flush=True)
+            print(f"[完整性验证] ✅ 恢复后所有非餐目的地均已存在于 timeline（跨天分配）", flush=True)
     else:
         print(f"[完整性验证] ✅ 所有 {len(all_non_meal_shops)} 个非餐目的地均存在于 timeline", flush=True)
+
+    # ── Phase 6: L3 逆向倒灌 + 极简打卡恢复 ──
+    # 策略 1: 逆向扫描最宽松天，BEDTIME 前插入 10min 极简打卡
+    # 策略 2（兜底）: 间隙扫描，将剩余未分配塞入时间空隙
+    l3_unassigned = result.get("unassigned", [])
+    if l3_unassigned:
+        print(f"[L3倒灌] 开始处理 {len(l3_unassigned)} 个未分配店铺...", flush=True)
+        # 优先：逆向扫描最宽松天策略
+        result["days"], l3_still_unassigned, l3_backup_count = _l3_loosest_day_backfill(
+            l3_unassigned, result["days"], transport
+        )
+        # 兜底：剩余未分配用原有间隙扫描
+        if l3_still_unassigned:
+            gap_count = 0
+            result["days"], l3_still_unassigned, gap_count = _l3_capacity_scan_and_dump(
+                l3_still_unassigned, result["days"],
+                float(checkin_lat), float(checkin_lng), transport
+            )
+            l3_backup_count += gap_count
+        result["unassigned"] = l3_still_unassigned
+        print(f"[L3倒灌] 完成: {l3_backup_count} 个已恢复为备份打卡, "
+              f"{len(l3_still_unassigned)} 个仍无法安排", flush=True)
+
+    # ── L3 回填后重新排序所有天的时间线（确保 WAKE_UP 最前、BEDTIME 最后）──
+    for day in result.get("days", []):
+        _sort_timeline_keep_wake_bedtime(day.get("timeline", []))
 
     # ── 提醒注入（阶段 3）：起床/就寝 → 持续响铃 ──
     reminders_injected = _inject_multi_day_reminders(result)
@@ -7804,11 +8288,13 @@ def smart_schedule():
         "days": result.get("days", []),
         "unassigned": result.get("unassigned", []),
         "algorithm_metadata": result.get("algorithm_metadata", {}),
+        "hotel_plan": result.get("hotel_plan", []),  # Phase 6: 动态换住决策
         "weather": trip_weather,
         "review": review_result,  # {phase, auto_fixes, questions, risk_flags}
         "auto_meals_added": result.get("auto_meals_added", []),
         "closed_conflicts": result.get("closed_conflicts", []),
         "unknown_hours_shops": result.get("unknown_hours_shops", []),
+        "overflow_notifications": result.get("overflow_notifications", []),
         "reminders_injected": reminders_injected,
         "overcrowded_warning": overcrowded_warning,  # 事前检查：POI过多警告
         "_debug_visit_snapshot": final_visit_snapshot,  # 诊断用：最终 VISIT 节点列表
@@ -8167,14 +8653,37 @@ def schedule_review_answer():
             if review_missing:
                 for di, sid, name in review_missing:
                     if di < len(sched_days):
-                        sched_days[di].setdefault("timeline", []).append({
-                            "time": "10:00", "action": "VISIT",
-                            "memo": f"⚠️ 恢复：{name}（审查操作后缺失，已自动补回）",
-                            "category": "scenic", "shop_id": sid,
-                            "duration_minutes": 60, "opentime": "未知",
+                        day = sched_days[di]
+                        tl = day.get("timeline", [])
+                        # 找该天最后一个VISIT的结束时间
+                        last_end = 10 * 60
+                        for n in tl:
+                            t_str = n.get("time", "10:00")
+                            try:
+                                parts = t_str.split(":")
+                                t = int(parts[0]) * 60 + int(parts[1])
+                            except (ValueError, IndexError):
+                                t = 10 * 60
+                            end = t + n.get("duration_minutes", 0)
+                            if end > last_end:
+                                last_end = end
+                        # 找原始 category 以使用正确的时长
+                        orig_cat = "scenic"
+                        for t in day.get("task_list", []):
+                            if (t.get("shop_id") or t.get("task_id", "")) == sid:
+                                orig_cat = t.get("category", "scenic")
+                                break
+                        dur = CATEGORY_DURATIONS.get(orig_cat, 60)
+                        insert_time = last_end + 15
+                        h, m = insert_time // 60, insert_time % 60
+                        tl.append({
+                            "time": f"{h:02d}:{m:02d}", "action": "VISIT",
+                            "memo": f"⚠️ 恢复：{name}（审查操作后缺失，已自动补回至第{di+1}天）",
+                            "category": orig_cat, "shop_id": sid,
+                            "duration_minutes": dur, "opentime": "未知",
                         })
-                        _sort_timeline(sched_days[di]["timeline"])
-                print(f"[审查问答] ✅ 已恢复 {len(review_missing)} 个缺失的目的地", flush=True)
+                        _sort_timeline(tl)
+                print(f"[审查问答] ✅ 已恢复 {len(review_missing)} 个缺失的目的地（使用正确时长+合理时间）", flush=True)
             else:
                 print(f"[审查问答] ✅ 所有非餐目的地均在 timeline 中", flush=True)
 
@@ -8198,6 +8707,60 @@ def schedule_review_answer():
         print(f"[审查问答] LLM 调用失败: {e}", flush=True)
         return jsonify({"phase": "done", "days": schedule.get("days", []), "fallback": True})
 
+
+@app.route("/api/schedule_resolve_issues", methods=["POST"])
+def schedule_resolve_issues():
+    """处理排程问题反馈：用户从底部选择框选择解决方案后回传。
+    请求: {actions: [{shop_id, action: "cancel"|"force_day"|"force_night"|"ignore"}]}
+    修改 session_state 后返回 OK，前端重新调用 /api/smart_schedule。
+    """
+    data = request.get_json(silent=True) or {}
+    actions = data.get("actions", [])
+
+    if not actions:
+        return jsonify({"status": "ERROR", "message": "缺少 actions 参数"}), 400
+
+    candidate_pool = session_state.get("candidate_pool", [])
+    if not candidate_pool:
+        return jsonify({"status": "ERROR", "message": "无候选池"}), 400
+
+    # 初始化 suitable_time 覆盖存储
+    if "suitable_time_overrides" not in session_state:
+        session_state["suitable_time_overrides"] = {}
+
+    cancelled_ids = set()
+    for a in actions:
+        shop_id = a.get("shop_id", "")
+        action = a.get("action", "")
+        if action == "cancel":
+            cancelled_ids.add(shop_id)
+            # 也从覆盖中清除
+            session_state["suitable_time_overrides"].pop(shop_id, None)
+        elif action == "force_day":
+            session_state["suitable_time_overrides"][shop_id] = "day"
+        elif action == "force_night":
+            session_state["suitable_time_overrides"][shop_id] = "night"
+        elif action == "force_both":
+            session_state["suitable_time_overrides"][shop_id] = "both"
+        # "ignore": 不做任何修改
+
+    # 从候选池中移除取消的 POI
+    if cancelled_ids:
+        session_state["candidate_pool"] = [
+            s for s in candidate_pool
+            if s.get("shop_id", "") not in cancelled_ids
+        ]
+        print(f"[问题解决] 已取消 {len(cancelled_ids)} 个POI: {cancelled_ids}", flush=True)
+
+    print(f"[问题解决] 收到 {len(actions)} 个操作, 取消={len(cancelled_ids)}, "
+          f"覆盖={list(session_state['suitable_time_overrides'].keys())}", flush=True)
+
+    return jsonify({
+        "status": "OK",
+        "cancelled": list(cancelled_ids),
+        "overrides": session_state["suitable_time_overrides"],
+        "message": "已应用用户选择，请重新触发排程",
+    })
 
 
 # ======================================================================

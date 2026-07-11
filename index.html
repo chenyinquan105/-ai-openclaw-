@@ -8684,7 +8684,7 @@ function hideCandidateBar() {
 
 // ---- 智能排程 ----
 
-async function executeSmartSchedule() {
+async function executeSmartSchedule(overcrowdedAction) {
   if (multiCandidatePool.length === 0) { alert('请先选择至少一个想去的地方'); return; }
   closeMultiDaySetup();
   var dc = document.getElementById('dynamic-content');
@@ -8692,10 +8692,12 @@ async function executeSmartSchedule() {
   if (typeof scrollToBottom === 'function') scrollToBottom();
 
   try {
+    var body = {start_time: '09:00', candidates: multiCandidatePool, travel_preference: multiTravelPreference};
+    if (overcrowdedAction) body.overcrowded_action = overcrowdedAction;
     var res = await fetch(API_BASE + '/api/smart_schedule', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({start_time: '09:00', candidates: multiCandidatePool, travel_preference: multiTravelPreference})
+      body: JSON.stringify(body)
     });
     var data = await res.json();
     if (data.status === 'OVERCROWDED') {
@@ -8912,6 +8914,73 @@ async function _submitReviewAnswers(scheduleData) {
   }
 }
 
+// ── 排程问题反馈：底部选择框交互 ──
+var _issueActions = {};  // {shop_id: action}
+
+function _selectIssueAction(btn, shopId, action) {
+  // 高亮选中按钮，取消同组其他按钮的高亮
+  var parent = btn.parentElement;
+  var allBtns = parent.querySelectorAll('.issue-action-btn');
+  for (var i = 0; i < allBtns.length; i++) {
+    allBtns[i].classList.remove('bg-amber-400', 'text-white', 'border-amber-400');
+    // 恢复默认样式
+    if (allBtns[i] === btn) {
+      allBtns[i].classList.add('bg-amber-400', 'text-white', 'border-amber-400');
+    }
+  }
+  _issueActions[shopId] = action;
+}
+
+function _dismissIssuesPanel() {
+  var panel = document.getElementById('schedule-issues-panel');
+  if (panel) panel.remove();
+  _issueActions = {};
+}
+
+async function _submitOverflowChoices() {
+  var panel = document.getElementById('schedule-issues-panel');
+  var actions = [];
+  var keys = Object.keys(_issueActions);
+  for (var i = 0; i < keys.length; i++) {
+    var sid = keys[i];
+    var act = _issueActions[sid];
+    if (act && act !== 'ignore') {
+      actions.push({shop_id: sid, action: act});
+    }
+  }
+
+  if (actions.length === 0) {
+    // 用户没有选择任何操作，直接关闭面板
+    _dismissIssuesPanel();
+    return;
+  }
+
+  if (panel) {
+    panel.innerHTML = '<div class="text-center py-4"><p class="text-sm text-amber-700">⏳ 正在应用选择并重新优化排程...</p></div>';
+  }
+
+  try {
+    var res = await fetch(API_BASE + '/api/schedule_resolve_issues', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({actions: actions})
+    });
+    var data = await res.json();
+    console.log('[OverflowChoices] 已应用:', data);
+
+    // 重新触发智能排程
+    if (typeof executeSmartSchedule === 'function') {
+      // 用 overcrowded_action=continue_anyway 避免再次弹出超量警告
+      await executeSmartSchedule('continue_anyway');
+    }
+  } catch (e) {
+    console.error('[OverflowChoices] 提交失败:', e);
+    if (panel) {
+      panel.innerHTML = '<div class="text-center py-3"><p class="text-sm text-red-500">提交失败，请重试</p><button onclick="_dismissIssuesPanel()" class="text-sm text-amber-600 mt-2 underline">关闭</button></div>';
+    }
+  }
+}
+
 // 去除字符串中的 emoji（飞机/高铁节点保留）
 function _stripEmoji(s) {
   return s.replace(/([\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B50}\u{2934}-\u{2935}\u{25AA}-\u{25FE}\u{2B05}-\u{2B07}\u{2B1B}-\u{2B1C}\u{2B55}\u{3030}\u{303D}\u{3297}\u{3299}\u{FE0F}\u{200D}]|\u{FE0F}\u{20E3}|\u{0023}\u{FE0F}\u{20E3}|\u{002A}\u{FE0F}\u{20E3}|\u{0030}\u{FE0F}\u{20E3}|\u{0031}\u{FE0F}\u{20E3}|\u{0032}\u{FE0F}\u{20E3}|\u{0033}\u{FE0F}\u{20E3}|\u{0034}\u{FE0F}\u{20E3}|\u{0035}\u{FE0F}\u{20E3}|\u{0036}\u{FE0F}\u{20E3}|\u{0037}\u{FE0F}\u{20E3}|\u{0038}\u{FE0F}\u{20E3}|\u{0039}\u{FE0F}\u{20E3})+/gu, '').replace(/\s{2,}/g, ' ').trim();
@@ -9004,6 +9073,59 @@ function renderMultiDayCards(data) {
     html += '</div>';
   }
   html += '</div></div>';
+
+  // ── 排程问题反馈面板：横向滑动下方底部选择框 ──
+  var overflowNotifications = data.overflow_notifications || [];
+  var closedConflicts = data.closed_conflicts || [];
+  if (overflowNotifications.length > 0 || closedConflicts.length > 0) {
+    html += '<div id="schedule-issues-panel" class="bg-amber-50 rounded-3xl border-2 border-amber-300 p-4 mt-4 animate-fade-in">';
+    html += '<p class="text-sm font-bold text-amber-900 mb-1">⚠️ 排程发现以下问题，请选择处理方式</p>';
+    html += '<p class="text-xs text-amber-600 mb-3">选择后将重新优化排程</p>';
+
+    // 溢出通知（时段不适配）
+    for (var oi = 0; oi < overflowNotifications.length; oi++) {
+      var ov = overflowNotifications[oi];
+      var recs = ov.recommendations || [];
+      html += '<div class="bg-white rounded-2xl p-3 mb-2 border border-amber-200" data-issue-id="' + (ov.shop_id || '') + '">';
+      html += '<p class="text-xs text-gray-800 font-medium mb-1">' + _escHtml(ov.message || '') + '</p>';
+      html += '<div class="flex flex-wrap gap-1.5 mt-2">';
+      // 生成解决方案按钮
+      for (var ri = 0; ri < recs.length; ri++) {
+        var rec = recs[ri];
+        var action = '';
+        if (rec.indexOf('取消') >= 0) action = 'cancel';
+        else if (rec.indexOf('白天') >= 0 || rec.indexOf('日间') >= 0) action = 'force_day';
+        else if (rec.indexOf('夜间') >= 0 || rec.indexOf('晚上') >= 0) action = 'force_night';
+        else action = 'ignore';
+        html += '<button onclick="_selectIssueAction(this, \'' + (ov.shop_id || '') + '\', \'' + action + '\')" ';
+        html += 'class="issue-action-btn text-[11px] px-2.5 py-1 rounded-full border border-amber-300 text-amber-700 bg-white hover:bg-amber-100 transition font-medium">' + _escHtml(rec) + '</button>';
+      }
+      html += '<button onclick="_selectIssueAction(this, \'' + (ov.shop_id || '') + '\', \'ignore\')" ';
+      html += 'class="issue-action-btn text-[11px] px-2.5 py-1 rounded-full border border-gray-300 text-gray-500 bg-white hover:bg-gray-100 transition">暂不处理</button>';
+      html += '</div></div>';
+    }
+
+    // closed_conflicts 警告（非购物排到晚上等）
+    for (var ci = 0; ci < closedConflicts.length; ci++) {
+      var cc = closedConflicts[ci];
+      var ccType = cc.type || '';
+      if (ccType === 'evening_non_shopping') {
+        html += '<div class="bg-white rounded-2xl p-3 mb-2 border border-amber-200" data-issue-id="' + (cc.shop_id || '') + '">';
+        html += '<p class="text-xs text-gray-800 font-medium mb-1">⚠️ ' + _escHtml((cc.shop_name || '') + ' - ' + (cc.reason || '非购物活动排在晚间，体验可能不佳')) + '</p>';
+        html += '<div class="flex flex-wrap gap-1.5 mt-2">';
+        html += '<button onclick="_selectIssueAction(this, \'' + (cc.shop_id || '') + '\', \'force_day\')" class="issue-action-btn text-[11px] px-2.5 py-1 rounded-full border border-amber-300 text-amber-700 bg-white hover:bg-amber-100 transition font-medium">改为白天游览</button>';
+        html += '<button onclick="_selectIssueAction(this, \'' + (cc.shop_id || '') + '\', \'ignore\')" class="issue-action-btn text-[11px] px-2.5 py-1 rounded-full border border-gray-300 text-gray-500 bg-white hover:bg-gray-100 transition">保持不变</button>';
+        html += '</div></div>';
+      }
+    }
+
+    // 操作按钮
+    html += '<div class="flex gap-2 mt-3">';
+    html += '<button onclick="_submitOverflowChoices()" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold py-2.5 rounded-2xl transition">✅ 确认并重新优化排程</button>';
+    html += '<button onclick="_dismissIssuesPanel()" class="text-sm text-gray-400 py-2.5 px-3 hover:text-gray-600 transition">暂不处理</button>';
+    html += '</div></div>';
+  }
+
   html += '<div id="multi-day-chat-area" class="space-y-2"></div>';
   html += '<p class="text-center text-xs text-gray-400 mt-2">💬 在下方聊天框修改行程</p></div>';
   dc.innerHTML = html;
