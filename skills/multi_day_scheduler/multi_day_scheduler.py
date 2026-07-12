@@ -3492,6 +3492,101 @@ def _build_return_timeline(travel_info: dict, hotel_lat: float = None, hotel_lng
     return timeline
 
 
+def _match_and_apply_template(poi_shops: list, templates: list, num_days: int) -> list:
+    """
+    将候选池中的 POI 景点与用户保存的排程模板进行匹配。
+    全部 match_spots 匹配成功时返回预分配的 clusters，否则返回 None。
+
+    模糊匹配：双向子串包含（"故宫" 可匹配 "故宫博物院"）。
+    额外景点分配到最空闲的天，无空天时从最满的天匀一个景点过去。
+    """
+    if not templates or not poi_shops:
+        return None
+
+    candidate_names = [s.get("name", "") for s in poi_shops]
+
+    for template in templates:
+        match_spots = template.get("match_spots", [])
+        if not match_spots:
+            continue
+
+        # 全部 match_spots 必须在候选池中找到（模糊匹配）
+        matched = True
+        for t_spot in match_spots:
+            found = False
+            for c_name in candidate_names:
+                if t_spot in c_name or c_name in t_spot:
+                    found = True
+                    break
+            if not found:
+                matched = False
+                break
+
+        if not matched:
+            continue
+
+        # ── 模板匹配成功，构建预分配 clusters ──
+        clusters = [[] for _ in range(num_days)]
+
+        # 构建模板景点名 → 候选 shop 的映射
+        name_to_shop = {}
+        for shop in poi_shops:
+            s_name = shop.get("name", "")
+            for t_spot in match_spots:
+                if t_spot in s_name or s_name in t_spot:
+                    name_to_shop[t_spot] = shop
+                    break
+
+        # 按模板将景点分配到对应天
+        for key, spot_list in template.items():
+            if not (key.startswith("day_") or key == "last_day_spots"):
+                continue
+
+            if key == "last_day_spots":
+                day_idx = num_days - 1
+            else:
+                try:
+                    day_num = int(key.split("_")[1])
+                    day_idx = day_num - 1
+                except (IndexError, ValueError):
+                    continue
+
+            if day_idx < 0:
+                continue
+            # 天数不足时，超出部分 clamp 到最后一天
+            if day_idx >= num_days:
+                day_idx = num_days - 1
+
+            for spot_name in (spot_list if isinstance(spot_list, list) else []):
+                shop = name_to_shop.get(spot_name.strip())
+                if shop is not None:
+                    clusters[day_idx].append(shop)
+
+        # 处理未在模板中的额外景点 → 分配到最空闲的天
+        assigned_names = set()
+        for cluster in clusters:
+            for s in cluster:
+                assigned_names.add(s.get("name", ""))
+        unassigned = [s for s in poi_shops if s.get("name", "") not in assigned_names]
+        for shop in unassigned:
+            emptiest_day = min(range(num_days), key=lambda d: len(clusters[d]))
+            clusters[emptiest_day].append(shop)
+
+        # 确保没有空 cluster（从最满的天匀一个）
+        for i in range(num_days):
+            if not clusters[i]:
+                fullest = max(range(num_days), key=lambda d: len(clusters[d]))
+                if len(clusters[fullest]) > 1:
+                    clusters[i].append(clusters[fullest].pop())
+
+        print(f"[template_match] Matched template '{template.get('template_id')}', "
+              f"pre-assigned {sum(len(c) for c in clusters)} shops to {num_days} days", flush=True)
+
+        return clusters
+
+    return None
+
+
 def solve_multi_day(
     candidate_shops: list,
     num_days: int,
@@ -3605,37 +3700,55 @@ def solve_multi_day(
     checkin_lat = _hotel_lat
     checkin_lng = _hotel_lng
 
-    # ── 阶段 1: 地理聚类（仅 POI，餐厅作为挂件跟随）──
-    clusters = _cluster_by_geo(poi_shops, num_days)
+    # ── Phase 0.8: 景点排程模板匹配 ──
+    pre_defined_clusters = None
+    templates = (preferences or {}).get("itinerary_templates", [])
+    if templates and poi_shops:
+        pre_defined_clusters = _match_and_apply_template(poi_shops, templates, num_days)
 
-    # ── 阶段 1.5: 全局微调（跨天边界交换，修正聚类边界错误）──
-    clusters = _global_fine_tune(clusters, _hotel_lat, _hotel_lng)
+    # ── 阶段 1: 地理聚类（仅 POI，餐厅作为挂件跟随）──
+    if pre_defined_clusters is not None:
+        clusters = pre_defined_clusters
+        # 模板匹配成功，跳过全局微调（用户显式覆盖优先）
+    else:
+        clusters = _cluster_by_geo(poi_shops, num_days)
+        # ── 阶段 1.5: 全局微调（跨天边界交换，修正聚类边界错误）──
+        clusters = _global_fine_tune(clusters, _hotel_lat, _hotel_lng)
 
     # ── 阶段 2: 负载均衡 ──
-    # 提前计算 Day 1 到达和最后一天返程约束，用于差异化每日目标时间
-    skip_day1, day1_start, station_to_hotel_min, afternoon_ok, evening_ok = _compute_day1_start(
-        travel_info, hotel_lat=_hotel_lat, hotel_lng=_hotel_lng)
-    last_day_end, last_day_morning_feasible, must_leave_hotel = _compute_last_day_end(travel_info)
+    # 模板匹配时跳过负载均衡和微调，保留用户显式指定的分天方案
+    if pre_defined_clusters is None:
+        # 提前计算 Day 1 到达和最后一天返程约束，用于差异化每日目标时间
+        skip_day1, day1_start, station_to_hotel_min, afternoon_ok, evening_ok = _compute_day1_start(
+            travel_info, hotel_lat=_hotel_lat, hotel_lng=_hotel_lng)
+        last_day_end, last_day_morning_feasible, must_leave_hotel = _compute_last_day_end(travel_info)
 
-    # 构建每日有效可用小时数（Day 1 晚到 / Day N 早走会影响实际可排程时间）
-    _day_hours = []
-    for _di in range(num_days):
-        if _di == 0 and day1_start:
-            eff_end = 22 * 60
-            eff_start = _time_str_to_minutes(day1_start)
-            _day_hours.append(max(1.0, (eff_end - eff_start) / 60))
-        elif _di == num_days - 1 and last_day_end:
-            eff_end = _time_str_to_minutes(last_day_end)
-            eff_start = 9 * 60
-            _day_hours.append(max(1.0, (eff_end - eff_start) / 60))
-        else:
-            _day_hours.append(max_hours_per_day)
+        # 构建每日有效可用小时数（Day 1 晚到 / Day N 早走会影响实际可排程时间）
+        _day_hours = []
+        for _di in range(num_days):
+            if _di == 0 and day1_start:
+                eff_end = 22 * 60
+                eff_start = _time_str_to_minutes(day1_start)
+                _day_hours.append(max(1.0, (eff_end - eff_start) / 60))
+            elif _di == num_days - 1 and last_day_end:
+                eff_end = _time_str_to_minutes(last_day_end)
+                eff_start = 9 * 60
+                _day_hours.append(max(1.0, (eff_end - eff_start) / 60))
+            else:
+                _day_hours.append(max_hours_per_day)
 
-    clusters = _balance_clusters(clusters, max_hours_per_day, max_scenic_per_day=5,
-                                  transport_preference=transport_preference,
-                                  day_hours=_day_hours)
-    # ── 阶段 2.1: 均衡后重新微调，修复可能引入的边界错误 ──
-    clusters = _global_fine_tune(clusters, _hotel_lat, _hotel_lng)
+        clusters = _balance_clusters(clusters, max_hours_per_day, max_scenic_per_day=5,
+                                      transport_preference=transport_preference,
+                                      day_hours=_day_hours)
+        # ── 阶段 2.1: 均衡后重新微调，修复可能引入的边界错误 ──
+        clusters = _global_fine_tune(clusters, _hotel_lat, _hotel_lng)
+    else:
+        # 模板匹配成功，跳过负载均衡和微调，设置默认值
+        skip_day1, day1_start = False, "18:00"  # 模板显式安排了 Day 1，傍晚开始（入住后）
+        station_to_hotel_min, afternoon_ok, evening_ok = 30, True, True
+        last_day_end, last_day_morning_feasible = "18:00", True
+        must_leave_hotel = "14:00"
+        _day_hours = [max_hours_per_day] * num_days
 
     # ── Phase 2.5: 动态换住决策（行程决定酒店，非酒店绑架行程）──
     hotel_plan = _dynamic_hotel_decision(
@@ -3783,10 +3896,12 @@ def solve_multi_day(
             # 酒店入住时间 = 旅途结束的截止线，之前的时间都在路上，不应有其他节点
             checkin_node = next((n for n in travel_timeline if n.get("action") == "HOTEL_CHECKIN"), None)
             travel_end_min = _time_str_to_minutes(checkin_node["time"]) if checkin_node else 12 * 60
-            # 保留路线节点 + 过滤：移除通用 WAKE_UP + 旅途中（入住前）的其他节点
+            # 保留路线节点 + 过滤：移除通用 WAKE_UP + 旅途中（入住前）的非活动节点
+            # VISIT/LUNCH/DINNER/BREAKFAST 保留（模板分天/用户意图不应被旅行合并静默删除）
             post_travel = [n for n in timeline
                            if n.get("action") != "WAKE_UP"
-                           and _time_str_to_minutes(n.get("time", "00:00")) >= travel_end_min]
+                           and (n.get("action") in ("VISIT", "LUNCH", "DINNER", "BREAKFAST")
+                                or _time_str_to_minutes(n.get("time", "00:00")) >= travel_end_min)]
             timeline = travel_timeline + post_travel
 
         # 最后一天：插入返程链路（TO_STATION→RETURN_JOURNEY→ARRIVE_HOME）

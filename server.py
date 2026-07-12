@@ -74,6 +74,7 @@ def _read_profile() -> dict:
             "medication_schedule": [],
         },
         "custom_reminders": [],
+        "itinerary_templates": [],
     }
     if not os.path.exists(_MEMORY_PATH):
         return defaults
@@ -186,6 +187,45 @@ def _read_profile() -> dict:
                     custom_reminders.append(cr)
         defaults["custom_reminders"] = custom_reminders
 
+    # 解析景点排程模板节
+    import re as _re3
+
+    def _strip_tail(v: str) -> str:
+        """移除 Markdown 表格行末尾的 |"""
+        return v.strip().rstrip("|").strip()
+
+    template_section_pat = r"## 景点排程模板\s*\n(.*?)(?=\n## |\Z)"
+    tm_match = _re3.search(template_section_pat, text, _re3.DOTALL)
+    if tm_match:
+        templates = []
+        section_text = tm_match.group(1)
+        template_blocks = _re3.split(r"\n### ", section_text)
+        for block in template_blocks:
+            if not block.strip():
+                continue
+            template = {}
+            tid_match = _re3.search(r"template_id\s*\|\s*(.+)", block)
+            if tid_match:
+                template["template_id"] = _strip_tail(tid_match.group(1))
+            ms_match = _re3.search(r"match_spots\s*\|\s*(.+)", block)
+            if ms_match:
+                template["match_spots"] = [s.strip() for s in _strip_tail(ms_match.group(1)).split(",") if s.strip()]
+            day_pattern = _re3.findall(r"(day_\d+_spots|last_day_spots)\s*\|\s*(.+)", block)
+            for key, val in day_pattern:
+                template[key] = [s.strip() for s in _strip_tail(val).split(",") if s.strip()]
+            td_match = _re3.search(r"trip_days\s*\|\s*(.+)", block)
+            if td_match:
+                try:
+                    template["trip_days"] = int(_strip_tail(td_match.group(1)))
+                except ValueError:
+                    template["trip_days"] = 0
+            sr_match = _re3.search(r"schedule_rationale\s*\|\s*(.+)", block)
+            if sr_match:
+                template["schedule_rationale"] = _strip_tail(sr_match.group(1))
+            if template.get("template_id") and template.get("match_spots"):
+                templates.append(template)
+        defaults["itinerary_templates"] = templates
+
     return defaults
 
 
@@ -256,6 +296,31 @@ def _write_profile(updates: dict) -> dict:
 | hydration_interval_minutes | {current['lifestyle']['hydration_interval_minutes']} |
 | medication_schedule | {_list_or_val(current['lifestyle']['medication_schedule'], 'lifestyle')} |
 """
+
+    # 序列化景点排程模板
+    itinerary_template_md = ""
+    for tpl in current.get("itinerary_templates", []):
+        tpl_name = tpl.get("template_id", "未命名模板")
+        tpl_md = f"\n### {tpl_name}\n"
+        tpl_md += "| 字段 | 值 |\n|---|---|\n"
+        tpl_md += f"| template_id | {tpl.get('template_id', '')} |\n"
+        tpl_md += f"| match_spots | {', '.join(tpl.get('match_spots', []))} |\n"
+        for key in sorted(tpl.keys()):
+            if key in ("template_id", "match_spots", "trip_days"):
+                continue
+            if key.startswith("day_") or key == "last_day_spots":
+                val = tpl[key]
+                if isinstance(val, list):
+                    tpl_md += f"| {key} | {', '.join(val)} |\n"
+        tpl_md += f"| trip_days | {tpl.get('trip_days', '')} |\n"
+        sr = tpl.get("schedule_rationale", "")
+        if sr:
+            tpl_md += f"| schedule_rationale | {sr} |\n"
+        itinerary_template_md += tpl_md
+
+    if itinerary_template_md:
+        md += f"\n## 景点排程模板{itinerary_template_md}\n"
+
     if custom_lines:
         md += f"""
 ## 自定义提醒
@@ -587,9 +652,9 @@ def _compute_day_fatigue_detail(timeline, day_index=0, prev_day_fatigue=0.0):
         "breakfast": 0.5,    # 早餐最轻松
         # 交通类（%全天体力/小时）
         "travel_walk": 4.0,    # 步行赶路
-        "travel_plane": 3.0,   # 飞机：值机安检+拥挤+气压
-        "travel_car": 1.5,     # 汽车/打车：轻微消耗
-        "travel_train": 1.0,   # 高铁/火车：最舒适
+        "travel_plane": 18.0,  # 飞机：3%/10min → 18%/h
+        "travel_car": 12.0,    # 汽车/打车/公交/地铁：2%/10min → 12%/h
+        "travel_train": 18.0,  # 高铁/火车：3%/10min → 18%/h（归入公共交通）
     }
 
     # 将 server timeline 转为 refined 格式（与 dynamic_fatigue_cost 一致）
@@ -5350,7 +5415,8 @@ def memory_detect():
             "1. 口味(taste): taste_tolerance(无辣/微辣/中辣/重辣), dietary_restrictions(忌口列表), cuisine_preference(菜系列表)\n"
             "2. 通勤(commute): walking_tolerance_meters(米), transport_priority(步行优先/打车优先/地铁优先)\n"
             "3. 预算(budget): price_level(经济/中端/高端), rating_cutoff(评分)\n"
-            "4. 健康作息(lifestyle): hydration_interval_minutes(分钟), medication_schedule\n\n"
+            "4. 健康作息(lifestyle): hydration_interval_minutes(分钟), medication_schedule\n"
+            "5. 景点排程模板(itinerary_templates): 当用户手动调整景点排程并明确表示「以后都按这个安排」「以后这几个点都按这个排」时记录模板。格式: [{\"template_id\": \"beijing_classic_7\", \"match_spots\": [\"八达岭长城\", ...], \"day_2_spots\": [\"圆明园\", \"颐和园\"], ...}]\n\n"
             f"当前偏好: {json.dumps(current_profile, ensure_ascii=False)}\n\n"
             "只返回 JSON，格式: {\"detected_updates\": {...}}。如果无变化返回空对象。"
         ),

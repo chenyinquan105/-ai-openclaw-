@@ -59,9 +59,9 @@ FATIGUE_COEFFICIENT = {
     "default": 0.8,
     # 交通类（display 系数 ÷ 4.67 映射到优化器尺度）
     "travel_walk": 0.85,    # 步行赶路  → display 4.0
-    "travel_plane": 0.65,   # 飞机      → display 3.0
-    "travel_car": 0.3,      # 汽车/打车 → display 1.5
-    "travel_train": 0.2,    # 高铁/火车 → display 1.0
+    "travel_plane": 3.9,    # 飞机      → display 18.0 (3%/10min)
+    "travel_car": 2.6,      # 汽车/打车/公交/地铁 → display 12.0 (2%/10min)
+    "travel_train": 3.9,    # 高铁/火车 → display 18.0 (3%/10min，归入公共交通)
 }
 
 # 体力惩罚权重（供 _total_cost 使用）

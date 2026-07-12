@@ -36,6 +36,7 @@
 | 环境异常 | `anomaly_sensor_skill` | SWAP/BYPASS/POSTPONE 决策 |
 | 天气影响 | `weather_extractor` | 出行建议, 户外活动预警 |
 | 排队监控 | `queue_monitor` | 轮询排号状态, 临近提醒 |
+| 景点排程模板 | `multi_day_scheduler` | `itinerary_templates` → 匹配后跳过聚类，直接按模板分天 |
 
 ## 4. 记忆机制
 
@@ -54,6 +55,14 @@
 | 通勤 | walking_tolerance_meters, transport_priority | 路径规划/防坑 |
 | 预算 | price_level, rating_cutoff | POI搜索 |
 | 健康 | hydration_interval_minutes, medication_schedule | 提醒系统 |
+| 排程模板 | template_id, match_spots, day_N_spots | 多日排程引擎 |
+
+### 4.4 景点排程模板
+- **触发条件**: 用户手动调整排程后明确表示"以后都按这个安排"
+- **存储位置**: `管家记忆.md` 的 `## 景点排程模板` 节
+- **匹配机制**: 当候选池中的景点名称与模板 `match_spots` 全部匹配时，跳过地理聚类阶段，直接按模板将景点分配到指定天数
+- **模糊匹配**: 支持子串匹配（如"故宫"可匹配"故宫博物院"），容忍轻微名称差异
+- **降级策略**: 当候选池与模板不完全匹配时，回退到算法排程；未匹配的额外景点自动分配到最空闲的天
 
 ## 5. 硬约束
 - 不做没有对应 Skill 支持的功能承诺。
