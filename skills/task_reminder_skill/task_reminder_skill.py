@@ -26,6 +26,18 @@ def _m_to_t(mins: int) -> str:
     return f"{mins // 60:02d}:{mins % 60:02d}"
 
 
+def _format_dosage(dosage: str) -> str:
+    """格式化剂量显示：纯数字自动追加「片」，已有单位的保持原样"""
+    d = dosage.strip()
+    if not d:
+        return ""
+    # 纯数字 → "每次服用X片"
+    if d.isdigit():
+        return f"每次服用{d}片"
+    # 已有文字/单位 → "每次X"（用户自己填了"2粒""1包"等）
+    return f"每次{d}"
+
+
 # ======================================================================
 # 任务状态机管理器
 # ======================================================================
@@ -105,7 +117,7 @@ def process_reminder_pipeline(
         ev_type = event.get("type")
         ev_id = event.get("id")
         ev_time = event.get("time")
-        med_name = event.get("name") or event.get("label") or "未名药"
+        med_name = event.get("med_name") or event.get("name") or event.get("label") or "未名药"
         ev_label = event.get("label", "")
         ev_images = event.get("images", [])
         ev_ring_mode = event.get("ring_mode", "once")
@@ -156,7 +168,7 @@ def process_reminder_pipeline(
                 "original_time": ev_time,
                 "last_action_time": ev_time,
                 "miss_count": 0,
-                "med_name": med_name,
+                "med_name": ev_med_name or med_name,
                 "med_id": ev_id,
                 "note": ev_note,
                 "dosage": ev_dosage,
@@ -164,7 +176,6 @@ def process_reminder_pipeline(
                 "pill_shape": ev_pill_shape,
                 "pill_color": ev_pill_color,
                 "pill_color2": ev_pill_color2,
-                "med_name": ev_med_name,
                 "images": ev_images,
                 "ring_mode": ev_ring_mode,
                 "label": ev_label,
@@ -177,7 +188,8 @@ def process_reminder_pipeline(
                 if ev_meal:
                     parts.append(f"{ev_meal}服用")
                 if ev_dosage:
-                    parts.append(f"每次{ev_dosage}")
+                    _dosage_text = _format_dosage(ev_dosage)
+                    parts.append(_dosage_text)
                 msg += "\n" + "，".join(parts)
             if ev_note:
                 msg += f"\n📝 {ev_note}"
@@ -227,7 +239,7 @@ def process_reminder_pipeline(
             if dosage or meal:
                 parts = []
                 if meal: parts.append(f"{meal}服用")
-                if dosage: parts.append(f"每次{dosage}")
+                if dosage: parts.append(_format_dosage(dosage))
                 msg += "\n" + "，".join(parts)
             if note:
                 msg += f"\n📝 {note}"
