@@ -8263,7 +8263,17 @@ def set_trip_config():
                     if matched:
                         trip_weather[target_date] = matched
                     else:
-                        trip_weather[target_date] = {"confidence": "low", "note": "暂无该日预报数据"}
+                        # 超出高德4天预报范围 → 用该城市当月气候均值兜底
+                        try:
+                            target_month = sd.month if sd else 7
+                            climate = _amap_weather_client.get_climate_average(adcode, target_month)
+                            if climate:
+                                climate["date"] = target_date
+                                trip_weather[target_date] = climate
+                            else:
+                                trip_weather[target_date] = {"confidence": "low", "note": "暂无该日预报数据"}
+                        except Exception:
+                            trip_weather[target_date] = {"confidence": "low", "note": "暂无该日预报数据"}
                 except (ValueError, TypeError):
                     pass
         # 如果没有日期，取前N天的预报

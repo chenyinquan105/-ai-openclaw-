@@ -239,78 +239,75 @@ class AmapWeatherClient:
             "source": "amap_realtime",
         }
 
-    def get_weather_forecast(self, adcode: str = "110000") -> dict:
-        """获取未来4天天气预报（extensions=all）。
+    def get_weather_forecast(self, adcode: str = "110000", force_refresh: bool = False) -> dict:
+        """获取未来4天天气预报（extensions=all），使用 _call 走限流+缓存。
+        参数:
+            adcode: 城市编码
+            force_refresh: True=跳过缓存强制实时拉取
         返回: {forecasts: [{"date": "2026-07-04", "day_weather": "晴", "night_weather": "多云",
                 "day_temp": 35, "night_temp": 22, "day_wind": "南风", "night_wind": "无风",
                 "walking_penalty": 1.0, "outdoor_suitable": true, "condition_en": "sunny"}, ...],
                confidence: "high"|"low"}
         """
-        api_key = self.api_key
-        url = "https://restapi.amap.com/v3/weather/weatherInfo"
-        params = {"key": api_key, "city": adcode, "extensions": "all", "output": "JSON"}
-
         try:
-            resp = requests.get(url, params=params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("status") != "1" or data.get("info") != "OK":
-                print(f"[amap_weather] 预报API失败: {data.get('info', 'unknown')}", flush=True)
-                return {"forecasts": [], "confidence": "low", "error": data.get("info", "")}
-
-            forecasts_raw = data.get("forecasts", [])
-            if not forecasts_raw:
-                return {"forecasts": [], "confidence": "low"}
-
-            casts = forecasts_raw[0].get("casts", [])
-            result = []
-            for cast in casts:
-                day_weather = cast.get("dayweather", "晴")
-                night_weather = cast.get("nightweather", "多云")
-                day_meta = _WEATHER_TEXT_MAP.get(day_weather, _DEFAULT_WEATHER_META)
-                night_meta = _WEATHER_TEXT_MAP.get(night_weather, _DEFAULT_WEATHER_META)
-                # 取白天和夜间中较差的 penalty（保守估计）
-                walking_penalty = min(day_meta["walking_penalty"], night_meta["walking_penalty"])
-                # 只要白天是户外友好的就认为当天适合户外
-                outdoor_suitable = day_meta["outdoor"]
-
-                result.append({
-                    "date": cast.get("date", ""),
-                    "day_weather": day_weather,
-                    "night_weather": night_weather,
-                    "day_temp": int(cast.get("daytemp", 25)),
-                    "night_temp": int(cast.get("nighttemp", 15)),
-                    "day_wind": cast.get("daywind", "无风"),
-                    "night_wind": cast.get("nightwind", "无风"),
-                    "condition_en": day_meta["en"],
-                    "walking_penalty": walking_penalty,
-                    "outdoor_suitable": outdoor_suitable,
-                    "alert": day_meta.get("alert"),
-                })
-
-            # 判断置信度：未来2天高，3-4天中
-            from datetime import datetime, timedelta
-            today = datetime.now().date()
-            for fc in result:
-                try:
-                    fc_date = datetime.strptime(fc["date"], "%Y-%m-%d").date()
-                    delta_days = (fc_date - today).days
-                    if delta_days <= 1:
-                        fc["confidence"] = "high"
-                    elif delta_days <= 3:
-                        fc["confidence"] = "medium"
-                    else:
-                        fc["confidence"] = "low"
-                except (ValueError, TypeError):
-                    fc["confidence"] = "medium"
-
-            return {"forecasts": result, "confidence": "high" if result else "low",
-                    "report_time": data.get("reporttime", ""),
-                    "city": forecasts_raw[0].get("city", "")}
-
+            # 使用 _call 统一走限流+缓存逻辑，保证与 POI 搜索共用一个限流器
+            data = self._call("weather/weatherInfo", {
+                "city": adcode,
+                "extensions": "all",
+            })
         except Exception as e:
             print(f"[amap_weather] 预报API异常: {e}", flush=True)
             return {"forecasts": [], "confidence": "low", "error": str(e)}
+
+        forecasts_raw = data.get("forecasts", [])
+        if not forecasts_raw:
+            return {"forecasts": [], "confidence": "low"}
+
+        casts = forecasts_raw[0].get("casts", [])
+        result = []
+        for cast in casts:
+            day_weather = cast.get("dayweather", "晴")
+            night_weather = cast.get("nightweather", "多云")
+            day_meta = _WEATHER_TEXT_MAP.get(day_weather, _DEFAULT_WEATHER_META)
+            night_meta = _WEATHER_TEXT_MAP.get(night_weather, _DEFAULT_WEATHER_META)
+            # 取白天和夜间中较差的 penalty（保守估计）
+            walking_penalty = min(day_meta["walking_penalty"], night_meta["walking_penalty"])
+            # 只要白天是户外友好的就认为当天适合户外
+            outdoor_suitable = day_meta["outdoor"]
+
+            result.append({
+                "date": cast.get("date", ""),
+                "day_weather": day_weather,
+                "night_weather": night_weather,
+                "day_temp": int(cast.get("daytemp", 25)),
+                "night_temp": int(cast.get("nighttemp", 15)),
+                "day_wind": cast.get("daywind", "无风"),
+                "night_wind": cast.get("nightwind", "无风"),
+                "condition_en": day_meta["en"],
+                "walking_penalty": walking_penalty,
+                "outdoor_suitable": outdoor_suitable,
+                "alert": day_meta.get("alert"),
+            })
+
+        # 判断置信度：未来2天高，3-4天中
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        for fc in result:
+            try:
+                fc_date = datetime.strptime(fc["date"], "%Y-%m-%d").date()
+                delta_days = (fc_date - today).days
+                if delta_days <= 1:
+                    fc["confidence"] = "high"
+                elif delta_days <= 3:
+                    fc["confidence"] = "medium"
+                else:
+                    fc["confidence"] = "low"
+            except (ValueError, TypeError):
+                fc["confidence"] = "medium"
+
+        return {"forecasts": result, "confidence": "high" if result else "low",
+                "report_time": data.get("reporttime", ""),
+                "city": forecasts_raw[0].get("city", "")}
 
     @staticmethod
     def _estimate_wind(windpower: str) -> int:
@@ -324,6 +321,169 @@ class AmapWeatherClient:
         }
         return mapping.get(windpower.strip(), 10)
 
+    # ------------------------------------------------------------------
+    # 气候均值兜底（当高德4天预报覆盖不到行程日期时使用）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_climate_average(adcode: str, month: int) -> dict:
+        """
+        获取指定城市某月的 climate average 数据，用于超出预报范围的日期兜底。
+        返回格式与 get_weather_forecast 的单个 forecast 条目一致，
+        额外带 source: "climate_average"。
+        参数:
+            adcode: 城市编码
+            month: 月份 (1-12)
+        返回:
+            dict 或 None (无该城市数据时)
+        """
+        data = _CLIMATE_MONTHLY.get(adcode)
+        if not data or month < 1 or month > 12:
+            return None
+        high, low, weather, outdoor = data[month - 1]
+        meta = _WEATHER_TEXT_MAP.get(weather, _DEFAULT_WEATHER_META)
+        return {
+            "date": "",  # 由调用方填充
+            "day_weather": weather,
+            "night_weather": weather,
+            "day_temp": high,
+            "night_temp": low,
+            "day_wind": "微风",
+            "night_wind": "微风",
+            "condition_en": meta["en"],
+            "walking_penalty": meta["walking_penalty"],
+            "outdoor_suitable": outdoor,
+            "alert": meta.get("alert"),
+            "confidence": "climate",
+            "source": "climate_average",
+        }
+
+
+# ======================================================================
+# 20城月度气候均值数据 (avg_high, avg_low, typical_weather, outdoor_suitable)
+# ======================================================================
+_CLIMATE_MONTHLY = {
+    "110000": [  # 北京
+        (2, -9, "晴", True), (6, -6, "晴", True), (13, 0, "晴", True),
+        (21, 8, "多云", True), (27, 14, "晴", True), (31, 19, "多云", True),
+        (32, 22, "多云", True), (31, 21, "多云", True), (26, 15, "晴", True),
+        (19, 7, "晴", True), (10, 0, "晴", True), (3, -7, "晴", True),
+    ],
+    "310000": [  # 上海
+        (8, 1, "多云", True), (10, 3, "多云", True), (14, 7, "小雨", False),
+        (20, 12, "多云", True), (26, 17, "多云", True), (29, 22, "小雨", False),
+        (33, 26, "多云", True), (32, 25, "雷阵雨", False), (28, 21, "多云", True),
+        (23, 15, "晴", True), (17, 9, "多云", True), (10, 3, "晴", True),
+    ],
+    "440100": [  # 广州
+        (18, 10, "多云", True), (20, 13, "小雨", False), (23, 16, "小雨", False),
+        (27, 20, "小雨", False), (30, 24, "雷阵雨", False), (32, 26, "雷阵雨", False),
+        (33, 26, "雷阵雨", False), (33, 26, "雷阵雨", False), (31, 24, "多云", True),
+        (28, 20, "晴", True), (24, 15, "晴", True), (20, 10, "晴", True),
+    ],
+    "440300": [  # 深圳
+        (19, 12, "多云", True), (20, 14, "多云", True), (23, 17, "小雨", False),
+        (27, 21, "小雨", False), (30, 24, "雷阵雨", False), (32, 26, "雷阵雨", False),
+        (33, 27, "雷阵雨", False), (33, 27, "雷阵雨", False), (31, 25, "多云", True),
+        (28, 22, "晴", True), (24, 18, "晴", True), (20, 13, "晴", True),
+    ],
+    "510100": [  # 成都
+        (9, 2, "阴", True), (12, 5, "多云", True), (17, 9, "小雨", False),
+        (22, 14, "小雨", False), (27, 18, "多云", True), (29, 21, "小雨", False),
+        (31, 23, "多云", True), (30, 22, "雷阵雨", False), (26, 19, "小雨", False),
+        (21, 15, "阴", True), (16, 9, "多云", True), (10, 3, "阴", True),
+    ],
+    "330100": [  # 杭州
+        (8, 1, "多云", True), (10, 3, "多云", True), (15, 7, "小雨", False),
+        (21, 12, "多云", True), (26, 18, "多云", True), (30, 22, "小雨", False),
+        (34, 26, "多云", True), (33, 25, "雷阵雨", False), (28, 21, "多云", True),
+        (23, 15, "晴", True), (17, 9, "多云", True), (10, 3, "晴", True),
+    ],
+    "610100": [  # 西安
+        (5, -5, "晴", True), (9, -2, "多云", True), (15, 3, "多云", True),
+        (22, 9, "多云", True), (27, 14, "晴", True), (32, 19, "多云", True),
+        (33, 22, "多云", True), (31, 21, "多云", True), (25, 15, "晴", True),
+        (19, 8, "晴", True), (11, 1, "晴", True), (6, -4, "晴", True),
+    ],
+    "500000": [  # 重庆
+        (10, 5, "阴", True), (13, 7, "多云", True), (18, 11, "小雨", False),
+        (23, 15, "小雨", False), (28, 19, "多云", True), (30, 22, "小雨", False),
+        (34, 25, "多云", True), (34, 25, "雷阵雨", False), (28, 21, "多云", True),
+        (22, 16, "阴", True), (17, 11, "多云", True), (11, 6, "阴", True),
+    ],
+    "320100": [  # 南京
+        (7, -1, "多云", True), (9, 1, "多云", True), (14, 5, "小雨", False),
+        (21, 11, "多云", True), (26, 17, "多云", True), (30, 21, "小雨", False),
+        (33, 25, "多云", True), (32, 24, "雷阵雨", False), (28, 20, "多云", True),
+        (22, 13, "晴", True), (16, 6, "多云", True), (9, 0, "晴", True),
+    ],
+    "420100": [  # 武汉
+        (8, -1, "多云", True), (11, 2, "多云", True), (16, 7, "小雨", False),
+        (22, 13, "多云", True), (27, 18, "多云", True), (31, 23, "小雨", False),
+        (34, 26, "多云", True), (33, 25, "雷阵雨", False), (28, 20, "多云", True),
+        (23, 13, "晴", True), (16, 7, "多云", True), (10, 1, "晴", True),
+    ],
+    "430100": [  # 长沙
+        (8, 2, "多云", True), (10, 4, "小雨", False), (15, 8, "小雨", False),
+        (22, 14, "多云", True), (27, 19, "多云", True), (30, 23, "小雨", False),
+        (34, 26, "多云", True), (33, 25, "雷阵雨", False), (28, 21, "多云", True),
+        (23, 14, "晴", True), (17, 8, "多云", True), (10, 3, "晴", True),
+    ],
+    "350200": [  # 厦门
+        (17, 10, "多云", True), (17, 10, "多云", True), (20, 13, "小雨", False),
+        (24, 17, "多云", True), (28, 21, "小雨", False), (31, 24, "雷阵雨", False),
+        (33, 26, "多云", True), (33, 26, "雷阵雨", False), (31, 24, "多云", True),
+        (27, 20, "晴", True), (23, 16, "晴", True), (19, 11, "晴", True),
+    ],
+    "460200": [  # 三亚
+        (26, 18, "晴", True), (27, 19, "晴", True), (29, 22, "多云", True),
+        (31, 24, "多云", True), (32, 26, "雷阵雨", False), (32, 27, "雷阵雨", False),
+        (32, 27, "雷阵雨", False), (32, 26, "雷阵雨", False), (31, 25, "雷阵雨", False),
+        (30, 23, "晴", True), (28, 21, "晴", True), (26, 18, "晴", True),
+    ],
+    "530700": [  # 丽江
+        (13, -1, "晴", True), (15, 1, "晴", True), (18, 4, "晴", True),
+        (21, 7, "多云", True), (24, 11, "多云", True), (26, 14, "小雨", False),
+        (25, 15, "小雨", False), (25, 14, "小雨", False), (23, 13, "小雨", False),
+        (21, 8, "晴", True), (17, 3, "晴", True), (13, -1, "晴", True),
+    ],
+    "532900": [  # 大理
+        (15, 2, "晴", True), (17, 4, "晴", True), (20, 7, "晴", True),
+        (23, 10, "多云", True), (26, 14, "多云", True), (27, 17, "小雨", False),
+        (26, 17, "小雨", False), (26, 16, "小雨", False), (25, 15, "小雨", False),
+        (22, 11, "晴", True), (18, 6, "晴", True), (15, 2, "晴", True),
+    ],
+    "450300": [  # 桂林
+        (12, 5, "小雨", False), (14, 7, "小雨", False), (18, 11, "小雨", False),
+        (24, 16, "小雨", False), (28, 20, "小雨", False), (31, 23, "雷阵雨", False),
+        (33, 25, "多云", True), (33, 25, "雷阵雨", False), (31, 22, "多云", True),
+        (26, 17, "晴", True), (20, 11, "多云", True), (14, 6, "晴", True),
+    ],
+    "320500": [  # 苏州
+        (8, 1, "多云", True), (10, 3, "多云", True), (14, 7, "小雨", False),
+        (20, 11, "多云", True), (26, 17, "多云", True), (29, 21, "小雨", False),
+        (33, 26, "多云", True), (32, 25, "雷阵雨", False), (28, 21, "多云", True),
+        (23, 14, "晴", True), (17, 8, "多云", True), (10, 2, "晴", True),
+    ],
+    "370200": [  # 青岛
+        (3, -4, "晴", True), (5, -2, "晴", True), (10, 3, "多云", True),
+        (15, 8, "多云", True), (20, 13, "多云", True), (24, 18, "小雨", False),
+        (28, 22, "多云", True), (28, 22, "雷阵雨", False), (25, 18, "晴", True),
+        (20, 12, "晴", True), (12, 5, "晴", True), (5, -2, "晴", True),
+    ],
+    "210200": [  # 大连
+        (0, -7, "晴", True), (2, -5, "晴", True), (7, 0, "晴", True),
+        (14, 6, "多云", True), (20, 12, "晴", True), (24, 17, "多云", True),
+        (27, 21, "多云", True), (27, 21, "雷阵雨", False), (24, 17, "晴", True),
+        (18, 10, "晴", True), (10, 2, "晴", True), (3, -4, "晴", True),
+    ],
+    "530100": [  # 昆明
+        (15, 2, "晴", True), (17, 4, "晴", True), (21, 7, "晴", True),
+        (24, 10, "晴", True), (25, 14, "多云", True), (26, 17, "小雨", False),
+        (25, 17, "小雨", False), (25, 16, "小雨", False), (24, 15, "小雨", False),
+        (21, 11, "晴", True), (17, 6, "晴", True), (14, 2, "晴", True),
+    ],
+}
 
 # ======================================================================
 # 模块级单例
@@ -346,3 +506,8 @@ def get_real_time_weather(adcode: str = "110000") -> dict:
 def get_weather_forecast(adcode: str = "110000") -> dict:
     """模块级便捷函数: 获取指定城市未来4天天气预报"""
     return _get_client().get_weather_forecast(adcode=adcode)
+
+
+def get_climate_average(adcode: str, month: int) -> dict:
+    """模块级便捷函数: 获取指定城市某月气候均值（用于超出预报范围的日期兜底）"""
+    return AmapWeatherClient.get_climate_average(adcode, month)

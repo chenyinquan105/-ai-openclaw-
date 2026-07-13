@@ -8390,6 +8390,9 @@ function openMultiDaySetup() {
   if (elDest) elDest.value = '北京';
   if (elStep1) elStep1.classList.remove('hidden');
   if (elStep2) elStep2.classList.add('hidden');
+  // 重置天气栏为隐藏（进入Step2时再显示骨架屏）
+  var weatherSummary = document.getElementById('multi-weather-summary');
+  if (weatherSummary) weatherSummary.classList.add('hidden');
   if (elModal) elModal.classList.remove('hidden');
   // 清除输入
   var elDepCity = document.getElementById('multi-departure-city');
@@ -8647,7 +8650,8 @@ function goToMultiSetupStep2() {
   if (step1) step1.classList.add('hidden');
   if (step2) step2.classList.remove('hidden');
   document.getElementById('multi-dest-label').textContent = multiDayDestination;
-  // 显示加载状态
+  // 显示加载状态（天气 + 景点列表）
+  showWeatherLoading();
   var loadingEl = document.getElementById('multi-attractions-loading');
   var listEl = document.getElementById('multi-attractions-list');
   var badgeEl = document.getElementById('multi-cache-badge');
@@ -8682,9 +8686,8 @@ function goToMultiSetupStep2() {
       if (data.attractions && data.attractions.length > 0) {
         _multiCachedAttractions = data.attractions;
         renderAttractionsList(data.attractions);
-        if (data.weather && Object.keys(data.weather).length > 0) {
-          renderWeatherSummary(data.weather);
-        }
+        // 始终渲染天气栏（有数据展示数据，无数据显示占位）
+        renderWeatherSummary(data.weather || {});
         multiDayMode = true;
         updateTripModeBtnUI();
         showCandidateBar();
@@ -8731,6 +8734,24 @@ function goBackToMultiSetupStep1() {
 
 // ---- 天气概览渲染 ----
 
+function showWeatherLoading() {
+  var container = document.getElementById('multi-weather-summary');
+  var daysEl = document.getElementById('multi-weather-days');
+  if (!container || !daysEl) return;
+  container.classList.remove('hidden');
+  // 生成骨架卡片（与天数匹配）
+  var count = multiDayCount || 2;
+  var html = '';
+  for (var i = 0; i < count; i++) {
+    html += '<div class="flex-shrink-0 bg-white/60 rounded-xl px-3 py-2 text-center animate-pulse">';
+    html += '<div class="w-10 h-2 bg-gray-200 rounded mx-auto mb-1"></div>';
+    html += '<div class="w-6 h-6 bg-gray-200 rounded-full mx-auto mb-0.5"></div>';
+    html += '<div class="w-8 h-2 bg-gray-200 rounded mx-auto"></div>';
+    html += '</div>';
+  }
+  daysEl.innerHTML = html;
+}
+
 function renderWeatherSummary(weather) {
   var container = document.getElementById('multi-weather-summary');
   var daysEl = document.getElementById('multi-weather-days');
@@ -8739,6 +8760,10 @@ function renderWeatherSummary(weather) {
   var _WEATHER_ICON = {'晴':'☀️','少云':'🌤️','多云':'⛅','阴':'☁️','小雨':'🌧️','阵雨':'🌦️','雷阵雨':'⛈️','中雨':'🌧️','大雨':'🌧️','暴雨':'⛈️','小雪':'🌨️','中雪':'❄️','大雪':'❄️','雾':'🌫️','霾':'🌫️'};
   var html = '';
   var keys = Object.keys(weather).sort();
+  if (keys.length === 0) {
+    // 无天气数据时显示占位提示
+    html += '<div class="flex-shrink-0 bg-white rounded-xl px-4 py-2 text-center"><div class="text-xs text-gray-400">🌤️</div><div class="text-[10px] text-gray-400">实时天气加载中...</div></div>';
+  }
   for (var i = 0; i < keys.length; i++) {
     var w = weather[keys[i]];
     // 解析日期
@@ -8749,10 +8774,13 @@ function renderWeatherSummary(weather) {
         dateLabel = (d.getMonth()+1) + '/' + d.getDate() + ' ' + _WEEKDAYS_CN[d.getDay()];
       }
     } catch(e) { dateLabel = keys[i]; }
-    if (!w || w.confidence === 'low' && !w.day_weather) { html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-[9px] text-gray-400 font-medium">' + (dateLabel || '暂无') + '</div><div class="text-lg">❓</div><div class="text-[10px] text-gray-400">暂无</div></div>'; continue; }
+    if (!w || w.confidence === 'low' && !w.day_weather) { html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-[9px] text-gray-400 font-medium">' + (dateLabel || '暂无') + '</div><div class="text-lg">❓</div><div class="text-[10px] text-gray-400">暂无预报</div></div>'; continue; }
     var icon = _WEATHER_ICON[w.day_weather] || '🌤️';
+    var isClimate = w.source === 'climate_average';
     var conf = w.confidence === 'low' ? ' ⚠️' : '';
-    html += '<div class="flex-shrink-0 bg-white rounded-xl px-3 py-2 text-center"><div class="text-[9px] text-gray-400 font-medium">' + (dateLabel || '') + '</div><div class="text-lg">' + icon + '</div><div class="text-[10px] text-gray-500">' + w.day_weather + ' ' + w.day_temp + '°C</div><div class="text-[9px] ' + (w.outdoor_suitable ? 'text-green-500' : 'text-orange-500') + '">' + (w.outdoor_suitable ? '宜户外' : '宜室内') + conf + '</div></div>';
+    var bgClass = isClimate ? 'bg-white/50 border border-dashed border-gray-300' : 'bg-white';
+    var climateTag = isClimate ? '<div class="text-[8px] text-gray-400 mt-0.5">📊 气候参考</div>' : '';
+    html += '<div class="flex-shrink-0 ' + bgClass + ' rounded-xl px-3 py-2 text-center"><div class="text-[9px] text-gray-400 font-medium">' + (dateLabel || '') + '</div><div class="text-lg">' + icon + '</div><div class="text-[10px] text-gray-500">' + w.day_weather + ' ' + w.day_temp + '°C</div><div class="text-[9px] ' + (w.outdoor_suitable ? 'text-green-500' : 'text-orange-500') + '">' + (w.outdoor_suitable ? '宜户外' : '宜室内') + conf + '</div>' + climateTag + '</div>';
   }
   daysEl.innerHTML = html;
 }
@@ -8769,6 +8797,8 @@ async function fetchPopularAttractions() {
   if (listEl) { listEl.classList.add('hidden'); listEl.innerHTML = ''; }
   if (statsEl) statsEl.classList.add('hidden');
   if (badgeEl) badgeEl.classList.add('hidden');
+
+  showWeatherLoading();
 
   try {
     console.log('[MultiDay] calling /api/set_trip_config...');
@@ -8789,10 +8819,8 @@ async function fetchPopularAttractions() {
     if (data.status === 'SUCCESS' && data.attractions && data.attractions.length > 0) {
       _multiCachedAttractions = data.attractions;
       renderAttractionsList(data.attractions);
-      // 渲染天气概览
-      if (data.weather && Object.keys(data.weather).length > 0) {
-        renderWeatherSummary(data.weather);
-      }
+      // 始终渲染天气概览（有数据展示数据，无数据显示占位）
+      renderWeatherSummary(data.weather || {});
       multiDayMode = true;
       updateTripModeBtnUI();
       showCandidateBar();
