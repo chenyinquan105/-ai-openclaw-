@@ -1164,6 +1164,7 @@ def _llm_estimate_shop_durations(candidate_pool: list) -> tuple:
     - fatigue_weight: 体力消耗权重（1-10，1=轻松散步，10=极度消耗体力）
     - suitable_time: 适配前往时间（"day"=适合白天, "night"=适合夜间, "both"=白天夜间均可）
 
+    优先使用 shop 估算缓存（_shop_estimates_cache），miss 的才调 LLM。
     搜不到的店铺回退到 CATEGORY_DURATIONS 品类默认值。
 
     Returns:
@@ -1175,11 +1176,41 @@ def _llm_estimate_shop_durations(candidate_pool: list) -> tuple:
     if not candidate_pool:
         return {}, {}, {}
 
+    # ── 先从缓存中获取已知 shop 的估算 ──
+    dynamic_durations = {}
+    fatigue_weights = {}
+    suitable_times = {}
+    uncached_shops = []
+    cache_hits = 0
+
+    for s in candidate_pool:
+        sid = s.get("shop_id", "")
+        if sid and sid in _shop_estimates_cache:
+            cached = _shop_estimates_cache[sid]
+            dur = cached.get("duration_minutes")
+            fw = cached.get("fatigue_weight")
+            st = cached.get("suitable_time")
+            if dur is not None and isinstance(dur, (int, float)) and dur > 0:
+                dynamic_durations[sid] = int(dur)
+            if fw is not None and isinstance(fw, (int, float)) and 1 <= fw <= 10:
+                fatigue_weights[sid] = float(fw)
+            if st in ("day", "night", "both"):
+                suitable_times[sid] = st
+            cache_hits += 1
+        else:
+            uncached_shops.append(s)
+
+    if not uncached_shops:
+        print(f"[LLM耗时估算] ✅ 全部来自缓存（{cache_hits}/{len(candidate_pool)}），跳过LLM调用", flush=True)
+        return dynamic_durations, fatigue_weights, suitable_times
+
+    print(f"[LLM耗时估算] 缓存命中 {cache_hits}/{len(candidate_pool)}，需LLM估算 {len(uncached_shops)} 个", flush=True)
+
     _ensure_agent()
 
-    # 构建店铺列表文本
+    # 构建店铺列表文本（仅未缓存的）
     shops_text = ""
-    for i, s in enumerate(candidate_pool):
+    for i, s in enumerate(uncached_shops):
         sid = s.get("shop_id", f"unknown_{i}")
         name = s.get("name", "未知")
         cat = s.get("category", "unknown")
@@ -1240,14 +1271,12 @@ def _llm_estimate_shop_durations(candidate_pool: list) -> tuple:
         json_match = re.search(r'\{[\s\S]*\}', content)
         if not json_match:
             print(f"[LLM耗时估算] ⚠️ 响应中未找到JSON，回退品类默认值", flush=True)
-            return {}, {}, {}
+            return dynamic_durations, fatigue_weights, suitable_times
 
         data = json.loads(json_match.group(0))
         estimates = data.get("estimates", [])
 
-        dynamic_durations = {}
-        fatigue_weights = {}
-        suitable_times = {}
+        new_count = 0
         for est in estimates:
             sid = est.get("shop_id", "")
             dur = est.get("duration_minutes")
@@ -1261,16 +1290,25 @@ def _llm_estimate_shop_durations(candidate_pool: list) -> tuple:
                     fatigue_weights[sid] = float(fw)
                 if st in ("day", "night", "both"):
                     suitable_times[sid] = st
+                # 写入缓存
+                _shop_estimates_cache[sid] = {
+                    "duration_minutes": int(dur) if (dur is not None and isinstance(dur, (int, float)) and dur > 0) else None,
+                    "fatigue_weight": float(fw) if (fw is not None and isinstance(fw, (int, float)) and 1 <= fw <= 10) else None,
+                    "suitable_time": st if st in ("day", "night", "both") else None,
+                }
+                new_count += 1
                 print(f"[LLM耗时估算] {sid}: dur={dur}min, fatigue={fw}, suitable={st} — {reason}", flush=True)
 
-        print(f"[LLM耗时估算] ✅ 完成：{len(dynamic_durations)} 个耗时 + {len(fatigue_weights)} 个体力 + {len(suitable_times)} 个时间段", flush=True)
+        if new_count > 0:
+            _save_shop_estimates_cache()
+        print(f"[LLM耗时估算] ✅ 完成：{len(dynamic_durations)} 个耗时 + {len(fatigue_weights)} 个体力 + {len(suitable_times)} 个时间段（新增LLM估算 {new_count} 个）", flush=True)
         return dynamic_durations, fatigue_weights, suitable_times
 
     except Exception as e:
         print(f"[LLM耗时估算] ❌ 失败: {e}，回退品类默认值", flush=True)
         import traceback
         traceback.print_exc()
-        return {}, {}, {}
+        return dynamic_durations, fatigue_weights, suitable_times
 
 
 def _run_multi_day_schedule(candidate_pool, trip_days, checkin_lat, checkin_lng,
@@ -4990,16 +5028,19 @@ def _build_fatigue_survey_event(ev: dict, current_date: str, virtual_day: int) -
     trip_days = session_state.get("days", [])
     day_index = ev.get("day_index", virtual_day)
     day_label = f"第{virtual_day + 1}天"
-    # 获取当天疲劳分析数据（如果有）
+    # 获取当天疲劳分析数据（从 hotel_info 中读取智能排程的预测）
     fatigue_info = {}
     if day_index < len(trip_days):
         day_data = trip_days[day_index]
-        fatigue_detail = day_data.get("fatigue_detail", {})
-        if fatigue_detail:
+        hotel_info = day_data.get("hotel_info", {})
+        if hotel_info:
+            fatigue_pct = hotel_info.get("fatigue", 0)
+            if isinstance(fatigue_pct, (int, float)) and fatigue_pct <= 1.0:
+                fatigue_pct = round(fatigue_pct * 100)
             fatigue_info = {
-                "fatigue_level": fatigue_detail.get("fatigue_level", 100),
-                "fatigue_label": fatigue_detail.get("fatigue_label", ""),
-                "fatigue_pct": fatigue_detail.get("fatigue_pct", 0),
+                "fatigue_level": hotel_info.get("fatigue_level", 100),
+                "fatigue_label": hotel_info.get("fatigue_label", ""),
+                "fatigue_pct": fatigue_pct,
             }
     return {
         "type": "FATIGUE_SURVEY",
@@ -5011,13 +5052,11 @@ def _build_fatigue_survey_event(ev: dict, current_date: str, virtual_day: int) -
         "day_index": virtual_day,
         "day_label": day_label,
         "fatigue_info": fatigue_info,
-        "message": f"一天的行程结束啦！来做个简单的疲劳评估吧~（{day_label}）",
+        "message": f"一天的行程结束啦！今天的疲劳程度符合预期吗？",
         "survey_options": [
-            {"value": 1, "emoji": "😊", "label": "轻松"},
-            {"value": 2, "emoji": "🙂", "label": "适中"},
-            {"value": 3, "emoji": "😐", "label": "有点累"},
-            {"value": 4, "emoji": "😫", "label": "很累"},
-            {"value": 5, "emoji": "🥱", "label": "极度疲劳"},
+            {"value": 1, "label": "与预期相符"},
+            {"value": 2, "label": "比预期更累"},
+            {"value": 3, "label": "比预期更轻松"},
         ],
     }
 
@@ -7871,6 +7910,75 @@ try:
 except Exception:
     print(f"[多日行程] 未能加载 top20_cache.json，将全量使用API实时搜索", flush=True)
 
+# ── Shop 估算缓存（按 shop_id 缓存 LLM 耗时/体力/时间段估算结果）──
+_shop_estimates_cache = {}
+_shop_estimates_cache_path = os.path.join(base_dir, "cache", "shop_estimates_cache.json")
+try:
+    with open(_shop_estimates_cache_path, "r", encoding="utf-8") as _f:
+        _shop_estimates_cache = _json.loads(_f.read())
+    print(f"[Shop估算缓存] 已加载 {len(_shop_estimates_cache)} 个店铺的估算数据", flush=True)
+except Exception:
+    print(f"[Shop估算缓存] 未找到缓存文件，将全量使用LLM估算", flush=True)
+
+
+def _save_shop_estimates_cache():
+    """持久化 shop 估算缓存到磁盘"""
+    try:
+        os.makedirs(os.path.dirname(_shop_estimates_cache_path), exist_ok=True)
+        with open(_shop_estimates_cache_path, "w", encoding="utf-8") as _f:
+            _f.write(_json.dumps(_shop_estimates_cache, ensure_ascii=False, indent=2))
+    except Exception as e:
+        print(f"[Shop估算缓存] 写入失败: {e}", flush=True)
+
+
+# ── 排程结果缓存（按输入 hash 缓存完整排程结果，秒级返回）──
+_schedule_result_cache = {}
+_schedule_result_cache_path = os.path.join(base_dir, "cache", "schedule_result_cache.json")
+try:
+    with open(_schedule_result_cache_path, "r", encoding="utf-8") as _f:
+        _schedule_result_cache = _json.loads(_f.read())
+    print(f"[排程缓存] 已加载 {len(_schedule_result_cache)} 个排程结果", flush=True)
+except Exception:
+    print(f"[排程缓存] 未找到缓存文件，将全量实时排程", flush=True)
+
+
+def _save_schedule_result_cache():
+    """持久化排程结果缓存到磁盘"""
+    try:
+        os.makedirs(os.path.dirname(_schedule_result_cache_path), exist_ok=True)
+        with open(_schedule_result_cache_path, "w", encoding="utf-8") as _f:
+            _f.write(_json.dumps(_schedule_result_cache, ensure_ascii=False, indent=2))
+    except Exception as e:
+        print(f"[排程缓存] 写入失败: {e}", flush=True)
+
+
+def _compute_schedule_cache_key(candidate_pool, trip_days, transport, start_time, checkin_lat, checkin_lng):
+    """根据排程输入计算缓存 key。只依赖 shop_id 列表（排序后）和核心参数。"""
+    shop_ids = sorted([s.get("shop_id", "") for s in candidate_pool if s.get("shop_id")])
+    key_parts = [
+        ",".join(shop_ids),
+        str(trip_days),
+        str(transport),
+        str(start_time),
+        str(round(float(checkin_lat or 0), 4)),
+        str(round(float(checkin_lng or 0), 4)),
+    ]
+    import hashlib
+    raw = "|".join(key_parts)
+    return hashlib.md5(raw.encode()).hexdigest()[:16]
+
+
+def _replace_nan_in_result(obj):
+    """递归替换结果中的 NaN/Infinity 为 None（JSON 不支持 NaN）。"""
+    import math
+    if isinstance(obj, dict):
+        return {k: _replace_nan_in_result(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_replace_nan_in_result(v) for v in obj]
+    elif isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    return obj
+
 
 def _get_top20_attractions(city: str, ref_lat: float = None, ref_lng: float = None) -> dict:
     """获取城市 Top20 热门景点/餐厅。先查预缓存，miss 则调高德 API 实时搜索。"""
@@ -8187,6 +8295,7 @@ def smart_schedule():
     请求: {start_time: "09:00"}
     """
     data = request.get_json(silent=True) or {}
+    schedule_start = datetime.now()
     start_time = data.get("start_time", "09:00")
 
     # 优先使用请求中携带的候选列表（前端直接传），回退到 session 缓存
@@ -8236,6 +8345,56 @@ def smart_schedule():
         session_state["trip_checkin_lat"] = checkin_lat
         session_state["trip_checkin_lng"] = checkin_lng
 
+    # ── 排程结果缓存检查：相同输入秒级返回 ──
+    cache_key = _compute_schedule_cache_key(candidate_pool, trip_days, transport, start_time, checkin_lat, checkin_lng)
+    if cache_key in _schedule_result_cache:
+        cached = _schedule_result_cache[cache_key]
+        _time.sleep(2)  # 人工延迟，让用户感知排程过程
+        cache_elapsed = (datetime.now() - schedule_start).total_seconds()
+        print(f"[排程缓存] ✅ 命中！{len(candidate_pool)}个POI {trip_days}天 → {cache_elapsed:.1f}s返回（含2s延迟）", flush=True)
+        result = cached["result"]
+        review_result = cached.get("review_result", {})
+        trip_weather = session_state.get("trip_weather", {})
+
+        # 恢复 session_state
+        days = session_state.get("days", [])
+        for i, day_result in enumerate(result.get("days", [])):
+            if i < len(days):
+                days[i]["selected_pairs"] = day_result.get("pairs", [])
+                days[i]["task_list"] = day_result.get("task_list", [])
+                days[i]["spatial_matrix"] = day_result.get("spatial_matrix", {})
+                days[i]["schedule_result"] = day_result
+                days[i]["hotel_info"] = day_result.get("hotel_info", {})
+                day_result["label"] = days[i].get("label", day_result.get("label", f"第{i+1}天"))
+        session_state["days"] = days
+        session_state["phase"] = "done"
+        session_state["active_day_index"] = 0
+
+        # 注入多日提醒（虚拟时钟提醒事件）
+        reminders_injected = _inject_multi_day_reminders(result)
+
+        # 清理 NaN 值
+        result = _replace_nan_in_result(result)
+
+        # 组装与正常响应一致的格式（前端期望 data.days 等字段）
+        return jsonify({
+            "status": "SUCCESS",
+            "days": result.get("days", []),
+            "unassigned": result.get("unassigned", []),
+            "algorithm_metadata": result.get("algorithm_metadata", {}),
+            "hotel_plan": result.get("hotel_plan", []),
+            "weather": trip_weather,
+            "review": review_result,
+            "auto_meals_added": result.get("auto_meals_added", []),
+            "closed_conflicts": result.get("closed_conflicts", []),
+            "unknown_hours_shops": result.get("unknown_hours_shops", []),
+            "overflow_notifications": result.get("overflow_notifications", []),
+            "reminders_injected": reminders_injected,
+            "overcrowded_warning": None,
+            "_debug_candidate_count": len(candidate_pool),
+            "_debug_from_cache": True,
+        })
+
     # ── Phase 0: LLM 实时搜索/估算每个店铺的实际耗时和体力消耗 ──
     dynamic_durations, fatigue_weights, suitable_times = _llm_estimate_shop_durations(candidate_pool)
 
@@ -8271,6 +8430,7 @@ def smart_schedule():
             days[i]["task_list"] = day_result.get("task_list", [])
             days[i]["spatial_matrix"] = day_result.get("spatial_matrix", {})
             days[i]["schedule_result"] = day_result
+            days[i]["hotel_info"] = day_result.get("hotel_info", {})
             # 用 session 中的 label（含日期）覆盖 scheduler 生成的
             day_result["label"] = days[i].get("label", day_result.get("label", f"第{i+1}天"))
 
@@ -8282,19 +8442,26 @@ def smart_schedule():
     trip_weather = session_state.get("trip_weather", {})
 
     # ── LLM 审查（阶段 2）──
-    # 审查前完整时间线日志（含时间）
-    print(f"[排程审查前] === 完整时间线 ===", flush=True)
-    for di, day in enumerate(result.get("days", [])):
-        for n in day.get("timeline", []):
-            print(f"  D{di+1} {n.get('time',''):>6} {n.get('action',''):<12} {n.get('memo','')[:40]} (shop_id={n.get('shop_id','')}, cat={n.get('category','')})", flush=True)
+    fast_mode = data.get("fast", False)
+    review_start = datetime.now()
     pre_review_visits = []
-    for di, day in enumerate(result.get("days", [])):
-        for n in day.get("timeline", []):
-            if n.get("action") == "VISIT":
-                pre_review_visits.append(f"D{di+1}:{n.get('shop_id','')}:{n.get('memo','')[:20]}")
-    print(f"[排程审查前] VISIT节点({len(pre_review_visits)}): {pre_review_visits}", flush=True)
+    if fast_mode:
+        print(f"[排程] ⚡ 快速模式，跳过LLM审查", flush=True)
+        review_result = {}
+    else:
+        # 审查前完整时间线日志（含时间）
+        print(f"[排程审查前] === 完整时间线 ===", flush=True)
+        for di, day in enumerate(result.get("days", [])):
+            for n in day.get("timeline", []):
+                print(f"  D{di+1} {n.get('time',''):>6} {n.get('action',''):<12} {n.get('memo','')[:40]} (shop_id={n.get('shop_id','')}, cat={n.get('category','')})", flush=True)
+        pre_review_visits = []
+        for di, day in enumerate(result.get("days", [])):
+            for n in day.get("timeline", []):
+                if n.get("action") == "VISIT":
+                    pre_review_visits.append(f"D{di+1}:{n.get('shop_id','')}:{n.get('memo','')[:20]}")
+        print(f"[排程审查前] VISIT节点({len(pre_review_visits)}): {pre_review_visits}", flush=True)
 
-    review_result = _llm_review_schedule(result, trip_weather, overcrowded_warning)
+        review_result = _llm_review_schedule(result, trip_weather, overcrowded_warning)
 
     # ── 应用 auto_fixes（LLM 确定的优化，无需用户确认）──
     auto_fixes_applied = []
@@ -8394,21 +8561,22 @@ def smart_schedule():
         # 更新 applied_fixes 到 review_result
         review_result["applied_fixes"] = auto_fixes_applied
 
-    # 审查后排程快照日志
-    post_review_visits = []
-    for di, day in enumerate(result.get("days", [])):
-        for n in day.get("timeline", []):
-            if n.get("action") == "VISIT":
-                post_review_visits.append(f"D{di+1}:{n.get('shop_id','')}:{n.get('memo','')[:20]}")
-    print(f"[排程审查后] VISIT节点({len(post_review_visits)}): {post_review_visits}", flush=True)
-    print(f"[排程审查后] === 完整时间线 ===", flush=True)
-    for di, day in enumerate(result.get("days", [])):
-        for n in day.get("timeline", []):
-            print(f"  D{di+1} {n.get('time',''):>6} {n.get('action',''):<12} {n.get('memo','')[:40]} (shop_id={n.get('shop_id','')}, cat={n.get('category','')})", flush=True)
-    if pre_review_visits != post_review_visits:
-        lost = [v for v in pre_review_visits if v not in post_review_visits]
-        gained = [v for v in post_review_visits if v not in pre_review_visits]
-        print(f"[排程审查] ⚠️ VISIT节点变化! 丢失:{lost} 新增:{gained}", flush=True)
+    # 审查后排程快照日志（仅正常模式）
+    if not fast_mode:
+        post_review_visits = []
+        for di, day in enumerate(result.get("days", [])):
+            for n in day.get("timeline", []):
+                if n.get("action") == "VISIT":
+                    post_review_visits.append(f"D{di+1}:{n.get('shop_id','')}:{n.get('memo','')[:20]}")
+        print(f"[排程审查后] VISIT节点({len(post_review_visits)}): {post_review_visits}", flush=True)
+        print(f"[排程审查后] === 完整时间线 ===", flush=True)
+        for di, day in enumerate(result.get("days", [])):
+            for n in day.get("timeline", []):
+                print(f"  D{di+1} {n.get('time',''):>6} {n.get('action',''):<12} {n.get('memo','')[:40]} (shop_id={n.get('shop_id','')}, cat={n.get('category','')})", flush=True)
+        if pre_review_visits != post_review_visits:
+            lost = [v for v in pre_review_visits if v not in post_review_visits]
+            gained = [v for v in post_review_visits if v not in pre_review_visits]
+            print(f"[排程审查] ⚠️ VISIT节点变化! 丢失:{lost} 新增:{gained}", flush=True)
 
     # ── ⚠️ 目的地完整性验证：确保所有非餐类目的地都在 timeline 中有 VISIT 节点 ──
     MEAL_CATS_CHECK = {"restaurant", "hotpot", "japanese", "food", "dining", "buffet", "barbecue"}
@@ -8623,6 +8791,22 @@ def smart_schedule():
         for n in day.get("timeline", []):
             if n.get("action") == "VISIT":
                 final_visit_snapshot.append({"day": di+1, "shop_id": n.get("shop_id",""), "memo": (n.get("memo","") or "")[:40]})
+
+    # ── 写入排程结果缓存 ──
+    try:
+        _schedule_result_cache[cache_key] = {
+            "result": result,
+            "review_result": review_result,
+            "cached_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "num_shops": len(candidate_pool),
+            "trip_days": trip_days,
+        }
+        _save_schedule_result_cache()
+        elapsed = (datetime.now() - schedule_start).total_seconds()
+        mode_tag = "⚡fast" if fast_mode else "normal"
+        print(f"[排程缓存] 💾 已缓存排程结果 key={cache_key} ({len(candidate_pool)}POI {trip_days}天) 总耗时={elapsed:.1f}s [{mode_tag}]", flush=True)
+    except Exception as cache_err:
+        print(f"[排程缓存] ⚠️ 写入失败: {cache_err}", flush=True)
 
     return jsonify({
         "status": "SUCCESS",

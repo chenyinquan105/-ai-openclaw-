@@ -6424,7 +6424,7 @@ function _dismissActiveOverlay() {
   _activeOverlayEl = null;
 }
 
-// ===== 防坑指南推送弹窗（富内容版）=====
+// ===== 防坑指南推送弹窗（任务提醒白底卡片风格）=====
 function renderPitfallGuide(ev) {
   // 新弹窗自动替换旧弹窗
   _dismissActiveOverlay();
@@ -6437,10 +6437,10 @@ function renderPitfallGuide(ev) {
   // —— 全局提醒区 ——
   var remindersHtml = '';
   if (globalReminders.length > 0) {
-    remindersHtml = '<div style="background:#fef3c7;border-radius:16px;padding:12px;margin-bottom:12px;text-align:left;">';
-    remindersHtml += '<div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:6px;">🧳 出门必带 & 通用提醒</div>';
+    remindersHtml = '<div style="background:#f9fafb;border-radius:14px;padding:14px;margin-bottom:16px;text-align:left;">';
+    remindersHtml += '<div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px;">🧳 出门必带 · 通用提醒</div>';
     for (var ri = 0; ri < globalReminders.length; ri++) {
-      remindersHtml += '<div style="font-size:11px;color:#78350f;line-height:1.5;margin-bottom:3px;">• ' + _escHtml(globalReminders[ri]) + '</div>';
+      remindersHtml += '<div style="font-size:12px;color:#4b5563;line-height:1.6;margin-bottom:3px;">• ' + _escHtml(globalReminders[ri]) + '</div>';
     }
     remindersHtml += '</div>';
   }
@@ -6448,7 +6448,7 @@ function renderPitfallGuide(ev) {
   // —— 目的地防坑卡片区 ——
   var tipsHtml = '';
   if (destinationTips.length > 0) {
-    tipsHtml = '<div style="max-height:280px;overflow-y:auto;text-align:left;margin-bottom:12px;">';
+    tipsHtml = '<div style="max-height:260px;overflow-y:auto;text-align:left;margin-bottom:16px;">';
     for (var di = 0; di < destinationTips.length; di++) {
       var dt = destinationTips[di];
       var dtName = dt.name || ('目的地' + (di + 1));
@@ -6456,13 +6456,13 @@ function renderPitfallGuide(ev) {
       var dtTransport = dt.transport || '';
       var dtBestTime = dt.best_time || '';
 
-      tipsHtml += '<div style="background:#f9fafb;border-radius:16px;padding:12px;margin-bottom:8px;border-left:3px solid #f59e0b;">';
+      tipsHtml += '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;padding:12px;margin-bottom:8px;">';
       tipsHtml += '<div style="font-size:13px;font-weight:700;color:#1f2937;margin-bottom:6px;">📍 ' + _escHtml(dtName) + '</div>';
 
       if (dtTips.length > 0) {
         var showTips = dtTips.slice(0, 4);
         for (var ti = 0; ti < showTips.length; ti++) {
-          tipsHtml += '<div style="font-size:11px;color:#4b5563;line-height:1.5;margin-bottom:2px;padding-left:8px;">⚠️ ' + _escHtml(showTips[ti]) + '</div>';
+          tipsHtml += '<div style="font-size:11px;color:#4b5563;line-height:1.5;margin-bottom:2px;padding-left:4px;">⚠️ ' + _escHtml(showTips[ti]) + '</div>';
         }
         if (dtTips.length > 4) {
           tipsHtml += '<div style="font-size:10px;color:#9ca3af;">...还有' + (dtTips.length - 4) + '条提示</div>';
@@ -6470,11 +6470,11 @@ function renderPitfallGuide(ev) {
       }
 
       if (dtTransport) {
-        tipsHtml += '<div style="font-size:11px;color:#6b7280;margin-top:4px;padding-left:8px;">🚇 ' + _escHtml(dtTransport) + '</div>';
+        tipsHtml += '<div style="font-size:11px;color:#6b7280;margin-top:4px;padding-left:4px;">🚇 ' + _escHtml(dtTransport) + '</div>';
       }
 
       if (dtBestTime) {
-        tipsHtml += '<div style="font-size:11px;color:#6b7280;margin-top:2px;padding-left:8px;">⏰ ' + _escHtml(dtBestTime) + '</div>';
+        tipsHtml += '<div style="font-size:11px;color:#6b7280;margin-top:2px;padding-left:4px;">⏰ ' + _escHtml(dtBestTime) + '</div>';
       }
 
       tipsHtml += '</div>';
@@ -6493,14 +6493,14 @@ function renderPitfallGuide(ev) {
 
   var html =
     '<div id="pitfall-guide-overlay" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);">' +
-      '<div style="background:white;border-radius:24px;padding:20px;max-width:400px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">' +
-        '<div style="font-size:40px;margin-bottom:8px;">🛡️</div>' +
+      '<div style="background:white;border-radius:32px;padding:28px;max-width:400px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);text-align:center;animation:reminder-fade-in 0.35s ease-out;">' +
+        '<div style="width:52px;height:52px;margin:0 auto 12px;background:#eff6ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;">🛡️</div>' +
         '<h3 style="font-size:18px;font-weight:900;color:#1f2937;margin-bottom:4px;">今日防坑指南</h3>' +
-        '<p style="font-size:13px;color:#6b7280;margin-bottom:12px;">' + msg + '</p>' +
+        '<p style="font-size:13px;color:#6b7280;margin-bottom:16px;">' + msg + '</p>' +
         remindersHtml +
         tipsHtml +
         destList +
-        '<button onclick="_dismissActiveOverlay()" style="width:100%;background:#f59e0b;color:white;font-weight:700;padding:12px;border-radius:16px;border:none;font-size:15px;cursor:pointer;">知道了，出发！</button>' +
+        '<button onclick="_dismissActiveOverlay()" style="width:100%;background:#3b82f6;color:white;font-weight:700;padding:12px;border-radius:14px;border:none;font-size:15px;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background=\'#2563eb\'" onmouseout="this.style.background=\'#3b82f6\'">知道了，出发！</button>' +
       '</div>' +
     '</div>';
   var div = document.createElement('div');
@@ -6510,44 +6510,67 @@ function renderPitfallGuide(ev) {
   _activeOverlayEl = el;
 }
 
-// ===== 每日疲劳程度调研弹窗 =====
+// ===== 每日疲劳程度调研弹窗（任务提醒白底卡片风格）=====
 function renderFatigueSurvey(ev) {
   // 新弹窗自动替换旧弹窗
   _dismissActiveOverlay();
 
   var msg = ev.message || '';
   var dayLabel = ev.day_label || '';
-  var options = ev.survey_options || [
-    {value: 1, emoji: '😊', label: '轻松'},
-    {value: 2, emoji: '🙂', label: '适中'},
-    {value: 3, emoji: '😐', label: '有点累'},
-    {value: 4, emoji: '😫', label: '很累'},
-    {value: 5, emoji: '🥱', label: '极度疲劳'},
-  ];
   var fatigueInfo = ev.fatigue_info || {};
   var fatigueLabel = fatigueInfo.fatigue_label || '';
+  var fatiguePct = fatigueInfo.fatigue_pct;
+  if (fatiguePct === undefined || fatiguePct === null) fatiguePct = 0;
   var fatigueLevel = fatigueInfo.fatigue_level;
-  var infoHtml = '';
+
+  // —— 能量条（复用计划栏目样式） ——
+  var energyBarHtml = '';
   if (fatigueLabel) {
-    infoHtml = '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px;">系统评估：' + fatigueLabel + '</p>';
+    var barColor = fatiguePct >= 60 ? '#ef4444' : (fatiguePct >= 40 ? '#f59e0b' : '#10b981');
+    var dotEmoji = fatiguePct >= 60 ? '🔴' : (fatiguePct >= 40 ? '🟡' : '🟢');
+    energyBarHtml = '<div style="background:#f9fafb;border-radius:14px;padding:14px;margin-bottom:16px;text-align:left;">';
+    energyBarHtml += '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">🧬 今日预计体力消耗</div>';
+    energyBarHtml += '<div style="display:flex;align-items:center;gap:8px;">';
+    energyBarHtml += '<span style="font-size:11px;font-weight:700;color:' + barColor + '">' + fatigueLabel + '</span>';
+    energyBarHtml += '<div style="flex:1;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;">';
+    energyBarHtml += '<div style="height:100%;border-radius:3px;width:' + fatiguePct + '%;background:' + barColor + ';transition:width 0.5s ease-out;"></div>';
+    energyBarHtml += '</div>';
+    energyBarHtml += '<span style="font-size:12px;font-weight:700;color:' + barColor + '">' + fatiguePct + '%</span>';
+    energyBarHtml += '</div>';
+    if (fatigueLevel !== undefined && fatigueLevel !== null) {
+      energyBarHtml += '<div style="font-size:10px;color:#9ca3af;margin-top:4px;">剩余体力: ' + fatigueLevel + '/100</div>';
+    }
+    energyBarHtml += '</div>';
   }
-  var btnsHtml = options.map(function(opt) {
-    return '<button onclick="submitFatigueSurvey(' + opt.value + ', \'' + (ev.date || '') + '\', \'' + (ev.day_index || 0) + '\')" style="flex:1;background:#f3f4f6;border:none;border-radius:12px;padding:10px 6px;cursor:pointer;font-size:13px;text-align:center;transition:all 0.2s;" onmouseover="this.style.background=\'#fef3c7\';this.style.transform=\'scale(1.05)\'" onmouseout="this.style.background=\'#f3f4f6\';this.style.transform=\'scale(1)\'">' +
-      '<div style="font-size:28px;">' + opt.emoji + '</div>' +
-      '<div style="font-size:11px;font-weight:700;color:#4b5563;margin-top:2px;">' + opt.label + '</div>' +
-    '</button>';
-  }).join('');
+
+  // —— 3个选项按钮（无emoji，分3行） ——
+  var options = ev.survey_options || [
+    {value: 1, label: '与预期相符'},
+    {value: 2, label: '比预期更累'},
+    {value: 3, label: '比预期更轻松'},
+  ];
+  var btnColors = [
+    {bg: '#f0f9ff', border: '#bae6fd', text: '#0369a1', hoverBg: '#e0f2fe'},
+    {bg: '#fff7ed', border: '#fed7aa', text: '#c2410c', hoverBg: '#ffedd5'},
+    {bg: '#f0fdf4', border: '#bbf7d0', text: '#166534', hoverBg: '#dcfce7'},
+  ];
+  var btnsHtml = '';
+  for (var oi = 0; oi < options.length; oi++) {
+    var opt = options[oi];
+    var bc = btnColors[oi] || btnColors[0];
+    btnsHtml += '<button onclick="submitFatigueSurvey(' + opt.value + ', \'' + (ev.date || '') + '\', \'' + (ev.day_index || 0) + '\')" style="display:block;width:100%;padding:14px;margin-bottom:8px;background:' + bc.bg + ';border:1px solid ' + bc.border + ';border-radius:14px;cursor:pointer;font-size:14px;font-weight:700;color:' + bc.text + ';text-align:center;transition:all 0.2s;" onmouseover="this.style.background=\'' + bc.hoverBg + '\'" onmouseout="this.style.background=\'' + bc.bg + '\'">' + opt.label + '</button>';
+  }
+
   var html =
     '<div id="fatigue-survey-dlg" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);">' +
-      '<div style="background:white;border-radius:24px;padding:24px;max-width:380px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">' +
-        '<div style="font-size:40px;margin-bottom:8px;">🌙</div>' +
-        '<h3 style="font-size:18px;font-weight:900;color:#1f2937;margin-bottom:4px;">每日疲劳程度调研</h3>' +
-        '<p style="font-size:13px;color:#6b7280;margin-bottom:4px;">' + dayLabel + '</p>' +
-        infoHtml +
-        '<p style="font-size:14px;color:#4b5563;line-height:1.5;margin-bottom:16px;">' + msg + '</p>' +
-        '<div style="display:flex;gap:6px;margin-bottom:12px;">' + btnsHtml + '</div>' +
-        '<textarea id="fatigue-note" placeholder="备注（选填）：哪里不舒服…" style="width:100%;border:1px solid #e5e7eb;border-radius:12px;padding:8px 12px;font-size:13px;resize:none;height:48px;box-sizing:border-box;"></textarea>' +
-        '<button onclick="submitFatigueSurvey(0, \'' + (ev.date || '') + '\', \'' + (ev.day_index || 0) + '\')" style="margin-top:12px;width:100%;background:#8b5cf6;color:white;font-weight:700;padding:12px;border-radius:16px;border:none;font-size:15px;cursor:pointer;">提交反馈</button>' +
+      '<div style="background:white;border-radius:32px;padding:28px;max-width:380px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);text-align:center;animation:reminder-fade-in 0.35s ease-out;">' +
+        '<div style="width:52px;height:52px;margin:0 auto 12px;background:#f5f3ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;">🌙</div>' +
+        '<h3 style="font-size:18px;font-weight:900;color:#1f2937;margin-bottom:2px;">每日疲劳调研</h3>' +
+        '<p style="font-size:12px;color:#9ca3af;margin-bottom:16px;">' + dayLabel + '</p>' +
+        energyBarHtml +
+        '<p style="font-size:14px;color:#4b5563;line-height:1.5;margin-bottom:14px;">' + msg + '</p>' +
+        '<div style="margin-bottom:12px;">' + btnsHtml + '</div>' +
+        '<textarea id="fatigue-note" placeholder="备注（选填）：哪里不舒服…" style="width:100%;border:1px solid #e5e7eb;border-radius:12px;padding:8px 12px;font-size:13px;resize:none;height:48px;box-sizing:border-box;font-family:inherit;"></textarea>' +
       '</div>' +
     '</div>';
   var div = document.createElement('div');
@@ -6568,18 +6591,7 @@ function submitFatigueSurvey(level, date, dayIndex) {
     day_index: dayIndex,
     timestamp: new Date().toISOString(),
   });
-  // 关闭弹窗
-  var dlg = document.getElementById('fatigue-survey-dlg');
-  if (dlg) dlg.remove();
-  _activeOverlayEl = null;
-  // toast 确认
-  var levelLabels = {0: '已记录', 1: '轻松', 2: '适中', 3: '有点累', 4: '很累', 5: '极度疲劳'};
-  var label = levelLabels[level] || '已记录';
-  if (typeof toast === 'function') {
-    toast('✅ 疲劳评估已提交：' + label, 3000);
-  }
-  clockLogEvent('📋 疲劳调研：' + label + (note ? ' (' + note + ')' : ''), 'info');
-  // 可选：发送到后端
+  // 发送到后端
   fetch(API_BASE + '/api/reminder/action', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -6591,6 +6603,23 @@ function submitFatigueSurvey(level, date, dayIndex) {
       day_index: dayIndex,
     }),
   }).catch(function() {});
+  // 替换弹窗内容为"已记录数据，晚安"
+  var dlg = document.getElementById('fatigue-survey-dlg');
+  if (dlg) {
+    var card = dlg.querySelector('div');
+    if (card) {
+      card.innerHTML = '<div style="text-align:center;padding:24px 0;">' +
+        '<div style="font-size:48px;margin-bottom:12px;">🌙</div>' +
+        '<div style="font-size:15px;color:#6b7280;margin-bottom:4px;">已记录数据</div>' +
+        '<div style="font-size:24px;font-weight:900;color:#1f2937;">晚安</div>' +
+        '</div>';
+    }
+    // 1.5秒后关闭
+    setTimeout(function() {
+      if (dlg.parentNode) dlg.remove();
+      if (_activeOverlayEl === dlg) _activeOverlayEl = null;
+    }, 1500);
+  }
 }
 
 function closeReminderDialog() {

@@ -1,0 +1,3669 @@
+{
+  "048f1449ae3e580c": {
+    "result": {
+      "days": [
+        {
+          "day_index": 0,
+          "label": "7/16 周四 · 第1天",
+          "pairs": [
+            [
+              "shopping",
+              "BJ_shop_001",
+              "王府井步行街"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "06:28",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床（✈️ 飞机09:43出发，出发城市）",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:13",
+              "action": "LEAVE_HOME",
+              "memo": "🏠 从家出发（出发城市 → 约90分钟到站点）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "08:43",
+              "action": "TO_STATION",
+              "memo": "🚗 到达出发✈️ 机场 · 安检/进站（提前60分钟）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 60
+            },
+            {
+              "time": "09:43",
+              "action": "OUTBOUND_JOURNEY",
+              "memo": "✈️ 飞机09:43出发",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "13:38",
+              "action": "ARRIVAL_TRANSIT",
+              "memo": "🚗 从北京大兴国际机场前往酒店（约68分钟）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 68
+            },
+            {
+              "time": "14:46",
+              "action": "HOTEL_CHECKIN",
+              "memo": "🏨 办理入住 · 安顿行李",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 30
+            },
+            {
+              "time": "18:00",
+              "action": "DINNER_NEEDED",
+              "memo": "⚠️ 晚餐（待补充）",
+              "category": "dinner_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "18:15",
+              "action": "VISIT",
+              "memo": "王府井步行街 🕐 营业时间未知",
+              "category": "shopping",
+              "shop_id": "BJ_shop_001",
+              "duration_minutes": 90,
+              "opentime": "未知"
+            },
+            {
+              "time": "22:30",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 90,
+          "total_travel_minutes": 92,
+          "route": [
+            [
+              39.509,
+              116.41
+            ],
+            [
+              39.914,
+              116.41
+            ],
+            [
+              39.916,
+              116.397
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_shop_001",
+              "name": "王府井步行街",
+              "category": "shopping",
+              "lat": 39.914,
+              "lng": 116.41,
+              "duration_minutes": 90,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_shop_001": {
+                "loc_id": "BJ_shop_001",
+                "lat": 39.914,
+                "lng": 116.41,
+                "name": "王府井步行街"
+              }
+            },
+            "distances": {
+              "checkin->BJ_shop_001": {
+                "distance_m": 1131,
+                "duration_minutes": 2,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.357,
+            "fatigue_level": 66.3,
+            "fatigue_label": "较累",
+            "fatigue_breakdown": [
+              {
+                "name": "从北京大兴国际机场前往酒店（约68分钟）",
+                "category": "汽车",
+                "drain": 17.7,
+                "start_time": "13:38",
+                "duration_hours": 1.1,
+                "is_noon": true
+              },
+              {
+                "name": "到达出发✈️ 机场 · 安检/进站（提前",
+                "category": "汽车",
+                "drain": 12.0,
+                "start_time": "08:43",
+                "duration_hours": 1.0,
+                "is_noon": false
+              },
+              {
+                "name": "王府井步行街 🕐 营业时间未知",
+                "category": "shopping",
+                "drain": 6.0,
+                "start_time": "18:15",
+                "duration_hours": 1.5,
+                "is_noon": false
+              },
+              {
+                "name": "从家出发（出发城市 → 约90分钟到站点",
+                "category": "汽车",
+                "drain": 0.0,
+                "start_time": "07:13",
+                "duration_hours": 0.0,
+                "is_noon": false
+              },
+              {
+                "name": "飞机09:43出发",
+                "category": "飞机",
+                "drain": 0.0,
+                "start_time": "09:43",
+                "duration_hours": 0.0,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "汽车": 3,
+              "飞机": 1,
+              "shopping": 1
+            },
+            "multi_day_multiplier": 1.0,
+            "strategy_reasoning": "今日1处购物、4项其他活动，预计消耗35%体力（较累），体力消耗较大，建议坚守原酒店休息",
+            "hotel_options": []
+          }
+        },
+        {
+          "day_index": 1,
+          "label": "7/17 周五 · 第2天",
+          "pairs": [
+            [
+              "scenic",
+              "BJ_scenic_001",
+              "故宫博物院"
+            ],
+            [
+              "scenic",
+              "BJ_scenic_005",
+              "天安门广场"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "07:30",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:50",
+              "action": "BREAKFAST_NEEDED",
+              "memo": "🥐 早餐（待添加）",
+              "category": "breakfast",
+              "shop_id": "",
+              "duration_minutes": 45
+            },
+            {
+              "time": "09:15",
+              "action": "VISIT",
+              "memo": "故宫博物院 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_001",
+              "duration_minutes": 240,
+              "opentime": "未知"
+            },
+            {
+              "time": "12:00",
+              "action": "LUNCH_NEEDED",
+              "memo": "⚠️ 午餐（待补充）",
+              "category": "lunch_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "13:30",
+              "action": "VISIT",
+              "memo": "天安门广场 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_005",
+              "duration_minutes": 90,
+              "opentime": "未知"
+            },
+            {
+              "time": "18:00",
+              "action": "DINNER_NEEDED",
+              "memo": "⚠️ 晚餐（待补充）",
+              "category": "dinner_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "19:15",
+              "action": "HOTEL_PENDING",
+              "memo": "🏨 返回酒店（待安排）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 30,
+              "opentime": "未知"
+            },
+            {
+              "time": "22:30",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 330,
+          "total_travel_minutes": 4,
+          "route": [
+            [
+              39.916,
+              116.397
+            ],
+            [
+              39.916,
+              116.397
+            ],
+            [
+              39.908,
+              116.397
+            ],
+            [
+              39.916,
+              116.397
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_scenic_001",
+              "name": "故宫博物院",
+              "category": "scenic",
+              "lat": 39.916,
+              "lng": 116.397,
+              "duration_minutes": 240,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            },
+            {
+              "task_id": "BJ_scenic_005",
+              "name": "天安门广场",
+              "category": "scenic",
+              "lat": 39.908,
+              "lng": 116.397,
+              "duration_minutes": 90,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_scenic_005": {
+                "loc_id": "BJ_scenic_005",
+                "lat": 39.908,
+                "lng": 116.397,
+                "name": "天安门广场"
+              },
+              "BJ_scenic_001": {
+                "loc_id": "BJ_scenic_001",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "故宫博物院"
+              }
+            },
+            "distances": {
+              "checkin->BJ_scenic_005": {
+                "distance_m": 890,
+                "duration_minutes": 2,
+                "mode": "地铁优先"
+              },
+              "checkin->BJ_scenic_001": {
+                "distance_m": 0,
+                "duration_minutes": 0,
+                "mode": "地铁优先"
+              },
+              "BJ_scenic_005->BJ_scenic_001": {
+                "distance_m": 890,
+                "duration_minutes": 2,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "故宫博物院",
+            "天安门广场"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.475,
+            "fatigue_level": 56.5,
+            "fatigue_label": "较累",
+            "fatigue_breakdown": [
+              {
+                "name": "故宫博物院 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 30.5,
+                "start_time": "09:15",
+                "duration_hours": 4.0,
+                "is_noon": false
+              },
+              {
+                "name": "天安门广场 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 14.9,
+                "start_time": "13:30",
+                "duration_hours": 1.5,
+                "is_noon": true
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.2,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 2,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.09,
+            "strategy_reasoning": "今日2个景点、1项其他活动，预计消耗47%体力（较累），多日累积系数×1.09，体力消耗较大，建议坚守原酒店休息",
+            "hotel_options": []
+          }
+        },
+        {
+          "day_index": 2,
+          "label": "7/18 周六 · 第3天",
+          "pairs": [
+            [
+              "scenic",
+              "BJ_scenic_004",
+              "八达岭长城"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "07:30",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:40",
+              "action": "CHECK_OUT",
+              "memo": "🧳 办理退房 · 行李打包与托管（换住日专项准备）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 20
+            },
+            {
+              "time": "08:20",
+              "action": "BREAKFAST_NEEDED",
+              "memo": "🥐 早餐（待添加）",
+              "category": "breakfast",
+              "shop_id": "",
+              "duration_minutes": 45
+            },
+            {
+              "time": "09:35",
+              "action": "VISIT",
+              "memo": "八达岭长城 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_004",
+              "duration_minutes": 180,
+              "opentime": "未知"
+            },
+            {
+              "time": "12:00",
+              "action": "LUNCH_NEEDED",
+              "memo": "⚠️ 午餐（待补充）",
+              "category": "lunch_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "18:00",
+              "action": "DINNER_NEEDED",
+              "memo": "⚠️ 晚餐（待补充）",
+              "category": "dinner_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "19:15",
+              "action": "HOTEL_PENDING",
+              "memo": "🏨 返回酒店（待安排）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 30,
+              "opentime": "未知"
+            },
+            {
+              "time": "22:30",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 180,
+          "total_travel_minutes": 209,
+          "route": [
+            [
+              39.916,
+              116.397
+            ],
+            [
+              40.359,
+              116.02
+            ],
+            [
+              40.009,
+              116.298
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_scenic_004",
+              "name": "八达岭长城",
+              "category": "scenic",
+              "lat": 40.359,
+              "lng": 116.02,
+              "duration_minutes": 180,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_scenic_004": {
+                "loc_id": "BJ_scenic_004",
+                "lat": 40.359,
+                "lng": 116.02,
+                "name": "八达岭长城"
+              }
+            },
+            "distances": {
+              "checkin->BJ_scenic_004": {
+                "distance_m": 58767,
+                "duration_minutes": 118,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "八达岭长城"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_single_day",
+            "fatigue": 0.257,
+            "fatigue_level": 78.3,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "八达岭长城 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 23.5,
+                "start_time": "09:35",
+                "duration_hours": 3.0,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.2,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.12,
+            "strategy_reasoning": "今日1个景点、1项其他活动，预计消耗25%体力（适中），多日累积系数×1.12，行程结束较晚（22:30），建议坚守原酒店，避免深夜搬行李",
+            "hotel_options": [
+              {
+                "shop_id": "B0J6YGXBP0",
+                "name": "遇见未来·山泉私汤度假民宿(八达岭长城店)",
+                "rating": 4.8,
+                "lng": 115.999591,
+                "lat": 40.362393,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "18511019263",
+                "address": "八达岭镇岔道村22号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1771,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "Logo",
+                    "url": "https://store.is.autonavi.com/showpic/bb705505ac8a59d7e5d43e1d7a4bb32b"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B0J6YGXBP0/comment/c13c7cb0e58173092c3e5d86f788ff01_2048_2048_80.jpg"
+                  },
+                  {
+                    "provider": [],
+                    "title": "流光E-亲子私汤房",
+                    "url": "https://store.is.autonavi.com/showpic/f1f45b34da76c45277a35745bf3fce42"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0HA5MM719",
+                "name": "八达岭山边悠舍民宿",
+                "rating": 4.7,
+                "lng": 115.999813,
+                "lat": 40.361926,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "13141266909;13716296909",
+                "address": "八达岭镇岔道村东关298号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1743,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/9a298e7a9f746cf411e4e54a58c6c26c"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "http://store.is.autonavi.com/showpic/0f284b52a62b9c944e6a9cacce080210"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/d13c95a2ae940978221cc428ea08ced5"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B000A8UEGC",
+                "name": "八达岭长城老院子客栈",
+                "rating": 4.7,
+                "lng": 115.999137,
+                "lat": 40.362756,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-69121156;13581710623",
+                "address": "八达岭镇岔道村26号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1818,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/cf6abc1886fd77ea0ad776faf0166cf4"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/570aa82e1f1a6b14d684545037694d49"
+                  },
+                  {
+                    "provider": [],
+                    "title": "公共区域",
+                    "url": "https://store.is.autonavi.com/showpic/e3f475045058c1e6843a8a4840509345"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          }
+        },
+        {
+          "day_index": 3,
+          "label": "7/19 周日 · 第4天",
+          "pairs": [
+            [
+              "scenic",
+              "BJ_scenic_006",
+              "圆明园"
+            ],
+            [
+              "scenic",
+              "BJ_scenic_002",
+              "颐和园"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "07:30",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:40",
+              "action": "CHECK_OUT",
+              "memo": "🧳 办理退房 · 行李打包与托管（换住日专项准备）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 20
+            },
+            {
+              "time": "08:20",
+              "action": "BREAKFAST_NEEDED",
+              "memo": "🥐 早餐（待添加）",
+              "category": "breakfast",
+              "shop_id": "",
+              "duration_minutes": 45
+            },
+            {
+              "time": "09:35",
+              "action": "VISIT",
+              "memo": "圆明园 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_006",
+              "duration_minutes": 180,
+              "opentime": "未知"
+            },
+            {
+              "time": "12:00",
+              "action": "LUNCH_NEEDED",
+              "memo": "⚠️ 午餐（待补充）",
+              "category": "lunch_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "13:30",
+              "action": "VISIT",
+              "memo": "颐和园 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_002",
+              "duration_minutes": 210,
+              "opentime": "未知"
+            },
+            {
+              "time": "18:00",
+              "action": "DINNER_NEEDED",
+              "memo": "⚠️ 晚餐（待补充）",
+              "category": "dinner_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "19:15",
+              "action": "HOTEL_PENDING",
+              "memo": "🏨 返回酒店（待安排）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 30,
+              "opentime": "未知"
+            },
+            {
+              "time": "22:30",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 390,
+          "total_travel_minutes": 9,
+          "route": [
+            [
+              40.009,
+              116.298
+            ],
+            [
+              40.009,
+              116.298
+            ],
+            [
+              39.999,
+              116.275
+            ],
+            [
+              40.009,
+              116.298
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_scenic_006",
+              "name": "圆明园",
+              "category": "scenic",
+              "lat": 40.009,
+              "lng": 116.298,
+              "duration_minutes": 180,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            },
+            {
+              "task_id": "BJ_scenic_002",
+              "name": "颐和园",
+              "category": "scenic",
+              "lat": 39.999,
+              "lng": 116.275,
+              "duration_minutes": 210,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_scenic_006": {
+                "loc_id": "BJ_scenic_006",
+                "lat": 40.009,
+                "lng": 116.298,
+                "name": "圆明园"
+              },
+              "BJ_scenic_002": {
+                "loc_id": "BJ_scenic_002",
+                "lat": 39.999,
+                "lng": 116.275,
+                "name": "颐和园"
+              }
+            },
+            "distances": {
+              "checkin->BJ_scenic_006": {
+                "distance_m": 13347,
+                "duration_minutes": 27,
+                "mode": "地铁优先"
+              },
+              "checkin->BJ_scenic_002": {
+                "distance_m": 13903,
+                "duration_minutes": 28,
+                "mode": "地铁优先"
+              },
+              "BJ_scenic_006->BJ_scenic_002": {
+                "distance_m": 2253,
+                "duration_minutes": 5,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "圆明园",
+            "颐和园"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_cumulative",
+            "fatigue": 0.584,
+            "fatigue_level": 45.6,
+            "fatigue_label": "很累",
+            "fatigue_breakdown": [
+              {
+                "name": "颐和园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 33.9,
+                "start_time": "13:30",
+                "duration_hours": 3.5,
+                "is_noon": true
+              },
+              {
+                "name": "圆明园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 22.3,
+                "start_time": "09:35",
+                "duration_hours": 3.0,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.1,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 2,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.06,
+            "strategy_reasoning": "今日2个景点、1项其他活动，预计消耗58%体力（很累），多日累积系数×1.06，体力消耗较大，建议坚守原酒店休息",
+            "hotel_options": [
+              {
+                "shop_id": "B000A09C06",
+                "name": "达园宾馆",
+                "rating": 4.8,
+                "lng": 116.299663,
+                "lat": 40.000383,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-82153155;010-82153166",
+                "address": "福缘门路甲1号(近圆明园南门)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1192,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "海淀区",
+                "business_area": "西苑",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/18c8a929d9e80477b8022129ea9c0a6f"
+                  },
+                  {
+                    "provider": [],
+                    "title": "客房",
+                    "url": "https://store.is.autonavi.com/showpic/1f3697db7a6c6c6fae6e8cb6ca098177"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B000A09C06/comment/27330ba537e4896c27fa94f976329985_2048_2048_80.jpg"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B000A85X9P",
+                "name": "北京颐和宾馆",
+                "rating": 4.7,
+                "lng": 116.282141,
+                "lat": 39.999204,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-59879999",
+                "address": "颐和园宫门前街1号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 650,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "海淀区",
+                "business_area": "颐和园",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/b3634bfa85f08d844b3d7accd30d4d15"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B000A85X9P/comment/%5B2025-12-09-23-11-57%5D05FA62EE-754D-446A-AD8A-48347768021_1765293120687_96539932.jpg"
+                  },
+                  {
+                    "provider": [],
+                    "title": "御庭套房",
+                    "url": "https://store.is.autonavi.com/showpic/fb2feed70e0cf5f762521337780e64d5"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0FFJV6XYA",
+                "name": "秋果酒店(北京颐和园店)",
+                "rating": 4.7,
+                "lng": 116.270536,
+                "lat": 40.014475,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-86227470",
+                "address": "龙背村路101号(安河桥北地铁站B东北口步行360米)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1792,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "海淀区",
+                "business_area": "马连洼",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/68c632ab372dac94a50a2f5fd2dccfa5"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B0FFJV6XYA/comment/content_media_external_images_media_57523_1657794294377_8ed6a53e.jpg"
+                  },
+                  {
+                    "provider": [],
+                    "title": "优选温馨家庭房",
+                    "url": "https://store.is.autonavi.com/showpic/d2a170834b4902be03a9d9304c545a0c"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          }
+        },
+        {
+          "day_index": 4,
+          "label": "7/20 周一 · 第5天",
+          "pairs": [
+            [
+              "scenic",
+              "BJ_scenic_003",
+              "天坛公园"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "07:30",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:50",
+              "action": "BREAKFAST_NEEDED",
+              "memo": "🥐 早餐（待添加）",
+              "category": "breakfast",
+              "shop_id": "",
+              "duration_minutes": 45
+            },
+            {
+              "time": "09:15",
+              "action": "VISIT",
+              "memo": "天坛公园 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_003",
+              "duration_minutes": 150,
+              "opentime": "未知"
+            },
+            {
+              "time": "12:00",
+              "action": "LUNCH_NEEDED",
+              "memo": "⚠️ 午餐（待补充）",
+              "category": "lunch_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "16:13",
+              "action": "TO_STATION",
+              "memo": "🚗 从酒店前往北京大兴国际机场（约68分钟）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 68
+            },
+            {
+              "time": "17:43",
+              "action": "DEPARTURE",
+              "memo": "🔙 到达北京大兴国际机场 · ✈️ 机场安检进站（飞机18:43返程）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 60
+            },
+            {
+              "time": "18:43",
+              "action": "RETURN_JOURNEY",
+              "memo": "✈️ 飞机18:43出发 · 返程",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "23:13",
+              "action": "ARRIVE_HOME",
+              "memo": "🏠 到家（出发城市）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "23:43",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝（到家休息）",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 150,
+          "total_travel_minutes": 117,
+          "route": [
+            [
+              40.009,
+              116.298
+            ],
+            [
+              39.882,
+              116.406
+            ],
+            [
+              39.509,
+              116.41
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_scenic_003",
+              "name": "天坛公园",
+              "category": "scenic",
+              "lat": 39.882,
+              "lng": 116.406,
+              "duration_minutes": 150,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_scenic_003": {
+                "loc_id": "BJ_scenic_003",
+                "lat": 39.882,
+                "lng": 116.406,
+                "name": "天坛公园"
+              }
+            },
+            "distances": {
+              "checkin->BJ_scenic_003": {
+                "distance_m": 3858,
+                "duration_minutes": 8,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "天坛公园"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_cumulative",
+            "fatigue": 0.402,
+            "fatigue_level": 61.8,
+            "fatigue_label": "较累",
+            "fatigue_breakdown": [
+              {
+                "name": "天坛公园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 20.1,
+                "start_time": "09:15",
+                "duration_hours": 2.5,
+                "is_noon": false
+              },
+              {
+                "name": "从酒店前往北京大兴国际机场（约68分钟）",
+                "category": "汽车",
+                "drain": 15.6,
+                "start_time": "16:13",
+                "duration_hours": 1.1,
+                "is_noon": false
+              },
+              {
+                "name": "到达北京大兴国际机场 · ✈️ 机场安检",
+                "category": "步行",
+                "drain": 4.6,
+                "start_time": "17:43",
+                "duration_hours": 1.0,
+                "is_noon": false
+              },
+              {
+                "name": "飞机18:43出发 · 返程",
+                "category": "飞机",
+                "drain": 0.0,
+                "start_time": "18:43",
+                "duration_hours": 0.0,
+                "is_noon": false
+              },
+              {
+                "name": "到家（出发城市）",
+                "category": "步行",
+                "drain": 0.0,
+                "start_time": "23:13",
+                "duration_hours": 0.0,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "汽车": 1,
+              "步行": 2,
+              "飞机": 1
+            },
+            "multi_day_multiplier": 1.15,
+            "strategy_reasoning": "今日1个景点、4项其他活动，预计消耗40%体力（较累），多日累积系数×1.15，体力消耗较大，建议坚守原酒店休息",
+            "hotel_options": [
+              {
+                "shop_id": "B000A9DPER",
+                "name": "北京珺庭酒店",
+                "rating": 4.8,
+                "lng": 116.402451,
+                "lat": 39.889686,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-67010006;13683660408",
+                "address": "珠市口东大街18号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 907,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "珠市口",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/756ea9a9f6dacc51ccc00fda1152e01c"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "http://store.is.autonavi.com/showpic/c82a702a5c4101b0411504ef284018f9"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/d5ebe1fdcd2477bbb76fe3dafe69874f"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0JK9UA9DU",
+                "name": "康铂酒店(北京南站天坛公园店)",
+                "rating": 4.7,
+                "lng": 116.405044,
+                "lat": 39.87304,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-52171818;010-52171818,0",
+                "address": "永定门东街9号B",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1000,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "蒲黄榆",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/b2415765419617702798949400ce9a6a"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/145b2c22fc4d7af273bfc03218946f7f"
+                  },
+                  {
+                    "provider": [],
+                    "title": "商务大床房",
+                    "url": "https://store.is.autonavi.com/showpic/95bf3e90b2499e8b4e51becbb9f89a48"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0FFLANH7L",
+                "name": "北京天坛祈年大街亚朵轻居酒店",
+                "rating": 4.6,
+                "lng": 116.410044,
+                "lat": 39.88857,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-67012223;010-67012223,0",
+                "address": "天坛路85号(桥湾地铁站C东南口步行490米)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 808,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "珠市口",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/0ea218cdcd061c4834a553b52a669713"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/4b3a7b381251c9ee8e5d1a643147aa1c"
+                  },
+                  {
+                    "provider": [],
+                    "title": "精选双床房",
+                    "url": "https://store.is.autonavi.com/showpic/a0cad4629fe6062c75be3a609c6a180c"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          }
+        }
+      ],
+      "unassigned": [],
+      "overflow_notifications": [],
+      "pending_user_confirmation_meals": [],
+      "hotel_plan": [
+        {
+          "plan": "A",
+          "hotel_lat": 39.916,
+          "hotel_lng": 116.397,
+          "cost": 4.0,
+          "needs_change": false
+        },
+        {
+          "plan": "B",
+          "hotel_lat": 39.916,
+          "hotel_lng": 116.397,
+          "cost": 63.6,
+          "needs_change": true
+        },
+        {
+          "plan": "C",
+          "hotel_lat": 40.009,
+          "hotel_lng": 116.298,
+          "cost": 135.6,
+          "needs_change": true
+        },
+        {
+          "plan": "A",
+          "hotel_lat": 40.009,
+          "hotel_lng": 116.298,
+          "cost": 45.1,
+          "needs_change": false
+        }
+      ],
+      "algorithm_metadata": {
+        "cluster_method": "kmeans++",
+        "balance_variance": 6576.6,
+        "total_cost_km": 215.5,
+        "num_shops": 7,
+        "num_days": 5,
+        "schedule_reasoning": [
+          "第1天：王府井步行街作为当天主要游览目的地",
+          "第2天：天安门广场、故宫博物院地理位置相近，安排在同一天游览",
+          "第3天：八达岭长城作为当天主要游览目的地",
+          "第4天：圆明园、颐和园地理位置相近，安排在同一天游览",
+          "第5天：天坛公园作为当天主要游览目的地",
+          "有12餐待搜索补充，可点击展开详情查看"
+        ],
+        "travel_constraints": {
+          "day1_afternoon_ok": true,
+          "day1_evening_ok": true,
+          "last_day_morning_feasible": true,
+          "must_leave_hotel": "14:00"
+        },
+        "hotel_decisions": [
+          {
+            "day_index": 0,
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.357,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 66.3,
+            "fatigue_label": "较累",
+            "fatigue_breakdown": [
+              {
+                "name": "从北京大兴国际机场前往酒店（约68分钟）",
+                "category": "汽车",
+                "drain": 17.7,
+                "start_time": "13:38",
+                "duration_hours": 1.1,
+                "is_noon": true
+              },
+              {
+                "name": "到达出发✈️ 机场 · 安检/进站（提前",
+                "category": "汽车",
+                "drain": 12.0,
+                "start_time": "08:43",
+                "duration_hours": 1.0,
+                "is_noon": false
+              },
+              {
+                "name": "王府井步行街 🕐 营业时间未知",
+                "category": "shopping",
+                "drain": 6.0,
+                "start_time": "18:15",
+                "duration_hours": 1.5,
+                "is_noon": false
+              },
+              {
+                "name": "从家出发（出发城市 → 约90分钟到站点",
+                "category": "汽车",
+                "drain": 0.0,
+                "start_time": "07:13",
+                "duration_hours": 0.0,
+                "is_noon": false
+              },
+              {
+                "name": "飞机09:43出发",
+                "category": "飞机",
+                "drain": 0.0,
+                "start_time": "09:43",
+                "duration_hours": 0.0,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "汽车": 3,
+              "飞机": 1,
+              "shopping": 1
+            },
+            "multi_day_multiplier": 1.0,
+            "strategy_reasoning": "今日1处购物、4项其他活动，预计消耗35%体力（较累），体力消耗较大，建议坚守原酒店休息",
+            "end_time_minutes": 1350,
+            "time_saved_single": 2.9,
+            "time_saved_cumulative": 2.9,
+            "hotel_options": []
+          },
+          {
+            "day_index": 1,
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.475,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 56.5,
+            "fatigue_label": "较累",
+            "fatigue_breakdown": [
+              {
+                "name": "故宫博物院 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 30.5,
+                "start_time": "09:15",
+                "duration_hours": 4.0,
+                "is_noon": false
+              },
+              {
+                "name": "天安门广场 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 14.9,
+                "start_time": "13:30",
+                "duration_hours": 1.5,
+                "is_noon": true
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.2,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 2,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.09,
+            "strategy_reasoning": "今日2个景点、1项其他活动，预计消耗47%体力（较累），多日累积系数×1.09，体力消耗较大，建议坚守原酒店休息",
+            "end_time_minutes": 1350,
+            "time_saved_single": 0.0,
+            "time_saved_cumulative": 2.9,
+            "hotel_options": []
+          },
+          {
+            "day_index": 2,
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_single_day",
+            "fatigue": 0.257,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 78.3,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "八达岭长城 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 23.5,
+                "start_time": "09:35",
+                "duration_hours": 3.0,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.2,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.12,
+            "strategy_reasoning": "今日1个景点、1项其他活动，预计消耗25%体力（适中），多日累积系数×1.12，行程结束较晚（22:30），建议坚守原酒店，避免深夜搬行李",
+            "end_time_minutes": 1350,
+            "time_saved_single": 171.0,
+            "time_saved_cumulative": 173.9,
+            "hotel_options": [
+              {
+                "shop_id": "B0J6YGXBP0",
+                "name": "遇见未来·山泉私汤度假民宿(八达岭长城店)",
+                "rating": 4.8,
+                "lng": 115.999591,
+                "lat": 40.362393,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "18511019263",
+                "address": "八达岭镇岔道村22号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1771,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "Logo",
+                    "url": "https://store.is.autonavi.com/showpic/bb705505ac8a59d7e5d43e1d7a4bb32b"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B0J6YGXBP0/comment/c13c7cb0e58173092c3e5d86f788ff01_2048_2048_80.jpg"
+                  },
+                  {
+                    "provider": [],
+                    "title": "流光E-亲子私汤房",
+                    "url": "https://store.is.autonavi.com/showpic/f1f45b34da76c45277a35745bf3fce42"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0HA5MM719",
+                "name": "八达岭山边悠舍民宿",
+                "rating": 4.7,
+                "lng": 115.999813,
+                "lat": 40.361926,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "13141266909;13716296909",
+                "address": "八达岭镇岔道村东关298号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1743,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/9a298e7a9f746cf411e4e54a58c6c26c"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "http://store.is.autonavi.com/showpic/0f284b52a62b9c944e6a9cacce080210"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/d13c95a2ae940978221cc428ea08ced5"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B000A8UEGC",
+                "name": "八达岭长城老院子客栈",
+                "rating": 4.7,
+                "lng": 115.999137,
+                "lat": 40.362756,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-69121156;13581710623",
+                "address": "八达岭镇岔道村26号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1818,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/cf6abc1886fd77ea0ad776faf0166cf4"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/570aa82e1f1a6b14d684545037694d49"
+                  },
+                  {
+                    "provider": [],
+                    "title": "公共区域",
+                    "url": "https://store.is.autonavi.com/showpic/e3f475045058c1e6843a8a4840509345"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          },
+          {
+            "day_index": 3,
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_cumulative",
+            "fatigue": 0.584,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 45.6,
+            "fatigue_label": "很累",
+            "fatigue_breakdown": [
+              {
+                "name": "颐和园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 33.9,
+                "start_time": "13:30",
+                "duration_hours": 3.5,
+                "is_noon": true
+              },
+              {
+                "name": "圆明园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 22.3,
+                "start_time": "09:35",
+                "duration_hours": 3.0,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.1,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 2,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.06,
+            "strategy_reasoning": "今日2个景点、1项其他活动，预计消耗58%体力（很累），多日累积系数×1.06，体力消耗较大，建议坚守原酒店休息",
+            "end_time_minutes": 1350,
+            "time_saved_single": 37.2,
+            "time_saved_cumulative": 211.1,
+            "hotel_options": [
+              {
+                "shop_id": "B000A09C06",
+                "name": "达园宾馆",
+                "rating": 4.8,
+                "lng": 116.299663,
+                "lat": 40.000383,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-82153155;010-82153166",
+                "address": "福缘门路甲1号(近圆明园南门)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1192,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "海淀区",
+                "business_area": "西苑",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/18c8a929d9e80477b8022129ea9c0a6f"
+                  },
+                  {
+                    "provider": [],
+                    "title": "客房",
+                    "url": "https://store.is.autonavi.com/showpic/1f3697db7a6c6c6fae6e8cb6ca098177"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B000A09C06/comment/27330ba537e4896c27fa94f976329985_2048_2048_80.jpg"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B000A85X9P",
+                "name": "北京颐和宾馆",
+                "rating": 4.7,
+                "lng": 116.282141,
+                "lat": 39.999204,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-59879999",
+                "address": "颐和园宫门前街1号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 650,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "海淀区",
+                "business_area": "颐和园",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/b3634bfa85f08d844b3d7accd30d4d15"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B000A85X9P/comment/%5B2025-12-09-23-11-57%5D05FA62EE-754D-446A-AD8A-48347768021_1765293120687_96539932.jpg"
+                  },
+                  {
+                    "provider": [],
+                    "title": "御庭套房",
+                    "url": "https://store.is.autonavi.com/showpic/fb2feed70e0cf5f762521337780e64d5"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0FFJV6XYA",
+                "name": "秋果酒店(北京颐和园店)",
+                "rating": 4.7,
+                "lng": 116.270536,
+                "lat": 40.014475,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-86227470",
+                "address": "龙背村路101号(安河桥北地铁站B东北口步行360米)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1792,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "海淀区",
+                "business_area": "马连洼",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/68c632ab372dac94a50a2f5fd2dccfa5"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B0FFJV6XYA/comment/content_media_external_images_media_57523_1657794294377_8ed6a53e.jpg"
+                  },
+                  {
+                    "provider": [],
+                    "title": "优选温馨家庭房",
+                    "url": "https://store.is.autonavi.com/showpic/d2a170834b4902be03a9d9304c545a0c"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          },
+          {
+            "day_index": 4,
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_cumulative",
+            "fatigue": 0.402,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 61.8,
+            "fatigue_label": "较累",
+            "fatigue_breakdown": [
+              {
+                "name": "天坛公园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 20.1,
+                "start_time": "09:15",
+                "duration_hours": 2.5,
+                "is_noon": false
+              },
+              {
+                "name": "从酒店前往北京大兴国际机场（约68分钟）",
+                "category": "汽车",
+                "drain": 15.6,
+                "start_time": "16:13",
+                "duration_hours": 1.1,
+                "is_noon": false
+              },
+              {
+                "name": "到达北京大兴国际机场 · ✈️ 机场安检",
+                "category": "步行",
+                "drain": 4.6,
+                "start_time": "17:43",
+                "duration_hours": 1.0,
+                "is_noon": false
+              },
+              {
+                "name": "飞机18:43出发 · 返程",
+                "category": "飞机",
+                "drain": 0.0,
+                "start_time": "18:43",
+                "duration_hours": 0.0,
+                "is_noon": false
+              },
+              {
+                "name": "到家（出发城市）",
+                "category": "步行",
+                "drain": 0.0,
+                "start_time": "23:13",
+                "duration_hours": 0.0,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "汽车": 1,
+              "步行": 2,
+              "飞机": 1
+            },
+            "multi_day_multiplier": 1.15,
+            "strategy_reasoning": "今日1个景点、4项其他活动，预计消耗40%体力（较累），多日累积系数×1.15，体力消耗较大，建议坚守原酒店休息",
+            "end_time_minutes": 1423,
+            "time_saved_single": 8.9,
+            "time_saved_cumulative": 219.9,
+            "hotel_options": [
+              {
+                "shop_id": "B000A9DPER",
+                "name": "北京珺庭酒店",
+                "rating": 4.8,
+                "lng": 116.402451,
+                "lat": 39.889686,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-67010006;13683660408",
+                "address": "珠市口东大街18号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 907,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "珠市口",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/756ea9a9f6dacc51ccc00fda1152e01c"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "http://store.is.autonavi.com/showpic/c82a702a5c4101b0411504ef284018f9"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/d5ebe1fdcd2477bbb76fe3dafe69874f"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0JK9UA9DU",
+                "name": "康铂酒店(北京南站天坛公园店)",
+                "rating": 4.7,
+                "lng": 116.405044,
+                "lat": 39.87304,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-52171818;010-52171818,0",
+                "address": "永定门东街9号B",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1000,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "蒲黄榆",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/b2415765419617702798949400ce9a6a"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/145b2c22fc4d7af273bfc03218946f7f"
+                  },
+                  {
+                    "provider": [],
+                    "title": "商务大床房",
+                    "url": "https://store.is.autonavi.com/showpic/95bf3e90b2499e8b4e51becbb9f89a48"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0FFLANH7L",
+                "name": "北京天坛祈年大街亚朵轻居酒店",
+                "rating": 4.6,
+                "lng": 116.410044,
+                "lat": 39.88857,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-67012223;010-67012223,0",
+                "address": "天坛路85号(桥湾地铁站C东南口步行490米)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 808,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "珠市口",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/0ea218cdcd061c4834a553b52a669713"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/4b3a7b381251c9ee8e5d1a643147aa1c"
+                  },
+                  {
+                    "provider": [],
+                    "title": "精选双床房",
+                    "url": "https://store.is.autonavi.com/showpic/a0cad4629fe6062c75be3a609c6a180c"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          }
+        ]
+      },
+      "closed_conflicts": [],
+      "unknown_hours_shops": [
+        "故宫博物院",
+        "天安门广场",
+        "八达岭长城",
+        "圆明园",
+        "颐和园",
+        "天坛公园"
+      ],
+      "auto_meals_added": []
+    },
+    "review_result": {
+      "phase": "done",
+      "auto_fixes": [],
+      "questions": [],
+      "risk_flags": []
+    },
+    "cached_at": "2026-07-13 19:44:22",
+    "num_shops": 7,
+    "trip_days": 5
+  },
+  "1d8c3b81d0090364": {
+    "result": {
+      "days": [
+        {
+          "day_index": 0,
+          "label": "7/16 周四 · 第1天",
+          "pairs": [
+            [
+              "scenic",
+              "BJ_scenic_001",
+              "故宫博物院"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "04:45",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床（🚄 出发，出发城市）",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "05:30",
+              "action": "LEAVE_HOME",
+              "memo": "🏠 从家出发（出发城市 → 约90分钟到站点）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:00",
+              "action": "TO_STATION",
+              "memo": "🚗 到达出发🚄 车站 · 安检/进站（提前60分钟）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 60
+            },
+            {
+              "time": "09:15",
+              "action": "VISIT",
+              "memo": "故宫博物院 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_001",
+              "duration_minutes": 240,
+              "opentime": "未知"
+            },
+            {
+              "time": "13:00",
+              "action": "ARRIVAL_TRANSIT",
+              "memo": "🚗 从站点前往酒店（约30分钟）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 30
+            },
+            {
+              "time": "13:30",
+              "action": "HOTEL_CHECKIN",
+              "memo": "🏨 办理入住 · 安顿行李",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 30
+            },
+            {
+              "time": "18:00",
+              "action": "DINNER_NEEDED",
+              "memo": "⚠️ 晚餐（待补充）",
+              "category": "dinner_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "22:30",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 240,
+          "total_travel_minutes": 0,
+          "route": [
+            [
+              39.916,
+              116.397
+            ],
+            [
+              39.916,
+              116.397
+            ],
+            [
+              39.916,
+              116.397
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_scenic_001",
+              "name": "故宫博物院",
+              "category": "scenic",
+              "lat": 39.916,
+              "lng": 116.397,
+              "duration_minutes": 240,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_scenic_001": {
+                "loc_id": "BJ_scenic_001",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "故宫博物院"
+              }
+            },
+            "distances": {
+              "checkin->BJ_scenic_001": {
+                "distance_m": 0,
+                "duration_minutes": 0,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "故宫博物院"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.478,
+            "fatigue_level": 54.2,
+            "fatigue_label": "较累",
+            "fatigue_breakdown": [
+              {
+                "name": "故宫博物院 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 28.0,
+                "start_time": "09:15",
+                "duration_hours": 4.0,
+                "is_noon": false
+              },
+              {
+                "name": "到达出发🚄 车站 · 安检/进站（提前6",
+                "category": "汽车",
+                "drain": 12.0,
+                "start_time": "07:00",
+                "duration_hours": 1.0,
+                "is_noon": false
+              },
+              {
+                "name": "从站点前往酒店（约30分钟）",
+                "category": "汽车",
+                "drain": 7.8,
+                "start_time": "13:00",
+                "duration_hours": 0.5,
+                "is_noon": true
+              },
+              {
+                "name": "从家出发（出发城市 → 约90分钟到站点",
+                "category": "汽车",
+                "drain": 0.0,
+                "start_time": "05:30",
+                "duration_hours": 0.0,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "汽车": 3,
+              "scenic": 1
+            },
+            "multi_day_multiplier": 1.0,
+            "strategy_reasoning": "今日1个景点、3项其他活动，预计消耗47%体力（较累），体力消耗较大，建议坚守原酒店休息",
+            "hotel_options": []
+          }
+        },
+        {
+          "day_index": 1,
+          "label": "7/17 周五 · 第2天",
+          "pairs": [
+            [
+              "scenic",
+              "BJ_scenic_002",
+              "颐和园"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "07:30",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:50",
+              "action": "BREAKFAST_NEEDED",
+              "memo": "🥐 早餐（待添加）",
+              "category": "breakfast",
+              "shop_id": "",
+              "duration_minutes": 45
+            },
+            {
+              "time": "09:15",
+              "action": "VISIT",
+              "memo": "颐和园 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_002",
+              "duration_minutes": 210,
+              "opentime": "未知"
+            },
+            {
+              "time": "12:00",
+              "action": "LUNCH_NEEDED",
+              "memo": "⚠️ 午餐（待补充）",
+              "category": "lunch_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "18:00",
+              "action": "DINNER_NEEDED",
+              "memo": "⚠️ 晚餐（待补充）",
+              "category": "dinner_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "19:15",
+              "action": "HOTEL_PENDING",
+              "memo": "🏨 返回酒店（待安排）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 30,
+              "opentime": "未知"
+            },
+            {
+              "time": "22:30",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 210,
+          "total_travel_minutes": 56,
+          "route": [
+            [
+              39.916,
+              116.397
+            ],
+            [
+              39.999,
+              116.275
+            ],
+            [
+              39.916,
+              116.397
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_scenic_002",
+              "name": "颐和园",
+              "category": "scenic",
+              "lat": 39.999,
+              "lng": 116.275,
+              "duration_minutes": 210,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_scenic_002": {
+                "loc_id": "BJ_scenic_002",
+                "lat": 39.999,
+                "lng": 116.275,
+                "name": "颐和园"
+              }
+            },
+            "distances": {
+              "checkin->BJ_scenic_002": {
+                "distance_m": 13903,
+                "duration_minutes": 28,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "颐和园"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.297,
+            "fatigue_level": 74.3,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "颐和园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 27.4,
+                "start_time": "09:15",
+                "duration_hours": 3.5,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.2,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.12,
+            "strategy_reasoning": "今日1个景点、1项其他活动，预计消耗29%体力（适中），多日累积系数×1.12，行程结束较晚（22:30），建议坚守原酒店，避免深夜搬行李",
+            "hotel_options": []
+          }
+        },
+        {
+          "day_index": 2,
+          "label": "7/18 周六 · 第3天",
+          "pairs": [
+            [
+              "scenic",
+              "BJ_scenic_003",
+              "天坛公园"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "07:30",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:50",
+              "action": "BREAKFAST_NEEDED",
+              "memo": "🥐 早餐（待添加）",
+              "category": "breakfast",
+              "shop_id": "",
+              "duration_minutes": 45
+            },
+            {
+              "time": "09:15",
+              "action": "VISIT",
+              "memo": "天坛公园 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_003",
+              "duration_minutes": 150,
+              "opentime": "未知"
+            },
+            {
+              "time": "12:00",
+              "action": "LUNCH_NEEDED",
+              "memo": "⚠️ 午餐（待补充）",
+              "category": "lunch_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "18:00",
+              "action": "DINNER_NEEDED",
+              "memo": "⚠️ 晚餐（待补充）",
+              "category": "dinner_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "19:15",
+              "action": "HOTEL_PENDING",
+              "memo": "🏨 返回酒店（待安排）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 30,
+              "opentime": "未知"
+            },
+            {
+              "time": "22:30",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 150,
+          "total_travel_minutes": 8,
+          "route": [
+            [
+              39.916,
+              116.397
+            ],
+            [
+              39.882,
+              116.406
+            ],
+            [
+              39.882,
+              116.406
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_scenic_003",
+              "name": "天坛公园",
+              "category": "scenic",
+              "lat": 39.882,
+              "lng": 116.406,
+              "duration_minutes": 150,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_scenic_003": {
+                "loc_id": "BJ_scenic_003",
+                "lat": 39.882,
+                "lng": 116.406,
+                "name": "天坛公园"
+              }
+            },
+            "distances": {
+              "checkin->BJ_scenic_003": {
+                "distance_m": 3858,
+                "duration_minutes": 8,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "天坛公园"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.209,
+            "fatigue_level": 83.1,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "天坛公园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 18.8,
+                "start_time": "09:15",
+                "duration_hours": 2.5,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.1,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.07,
+            "strategy_reasoning": "今日1个景点、1项其他活动，预计消耗20%体力（适中），多日累积系数×1.07，行程结束较晚（22:30），建议坚守原酒店，避免深夜搬行李",
+            "hotel_options": []
+          }
+        },
+        {
+          "day_index": 3,
+          "label": "7/19 周日 · 第4天",
+          "pairs": [
+            [
+              "scenic",
+              "BJ_scenic_004",
+              "八达岭长城"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "07:30",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:40",
+              "action": "CHECK_OUT",
+              "memo": "🧳 办理退房 · 行李打包与托管（换住日专项准备）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 20
+            },
+            {
+              "time": "08:20",
+              "action": "BREAKFAST_NEEDED",
+              "memo": "🥐 早餐（待添加）",
+              "category": "breakfast",
+              "shop_id": "",
+              "duration_minutes": 45
+            },
+            {
+              "time": "09:35",
+              "action": "VISIT",
+              "memo": "八达岭长城 🕐 营业时间未知",
+              "category": "scenic",
+              "shop_id": "BJ_scenic_004",
+              "duration_minutes": 180,
+              "opentime": "未知"
+            },
+            {
+              "time": "12:00",
+              "action": "LUNCH_NEEDED",
+              "memo": "⚠️ 午餐（待补充）",
+              "category": "lunch_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "18:00",
+              "action": "DINNER_NEEDED",
+              "memo": "⚠️ 晚餐（待补充）",
+              "category": "dinner_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "19:15",
+              "action": "HOTEL_PENDING",
+              "memo": "🏨 返回酒店（待安排）",
+              "category": "hotel",
+              "shop_id": "",
+              "duration_minutes": 30,
+              "opentime": "未知"
+            },
+            {
+              "time": "22:30",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 180,
+          "total_travel_minutes": 249,
+          "route": [
+            [
+              39.882,
+              116.406
+            ],
+            [
+              40.359,
+              116.02
+            ],
+            [
+              39.882,
+              116.406
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_scenic_004",
+              "name": "八达岭长城",
+              "category": "scenic",
+              "lat": 40.359,
+              "lng": 116.02,
+              "duration_minutes": 180,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_scenic_004": {
+                "loc_id": "BJ_scenic_004",
+                "lat": 40.359,
+                "lng": 116.02,
+                "name": "八达岭长城"
+              }
+            },
+            "distances": {
+              "checkin->BJ_scenic_004": {
+                "distance_m": 58767,
+                "duration_minutes": 118,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "八达岭长城"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_single_day",
+            "fatigue": 0.242,
+            "fatigue_level": 79.8,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "八达岭长城 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 22.1,
+                "start_time": "09:35",
+                "duration_hours": 3.0,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.1,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.05,
+            "strategy_reasoning": "今日1个景点、1项其他活动，预计消耗24%体力（适中），行程结束较晚（22:30），建议坚守原酒店，避免深夜搬行李",
+            "hotel_options": [
+              {
+                "shop_id": "B0J6YGXBP0",
+                "name": "遇见未来·山泉私汤度假民宿(八达岭长城店)",
+                "rating": 4.8,
+                "lng": 115.999591,
+                "lat": 40.362393,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "18511019263",
+                "address": "八达岭镇岔道村22号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1771,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "Logo",
+                    "url": "https://store.is.autonavi.com/showpic/bb705505ac8a59d7e5d43e1d7a4bb32b"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B0J6YGXBP0/comment/c13c7cb0e58173092c3e5d86f788ff01_2048_2048_80.jpg"
+                  },
+                  {
+                    "provider": [],
+                    "title": "流光E-亲子私汤房",
+                    "url": "https://store.is.autonavi.com/showpic/f1f45b34da76c45277a35745bf3fce42"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0HA5MM719",
+                "name": "八达岭山边悠舍民宿",
+                "rating": 4.7,
+                "lng": 115.999813,
+                "lat": 40.361926,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "13141266909;13716296909",
+                "address": "八达岭镇岔道村东关298号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1743,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/9a298e7a9f746cf411e4e54a58c6c26c"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "http://store.is.autonavi.com/showpic/0f284b52a62b9c944e6a9cacce080210"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/d13c95a2ae940978221cc428ea08ced5"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B000A8UEGC",
+                "name": "八达岭长城老院子客栈",
+                "rating": 4.7,
+                "lng": 115.999137,
+                "lat": 40.362756,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-69121156;13581710623",
+                "address": "八达岭镇岔道村26号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1818,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/cf6abc1886fd77ea0ad776faf0166cf4"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/570aa82e1f1a6b14d684545037694d49"
+                  },
+                  {
+                    "provider": [],
+                    "title": "公共区域",
+                    "url": "https://store.is.autonavi.com/showpic/e3f475045058c1e6843a8a4840509345"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          }
+        },
+        {
+          "day_index": 4,
+          "label": "7/20 周一 · 第5天",
+          "pairs": [
+            [
+              "shopping",
+              "BJ_shop_001",
+              "王府井步行街"
+            ]
+          ],
+          "timeline": [
+            {
+              "time": "07:30",
+              "action": "WAKE_UP",
+              "memo": "⏰ 起床",
+              "category": "wake_up",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "07:50",
+              "action": "BREAKFAST_NEEDED",
+              "memo": "🥐 早餐（待添加）",
+              "category": "breakfast",
+              "shop_id": "",
+              "duration_minutes": 45
+            },
+            {
+              "time": "09:15",
+              "action": "VISIT",
+              "memo": "王府井步行街 🕐 营业时间未知",
+              "category": "shopping",
+              "shop_id": "BJ_shop_001",
+              "duration_minutes": 90,
+              "opentime": "未知"
+            },
+            {
+              "time": "12:00",
+              "action": "LUNCH_NEEDED",
+              "memo": "⚠️ 午餐（待补充）",
+              "category": "lunch_needed",
+              "shop_id": "",
+              "duration_minutes": 60,
+              "opentime": "未知"
+            },
+            {
+              "time": "15:30",
+              "action": "TO_STATION",
+              "memo": "🚗 从酒店前往返程站点（约90分钟）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 90
+            },
+            {
+              "time": "17:00",
+              "action": "DEPARTURE",
+              "memo": "🔙 到达站点 · 🚄 车站安检进站（返程）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 60
+            },
+            {
+              "time": "27:30",
+              "action": "ARRIVE_HOME",
+              "memo": "🏠 到家（出发城市）",
+              "category": "travel",
+              "shop_id": "",
+              "duration_minutes": 0
+            },
+            {
+              "time": "28:00",
+              "action": "BEDTIME",
+              "memo": "🌙 就寝（到家休息）",
+              "category": "bedtime",
+              "shop_id": "",
+              "duration_minutes": 0
+            }
+          ],
+          "total_duration_minutes": 90,
+          "total_travel_minutes": 9,
+          "route": [
+            [
+              39.882,
+              116.406
+            ],
+            [
+              39.914,
+              116.41
+            ],
+            [
+              39.916,
+              116.397
+            ]
+          ],
+          "task_list": [
+            {
+              "task_id": "BJ_shop_001",
+              "name": "王府井步行街",
+              "category": "shopping",
+              "lat": 39.914,
+              "lng": 116.41,
+              "duration_minutes": 90,
+              "human_needed": true,
+              "status": "scheduled",
+              "warnings": [],
+              "is_imputed": false
+            }
+          ],
+          "spatial_matrix": {
+            "locations": {
+              "checkin": {
+                "loc_id": "checkin",
+                "lat": 39.916,
+                "lng": 116.397,
+                "name": "酒店"
+              },
+              "BJ_shop_001": {
+                "loc_id": "BJ_shop_001",
+                "lat": 39.914,
+                "lng": 116.41,
+                "name": "王府井步行街"
+              }
+            },
+            "distances": {
+              "checkin->BJ_shop_001": {
+                "distance_m": 1131,
+                "duration_minutes": 2,
+                "mode": "地铁优先"
+              }
+            }
+          },
+          "closed_conflicts": [],
+          "unknown_hours_shops": [
+            "王府井步行街"
+          ],
+          "unassigned_meals": [],
+          "unassigned_shops": [],
+          "hotel_info": {
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_cumulative",
+            "fatigue": 0.297,
+            "fatigue_level": 72.3,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "从酒店前往返程站点（约90分钟）",
+                "category": "汽车",
+                "drain": 19.1,
+                "start_time": "15:30",
+                "duration_hours": 1.5,
+                "is_noon": false
+              },
+              {
+                "name": "王府井步行街 🕐 营业时间未知",
+                "category": "shopping",
+                "drain": 6.4,
+                "start_time": "09:15",
+                "duration_hours": 1.5,
+                "is_noon": false
+              },
+              {
+                "name": "到达站点 · 🚄 车站安检进站（返程）",
+                "category": "步行",
+                "drain": 4.2,
+                "start_time": "17:00",
+                "duration_hours": 1.0,
+                "is_noon": false
+              },
+              {
+                "name": "到家（出发城市）",
+                "category": "步行",
+                "drain": 0.0,
+                "start_time": "27:30",
+                "duration_hours": 0.0,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "shopping": 1,
+              "汽车": 1,
+              "步行": 2
+            },
+            "multi_day_multiplier": 1.06,
+            "strategy_reasoning": "今日1处购物、3项其他活动，预计消耗29%体力（适中），多日累积系数×1.06，行程结束较晚（28:00），建议坚守原酒店，避免深夜搬行李",
+            "hotel_options": [
+              {
+                "shop_id": "B0H6L7EQUZ",
+                "name": "北京王府井文华东方酒店",
+                "rating": 4.8,
+                "lng": 116.410063,
+                "lat": 39.912598,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-85098888",
+                "address": "王府井大街269号5F(王府井地铁站E3东北口步行370米)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 156,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "王府井",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/6eb0f6845d485250187c23955c554204"
+                  },
+                  {
+                    "provider": [],
+                    "title": "豪华客房",
+                    "url": "https://store.is.autonavi.com/showpic/5a42e8ca4fe76d1ab361f52e54ecfb1a"
+                  },
+                  {
+                    "provider": [],
+                    "title": "公共区域",
+                    "url": "https://store.is.autonavi.com/showpic/b948ed455f2445d7f5510041099358b2"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0H1CZ3WPZ",
+                "name": "北京天安门王府井步行街亚朵酒店",
+                "rating": 4.7,
+                "lng": 116.410542,
+                "lat": 39.914524,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-65131111",
+                "address": "菜场胡同与王府井西街交叉口往东约50米",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 74,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "东单",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "Logo",
+                    "url": "https://store.is.autonavi.com/showpic/265b09e9bf78da8000e82ae460e1f3e9"
+                  },
+                  {
+                    "provider": [],
+                    "title": "几木双床房",
+                    "url": "https://store.is.autonavi.com/showpic/7fcb07707e5eb0f8a507260a0aa77ef3"
+                  },
+                  {
+                    "provider": [],
+                    "title": "客房",
+                    "url": "https://store.is.autonavi.com/showpic/9852c1fb25a8b4fefd5bdfff2b0eabd3"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0FFKFWFQY",
+                "name": "北京天安门王府井桔子水晶酒店",
+                "rating": 4.7,
+                "lng": 116.410264,
+                "lat": 39.915126,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-65281101;010-65281101,0",
+                "address": "东华门街道东安门大街18号(王府井步行街银泰和apm商场西侧20米)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 127,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "王府井",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "Logo",
+                    "url": "https://store.is.autonavi.com/showpic/69202c15f9fb9492059a097660cea162"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/09bc04fb7ec84ca7ded119f4490a91e0"
+                  },
+                  {
+                    "provider": [],
+                    "title": "高级大床房",
+                    "url": "https://store.is.autonavi.com/showpic/ae911e45a0a516b974f41f85e04cb42b"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          }
+        }
+      ],
+      "unassigned": [],
+      "overflow_notifications": [],
+      "pending_user_confirmation_meals": [],
+      "hotel_plan": [
+        {
+          "plan": "A",
+          "hotel_lat": 39.916,
+          "hotel_lng": 116.397,
+          "cost": 27.8,
+          "needs_change": false
+        },
+        {
+          "plan": "A",
+          "hotel_lat": 39.916,
+          "hotel_lng": 116.397,
+          "cost": 37.7,
+          "needs_change": false
+        },
+        {
+          "plan": "B",
+          "hotel_lat": 39.882,
+          "hotel_lng": 116.406,
+          "cost": 75.8,
+          "needs_change": true
+        },
+        {
+          "plan": "A",
+          "hotel_lat": 39.882,
+          "hotel_lng": 116.406,
+          "cost": 155.6,
+          "needs_change": false
+        }
+      ],
+      "algorithm_metadata": {
+        "cluster_method": "kmeans++",
+        "balance_variance": 12597.8,
+        "total_cost_km": 161.0,
+        "num_shops": 5,
+        "num_days": 5,
+        "schedule_reasoning": [
+          "第1天：故宫博物院作为当天主要游览目的地",
+          "第2天：颐和园作为当天主要游览目的地",
+          "第3天：天坛公园作为当天主要游览目的地",
+          "第4天：八达岭长城作为当天主要游览目的地",
+          "第5天：王府井步行街作为当天主要游览目的地",
+          "有12餐待搜索补充，可点击展开详情查看"
+        ],
+        "travel_constraints": {
+          "day1_afternoon_ok": true,
+          "day1_evening_ok": true,
+          "last_day_morning_feasible": true,
+          "must_leave_hotel": null
+        },
+        "hotel_decisions": [
+          {
+            "day_index": 0,
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.478,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 54.2,
+            "fatigue_label": "较累",
+            "fatigue_breakdown": [
+              {
+                "name": "故宫博物院 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 28.0,
+                "start_time": "09:15",
+                "duration_hours": 4.0,
+                "is_noon": false
+              },
+              {
+                "name": "到达出发🚄 车站 · 安检/进站（提前6",
+                "category": "汽车",
+                "drain": 12.0,
+                "start_time": "07:00",
+                "duration_hours": 1.0,
+                "is_noon": false
+              },
+              {
+                "name": "从站点前往酒店（约30分钟）",
+                "category": "汽车",
+                "drain": 7.8,
+                "start_time": "13:00",
+                "duration_hours": 0.5,
+                "is_noon": true
+              },
+              {
+                "name": "从家出发（出发城市 → 约90分钟到站点",
+                "category": "汽车",
+                "drain": 0.0,
+                "start_time": "05:30",
+                "duration_hours": 0.0,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "汽车": 3,
+              "scenic": 1
+            },
+            "multi_day_multiplier": 1.0,
+            "strategy_reasoning": "今日1个景点、3项其他活动，预计消耗47%体力（较累），体力消耗较大，建议坚守原酒店休息",
+            "end_time_minutes": 1350,
+            "time_saved_single": 0.0,
+            "time_saved_cumulative": 0.0,
+            "hotel_options": []
+          },
+          {
+            "day_index": 1,
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.297,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 74.3,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "颐和园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 27.4,
+                "start_time": "09:15",
+                "duration_hours": 3.5,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.2,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.12,
+            "strategy_reasoning": "今日1个景点、1项其他活动，预计消耗29%体力（适中），多日累积系数×1.12，行程结束较晚（22:30），建议坚守原酒店，避免深夜搬行李",
+            "end_time_minutes": 1350,
+            "time_saved_single": 39.9,
+            "time_saved_cumulative": 39.9,
+            "hotel_options": []
+          },
+          {
+            "day_index": 2,
+            "strategy": "sustained",
+            "should_switch": false,
+            "reason": "below_threshold",
+            "fatigue": 0.209,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 83.1,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "天坛公园 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 18.8,
+                "start_time": "09:15",
+                "duration_hours": 2.5,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.1,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.07,
+            "strategy_reasoning": "今日1个景点、1项其他活动，预计消耗20%体力（适中），多日累积系数×1.07，行程结束较晚（22:30），建议坚守原酒店，避免深夜搬行李",
+            "end_time_minutes": 1350,
+            "time_saved_single": 8.9,
+            "time_saved_cumulative": 48.7,
+            "hotel_options": []
+          },
+          {
+            "day_index": 3,
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_single_day",
+            "fatigue": 0.242,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 79.8,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "八达岭长城 🕐 营业时间未知",
+                "category": "scenic",
+                "drain": 22.1,
+                "start_time": "09:35",
+                "duration_hours": 3.0,
+                "is_noon": false
+              },
+              {
+                "name": "返回酒店（待安排）",
+                "category": "步行",
+                "drain": 2.1,
+                "start_time": "19:15",
+                "duration_hours": 0.5,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "scenic": 1,
+              "步行": 1
+            },
+            "multi_day_multiplier": 1.05,
+            "strategy_reasoning": "今日1个景点、1项其他活动，预计消耗24%体力（适中），行程结束较晚（22:30），建议坚守原酒店，避免深夜搬行李",
+            "end_time_minutes": 1350,
+            "time_saved_single": 171.0,
+            "time_saved_cumulative": 219.7,
+            "hotel_options": [
+              {
+                "shop_id": "B0J6YGXBP0",
+                "name": "遇见未来·山泉私汤度假民宿(八达岭长城店)",
+                "rating": 4.8,
+                "lng": 115.999591,
+                "lat": 40.362393,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "18511019263",
+                "address": "八达岭镇岔道村22号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1771,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "Logo",
+                    "url": "https://store.is.autonavi.com/showpic/bb705505ac8a59d7e5d43e1d7a4bb32b"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://aos-comment.amap.com/B0J6YGXBP0/comment/c13c7cb0e58173092c3e5d86f788ff01_2048_2048_80.jpg"
+                  },
+                  {
+                    "provider": [],
+                    "title": "流光E-亲子私汤房",
+                    "url": "https://store.is.autonavi.com/showpic/f1f45b34da76c45277a35745bf3fce42"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0HA5MM719",
+                "name": "八达岭山边悠舍民宿",
+                "rating": 4.7,
+                "lng": 115.999813,
+                "lat": 40.361926,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "13141266909;13716296909",
+                "address": "八达岭镇岔道村东关298号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1743,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "酒店外观",
+                    "url": "https://store.is.autonavi.com/showpic/9a298e7a9f746cf411e4e54a58c6c26c"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "http://store.is.autonavi.com/showpic/0f284b52a62b9c944e6a9cacce080210"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/d13c95a2ae940978221cc428ea08ced5"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B000A8UEGC",
+                "name": "八达岭长城老院子客栈",
+                "rating": 4.7,
+                "lng": 115.999137,
+                "lat": 40.362756,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-69121156;13581710623",
+                "address": "八达岭镇岔道村26号",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 1818,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "延庆区",
+                "business_area": "八达岭",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/cf6abc1886fd77ea0ad776faf0166cf4"
+                  },
+                  {
+                    "provider": [],
+                    "title": "外观",
+                    "url": "https://store.is.autonavi.com/showpic/570aa82e1f1a6b14d684545037694d49"
+                  },
+                  {
+                    "provider": [],
+                    "title": "公共区域",
+                    "url": "https://store.is.autonavi.com/showpic/e3f475045058c1e6843a8a4840509345"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          },
+          {
+            "day_index": 4,
+            "strategy": "sustained",
+            "should_switch": true,
+            "reason": "roi_met_cumulative",
+            "fatigue": 0.297,
+            "fatigue_raw": 0.0,
+            "fatigue_level": 72.3,
+            "fatigue_label": "适中",
+            "fatigue_breakdown": [
+              {
+                "name": "从酒店前往返程站点（约90分钟）",
+                "category": "汽车",
+                "drain": 19.1,
+                "start_time": "15:30",
+                "duration_hours": 1.5,
+                "is_noon": false
+              },
+              {
+                "name": "王府井步行街 🕐 营业时间未知",
+                "category": "shopping",
+                "drain": 6.4,
+                "start_time": "09:15",
+                "duration_hours": 1.5,
+                "is_noon": false
+              },
+              {
+                "name": "到达站点 · 🚄 车站安检进站（返程）",
+                "category": "步行",
+                "drain": 4.2,
+                "start_time": "17:00",
+                "duration_hours": 1.0,
+                "is_noon": false
+              },
+              {
+                "name": "到家（出发城市）",
+                "category": "步行",
+                "drain": 0.0,
+                "start_time": "27:30",
+                "duration_hours": 0.0,
+                "is_noon": false
+              }
+            ],
+            "activity_summary": {
+              "shopping": 1,
+              "汽车": 1,
+              "步行": 2
+            },
+            "multi_day_multiplier": 1.06,
+            "strategy_reasoning": "今日1处购物、3项其他活动，预计消耗29%体力（适中），多日累积系数×1.06，行程结束较晚（28:00），建议坚守原酒店，避免深夜搬行李",
+            "end_time_minutes": 1680,
+            "time_saved_single": 2.9,
+            "time_saved_cumulative": 222.7,
+            "hotel_options": [
+              {
+                "shop_id": "B0H6L7EQUZ",
+                "name": "北京王府井文华东方酒店",
+                "rating": 4.8,
+                "lng": 116.410063,
+                "lat": 39.912598,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-85098888",
+                "address": "王府井大街269号5F(王府井地铁站E3东北口步行370米)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 156,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "王府井",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/6eb0f6845d485250187c23955c554204"
+                  },
+                  {
+                    "provider": [],
+                    "title": "豪华客房",
+                    "url": "https://store.is.autonavi.com/showpic/5a42e8ca4fe76d1ab361f52e54ecfb1a"
+                  },
+                  {
+                    "provider": [],
+                    "title": "公共区域",
+                    "url": "https://store.is.autonavi.com/showpic/b948ed455f2445d7f5510041099358b2"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0H1CZ3WPZ",
+                "name": "北京天安门王府井步行街亚朵酒店",
+                "rating": 4.7,
+                "lng": 116.410542,
+                "lat": 39.914524,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-65131111",
+                "address": "菜场胡同与王府井西街交叉口往东约50米",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 74,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "东单",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "Logo",
+                    "url": "https://store.is.autonavi.com/showpic/265b09e9bf78da8000e82ae460e1f3e9"
+                  },
+                  {
+                    "provider": [],
+                    "title": "几木双床房",
+                    "url": "https://store.is.autonavi.com/showpic/7fcb07707e5eb0f8a507260a0aa77ef3"
+                  },
+                  {
+                    "provider": [],
+                    "title": "客房",
+                    "url": "https://store.is.autonavi.com/showpic/9852c1fb25a8b4fefd5bdfff2b0eabd3"
+                  }
+                ],
+                "opentime": "未知"
+              },
+              {
+                "shop_id": "B0FFKFWFQY",
+                "name": "北京天安门王府井桔子水晶酒店",
+                "rating": 4.7,
+                "lng": 116.410264,
+                "lat": 39.915126,
+                "category": "restaurant",
+                "category_alias": "其他",
+                "human_needed": true,
+                "phone": "010-65281101;010-65281101,0",
+                "address": "东华门街道东安门大街18号(王府井步行街银泰和apm商场西侧20米)",
+                "signature_dishes": [],
+                "top_comments": [],
+                "distance": 127,
+                "pname": "北京市",
+                "cityname": "北京市",
+                "adname": "东城区",
+                "business_area": "王府井",
+                "photos": [
+                  {
+                    "provider": [],
+                    "title": "Logo",
+                    "url": "https://store.is.autonavi.com/showpic/69202c15f9fb9492059a097660cea162"
+                  },
+                  {
+                    "provider": [],
+                    "title": [],
+                    "url": "https://store.is.autonavi.com/showpic/09bc04fb7ec84ca7ded119f4490a91e0"
+                  },
+                  {
+                    "provider": [],
+                    "title": "高级大床房",
+                    "url": "https://store.is.autonavi.com/showpic/ae911e45a0a516b974f41f85e04cb42b"
+                  }
+                ],
+                "opentime": "未知"
+              }
+            ]
+          }
+        ]
+      },
+      "closed_conflicts": [],
+      "unknown_hours_shops": [
+        "故宫博物院",
+        "颐和园",
+        "天坛公园",
+        "八达岭长城",
+        "王府井步行街"
+      ],
+      "auto_meals_added": []
+    },
+    "review_result": {
+      "phase": "done",
+      "auto_fixes": [],
+      "questions": [],
+      "risk_flags": []
+    },
+    "cached_at": "2026-07-13 19:59:43",
+    "num_shops": 5,
+    "trip_days": 5
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "BJ_scenic_001": {
+    "duration_minutes": 240,
+    "fatigue_weight": 8.0,
+    "suitable_time": "day"
+  },
+  "BJ_scenic_002": {
+    "duration_minutes": 210,
+    "fatigue_weight": 7.0,
+    "suitable_time": "day"
+  },
+  "BJ_scenic_003": {
+    "duration_minutes": 150,
+    "fatigue_weight": 5.0,
+    "suitable_time": "day"
+  },
+  "BJ_scenic_004": {
+    "duration_minutes": 180,
+    "fatigue_weight": 10.0,
+    "suitable_time": "day"
+  },
+  "BJ_scenic_005": {
+    "duration_minutes": 90,
+    "fatigue_weight": 3.0,
+    "suitable_time": "both"
+  },
+  "BJ_scenic_006": {
+    "duration_minutes": 180,
+    "fatigue_weight": 6.0,
+    "suitable_time": "day"
+  },
+  "BJ_shop_001": {
+    "duration_minutes": 90,
+    "fatigue_weight": 2.0,
+    "suitable_time": "both"
+  }
+}
