@@ -467,6 +467,13 @@
 
  <hr class="border-gray-800">
 
+ <!-- 虚拟日期导航（独立于 clock-panel-body，始终可操作） -->
+ <div class="flex items-center justify-center gap-3 mb-1" id="clock-date-nav">
+ <button onclick="clockPrevDay()" id="clock-prev-day-btn" class="text-sm w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 border border-gray-700 transition text-white cursor-pointer">◀</button>
+ <span id="clock-date-display" class="text-sm font-bold text-yellow-400 tracking-wide">7月13日</span>
+ <button onclick="clockNextDay()" id="clock-next-day-btn" class="text-sm w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 border border-gray-700 transition text-white cursor-pointer">▶</button>
+ </div>
+
  <div id="clock-panel-body" class="space-y-4" style="opacity:0.4;pointer-events:none;">
 
  <!-- 时间显示 + 暂停/继续按钮 -->
@@ -1012,6 +1019,12 @@
         <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="weekly" class="sr-only" onchange="onRepeatChange()">每周</label>
         <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="once" class="sr-only" onchange="onRepeatChange()">仅一次</label>
       </div>
+    </div>
+    <!-- 日期选择 (repeat=once 时展开) -->
+    <div id="reminder-date-wrap" class="mb-3 hidden">
+      <p class="text-xs font-bold text-gray-500 mb-2">📅 提醒日期（具体到几月几号）</p>
+      <input id="reminder-date-val" type="date"
+             class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:border-blue-400 focus:outline-none transition">
     </div>
     <!-- 星期几选择 (repeat=weekly 时展开) -->
     <div id="reminder-weekdays-wrap" class="mb-3 hidden">
@@ -5146,6 +5159,10 @@ function clockTogglePower() {
             n.note = t.note || '';
             n.ring_mode = t.ring_mode || 'once';
           }
+          // 保留日期和 action 字段
+          if (t.date) n.date = t.date;
+          if (t.action) n.action = t.action;
+          if (t.day_index !== undefined) n.day_index = t.day_index;
           return n;
         });
         return clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes});
@@ -5286,6 +5303,7 @@ function clockUpdateUI(data) {
   const display = document.getElementById('clock-display');
   const playBtn = document.getElementById('clock-play-btn');
   const slider = document.getElementById('clock-slider');
+  const dateDisplay = document.getElementById('clock-date-display');
   if (data.virtual_time) {
     // ★ 关键：同步全局虚拟时间，同步全局虚拟时间
     window._clockVirtualTime = data.virtual_time;
@@ -5300,6 +5318,18 @@ function clockUpdateUI(data) {
       if (parseInt(slider.value) !== targetVal) {
         slider.value = targetVal;
       }
+    }
+  }
+  // 更新日期显示
+  if (dateDisplay && (data.current_date || data.current_date_display)) {
+    var dateStr = data.current_date_display || data.current_date || '';
+    var dayLabel = '';
+    if (data.virtual_day !== undefined) {
+      dayLabel = ' · 第' + (data.virtual_day + 1) + '天';
+    }
+    var newDateText = dateStr + dayLabel;
+    if (dateDisplay.textContent !== newDateText) {
+      dateDisplay.textContent = newDateText;
     }
   }
   // 暂停/继续按钮状态（防频闪：比较后再写）
@@ -5332,6 +5362,38 @@ function clockUpdateUI(data) {
       if (newEl) newEl.classList.add('border-green-400', 'bg-green-900/30');
     }
     _clockLastHighlightedSpeedBtn = targetSpeedBtnId;
+  }
+}
+
+// 日期导航（时钟未开启时也可查看日期，但不发请求）
+async function clockPrevDay() {
+  if (!clockPowerOn) {
+    clockLogEvent('⚠️ 请先开启虚拟时间控制台', 'alert');
+    return;
+  }
+  try {
+    var data = await clockFetch('POST', '/api/clock/jump_day', {delta: -1});
+    clockUpdateUI(Object.assign({}, data, {is_running: data.is_running}));
+    if (data.virtual_day !== undefined) {
+      clockLogEvent('📅 切换到 ' + (data.current_date_display || data.current_date || ('第' + (data.virtual_day + 1) + '天')), 'info');
+    }
+  } catch(e) {
+    console.error('clockPrevDay error:', e);
+  }
+}
+async function clockNextDay() {
+  if (!clockPowerOn) {
+    clockLogEvent('⚠️ 请先开启虚拟时间控制台', 'alert');
+    return;
+  }
+  try {
+    var data = await clockFetch('POST', '/api/clock/jump_day', {delta: 1});
+    clockUpdateUI(Object.assign({}, data, {is_running: data.is_running}));
+    if (data.virtual_day !== undefined) {
+      clockLogEvent('📅 切换到 ' + (data.current_date_display || data.current_date || ('第' + (data.virtual_day + 1) + '天')), 'info');
+    }
+  } catch(e) {
+    console.error('clockNextDay error:', e);
   }
 }
 
@@ -6085,6 +6147,20 @@ function handleReminderEvent(ev) {
     return true;
   }
 
+  // —— 防坑指南推送 ——
+  if (type === 'PITFALL_GUIDE') {
+    console.log('[handleReminderEvent] → renderPitfallGuide');
+    renderPitfallGuide(ev);
+    return true;
+  }
+
+  // —— 每日疲劳调研 ——
+  if (type === 'FATIGUE_SURVEY') {
+    console.log('[handleReminderEvent] → renderFatigueSurvey');
+    renderFatigueSurvey(ev);
+    return true;
+  }
+
   return false; // 不认识的类型，让调用方退回到 clockLogEvent
 }
 
@@ -6329,6 +6405,109 @@ function _playNotificationSound() {
     var a = _getAudioFallback();
     if (a) { a.currentTime = 0; a.play().catch(function(){}); console.log('[🔔] 使用Audio兜底'); }
   } catch(e) {}
+}
+
+// ===== 防坑指南推送弹窗 =====
+function renderPitfallGuide(ev) {
+  var msg = ev.message || '';
+  var destinations = ev.destinations || [];
+  var destList = '';
+  if (destinations.length > 0) {
+    destList = '<div style="margin-top:10px;font-size:12px;color:#6b7280;">' +
+      '📍 今日目的地：' + destinations.slice(0, 5).join(' · ') +
+      (destinations.length > 5 ? ' 等' + destinations.length + '个' : '') +
+      '</div>';
+  }
+  var html =
+    '<div style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);" onclick="this.remove()">' +
+      '<div style="background:white;border-radius:24px;padding:24px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;" onclick="event.stopPropagation()">' +
+        '<div style="font-size:48px;margin-bottom:12px;">🛡️</div>' +
+        '<h3 style="font-size:18px;font-weight:900;color:#1f2937;margin-bottom:8px;">今日防坑指南</h3>' +
+        '<p style="font-size:14px;color:#4b5563;line-height:1.6;margin-bottom:12px;">' + msg + '</p>' +
+        destList +
+        '<button onclick="this.closest(\'div[style]\').parentElement.remove()" style="margin-top:16px;width:100%;background:#f59e0b;color:white;font-weight:700;padding:12px;border-radius:16px;border:none;font-size:15px;cursor:pointer;">知道了，出发！</button>' +
+      '</div>' +
+    '</div>';
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstElementChild);
+}
+
+// ===== 每日疲劳程度调研弹窗 =====
+function renderFatigueSurvey(ev) {
+  var msg = ev.message || '';
+  var dayLabel = ev.day_label || '';
+  var options = ev.survey_options || [
+    {value: 1, emoji: '😊', label: '轻松'},
+    {value: 2, emoji: '🙂', label: '适中'},
+    {value: 3, emoji: '😐', label: '有点累'},
+    {value: 4, emoji: '😫', label: '很累'},
+    {value: 5, emoji: '🥱', label: '极度疲劳'},
+  ];
+  var fatigueInfo = ev.fatigue_info || {};
+  var fatigueLabel = fatigueInfo.fatigue_label || '';
+  var fatigueLevel = fatigueInfo.fatigue_level;
+  var infoHtml = '';
+  if (fatigueLabel) {
+    infoHtml = '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px;">系统评估：' + fatigueLabel + '</p>';
+  }
+  var btnsHtml = options.map(function(opt) {
+    return '<button onclick="submitFatigueSurvey(' + opt.value + ', \'' + (ev.date || '') + '\', \'' + (ev.day_index || 0) + '\')" style="flex:1;background:#f3f4f6;border:none;border-radius:12px;padding:10px 6px;cursor:pointer;font-size:13px;text-align:center;transition:all 0.2s;" onmouseover="this.style.background=\'#fef3c7\';this.style.transform=\'scale(1.05)\'" onmouseout="this.style.background=\'#f3f4f6\';this.style.transform=\'scale(1)\'">' +
+      '<div style="font-size:28px;">' + opt.emoji + '</div>' +
+      '<div style="font-size:11px;font-weight:700;color:#4b5563;margin-top:2px;">' + opt.label + '</div>' +
+    '</button>';
+  }).join('');
+  var html =
+    '<div id="fatigue-survey-dlg" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);" onclick="event.target===this && this.remove()">' +
+      '<div style="background:white;border-radius:24px;padding:24px;max-width:380px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;" onclick="event.stopPropagation()">' +
+        '<div style="font-size:40px;margin-bottom:8px;">🌙</div>' +
+        '<h3 style="font-size:18px;font-weight:900;color:#1f2937;margin-bottom:4px;">每日疲劳程度调研</h3>' +
+        '<p style="font-size:13px;color:#6b7280;margin-bottom:4px;">' + dayLabel + '</p>' +
+        infoHtml +
+        '<p style="font-size:14px;color:#4b5563;line-height:1.5;margin-bottom:16px;">' + msg + '</p>' +
+        '<div style="display:flex;gap:6px;margin-bottom:12px;">' + btnsHtml + '</div>' +
+        '<textarea id="fatigue-note" placeholder="备注（选填）：哪里不舒服…" style="width:100%;border:1px solid #e5e7eb;border-radius:12px;padding:8px 12px;font-size:13px;resize:none;height:48px;box-sizing:border-box;"></textarea>' +
+        '<button onclick="submitFatigueSurvey(0, \'' + (ev.date || '') + '\', \'' + (ev.day_index || 0) + '\')" style="margin-top:12px;width:100%;background:#8b5cf6;color:white;font-weight:700;padding:12px;border-radius:16px;border:none;font-size:15px;cursor:pointer;">提交反馈</button>' +
+      '</div>' +
+    '</div>';
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstElementChild);
+}
+
+function submitFatigueSurvey(level, date, dayIndex) {
+  var note = (document.getElementById('fatigue-note')?.value || '').trim();
+  // 存储到全局状态
+  if (!window._fatigueSurveys) window._fatigueSurveys = [];
+  window._fatigueSurveys.push({
+    level: level,
+    note: note,
+    date: date,
+    day_index: dayIndex,
+    timestamp: new Date().toISOString(),
+  });
+  // 关闭弹窗
+  var dlg = document.getElementById('fatigue-survey-dlg');
+  if (dlg) dlg.remove();
+  // toast 确认
+  var levelLabels = {0: '已记录', 1: '轻松', 2: '适中', 3: '有点累', 4: '很累', 5: '极度疲劳'};
+  var label = levelLabels[level] || '已记录';
+  if (typeof toast === 'function') {
+    toast('✅ 疲劳评估已提交：' + label, 3000);
+  }
+  clockLogEvent('📋 疲劳调研：' + label + (note ? ' (' + note + ')' : ''), 'info');
+  // 可选：发送到后端
+  fetch(API_BASE + '/api/reminder/action', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      action: 'fatigue_survey',
+      level: level,
+      note: note,
+      date: date,
+      day_index: dayIndex,
+    }),
+  }).catch(function() {});
 }
 
 function closeReminderDialog() {
@@ -7796,8 +7975,23 @@ function regenerateWaterSlots() {
 function onRepeatChange() {
   var repeatVal = (document.querySelector('input[name="rem-repeat"]:checked') || {}).value || 'daily';
   var weekdaysWrap = document.getElementById('reminder-weekdays-wrap');
+  var dateWrap = document.getElementById('reminder-date-wrap');
   if (weekdaysWrap) {
     weekdaysWrap.classList.toggle('hidden', repeatVal !== 'weekly');
+  }
+  if (dateWrap) {
+    dateWrap.classList.toggle('hidden', repeatVal !== 'once');
+    // 设置默认日期为当前虚拟日期或今天
+    if (repeatVal === 'once') {
+      var dateInput = document.getElementById('reminder-date-val');
+      if (dateInput && !dateInput.value) {
+        var today = new Date();
+        var yyyy = today.getFullYear();
+        var mm = String(today.getMonth() + 1).padStart(2, '0');
+        var dd = String(today.getDate()).padStart(2, '0');
+        dateInput.value = yyyy + '-' + mm + '-' + dd;
+      }
+    }
   }
 }
 
@@ -7948,7 +8142,8 @@ function confirmReminderCreate(presetTime) {
     content: content,
     pill_shape: _pillShape, pill_color: _pillColor, pill_color2: _pillColor2,
     med_name: (document.getElementById('reminder-med-name')?.value || '').trim(),
-    weekdays: weekdays
+    weekdays: weekdays,
+    date: repeatVal === 'once' ? ((document.getElementById('reminder-date-val')?.value || '').trim()) : ''
   };
   // WATER 类型附加字段
   if (type === 'WATER') {
@@ -7991,6 +8186,10 @@ function confirmReminderCreate(presetTime) {
             n.note = t.note || '';
             n.ring_mode = t.ring_mode || 'once';
           }
+          // 保留日期和 action 字段
+          if (t.date) n.date = t.date;
+          if (t.action) n.action = t.action;
+          if (t.day_index !== undefined) n.day_index = t.day_index;
           return n;
         });
         window._clockScheduleNodes = fullNodes;

@@ -1565,7 +1565,8 @@ def _sort_timeline_keep_wake_bedtime(timeline: list) -> list:
 
 
 def _inject_multi_day_reminders(schedule_result: dict) -> dict:
-    """将多日行程中的 WAKE_UP 和 BEDTIME 节点注册为持续响铃提醒。"""
+    """将多日行程中的 WAKE_UP 和 BEDTIME 节点注册为持续响铃提醒。
+    每个节点关联具体日期（而非全部同一天）。"""
     try:
         _tm = time_master.get_master()
         _cs = _tm.get_session(_CLOCK_SESSION_ID)
@@ -1581,13 +1582,19 @@ def _inject_multi_day_reminders(schedule_result: dict) -> dict:
         schedule_nodes = [n for n in existing if n.get("type") == "SCHEDULE"]
 
         # 收集多日行程提醒
-        reminder_nodes = []
-        trip_start_date = session_state.get("trip_start_date", "")
+        trip_start_date = session_state.get("trip_start_date", datetime.now().strftime("%Y-%m-%d"))
         trip_days = session_state.get("trip_days", 1)
 
+        # 计算每天的实际日期
+        from datetime import timedelta as _td
+        sd = datetime.strptime(trip_start_date, "%Y-%m-%d")
+
+        reminder_nodes = []
         for day in schedule_result.get("days", []):
             day_idx = day.get("day_index", 0)
             day_label = day.get("label", f"第{day_idx+1}天")
+            # 计算这一天的实际日期
+            day_date = (sd + _td(days=day_idx)).strftime("%Y-%m-%d")
 
             for node in day.get("timeline", []):
                 action = node.get("action", "")
@@ -1599,9 +1606,10 @@ def _inject_multi_day_reminders(schedule_result: dict) -> dict:
                         "id": node_id,
                         "time": node.get("time", "07:30" if is_wake else "22:00"),
                         "type": "CUSTOM",
+                        "action": action,  # 保留 action 用于触发防坑推送/疲劳调研
                         "label": label,
-                        "repeat": "daily" if trip_days > 1 else "once",
-                        "date": trip_start_date,
+                        "repeat": "once",  # 每天只在具体日期触发一次
+                        "date": day_date,  # 每-天使用独立的日期
                         "note": node.get("memo", ""),
                         "alarm_type": "persistent_ring",
                         "day_index": day_idx,
@@ -3665,6 +3673,8 @@ def _run_schedule():
             _old_nodes = list(_cs.schedule_nodes) if _cs.schedule_nodes else []
             _reminder_nodes = [n for n in _old_nodes if n.get("type") in ("WATER", "MED")]
             _schedule_nodes = _reminder_nodes[:]  # 先放提醒节点
+            # 获取行程日期（如果有）
+            _trip_date = session_state.get("trip_start_date", _cs.current_date_str or datetime.now().strftime("%Y-%m-%d"))
             for item in schedule_res["timeline"]:
                 _schedule_nodes.append({
                     "time": item["time"],
@@ -3673,6 +3683,7 @@ def _run_schedule():
                     "name": item.get("memo", ""),
                     "action": item.get("action", ""),
                     "target_location_id": item.get("target_location_id"),
+                    "date": _trip_date,  # 添加日期绑定
                 })
 
             _tm.set_schedule(_CLOCK_SESSION_ID, _schedule_nodes)
@@ -4598,8 +4609,12 @@ def clock_init():
     data = request.get_json() or {}
     tm = time_master.get_master()
     initial_time = data.get("initial_time", "08:00")
+    start_date = data.get("start_date", datetime.now().strftime("%Y-%m-%d"))
     nodes = data.get("schedule_nodes", [])
-    clock = tm.get_or_create_session(_CLOCK_SESSION_ID, initial_time=initial_time)
+    clock = tm.get_or_create_session(_CLOCK_SESSION_ID, initial_time=initial_time, start_date=start_date)
+    # 更新已有 session 的 start_date（如果之前未设置）
+    if not clock.start_date:
+        clock.start_date = start_date
     # 保留现有 WATER/MED 提醒节点，合并前端传的非提醒节点
     existing = list(clock.schedule_nodes) if clock.schedule_nodes else []
     reminder_nodes = [n for n in existing if n.get("type") in ("WATER", "MED")]
@@ -4607,8 +4622,11 @@ def clock_init():
     tm.set_schedule(_CLOCK_SESSION_ID, merged, initial_time=initial_time)
     h, m = initial_time.split(":")
     clock.virtual_minutes = float(int(h) * 60 + int(m))
+    clock.virtual_day = 0
     clock.is_running = False
     session_state["clock_enabled"] = True
+    # 存储 trip_start_date 供多日行程使用
+    session_state["trip_start_date"] = start_date
     return jsonify(clock.to_dict())
 
 
@@ -4646,6 +4664,18 @@ def clock_jump():
     tm = time_master.get_master()
     res = tm.jump(_CLOCK_SESSION_ID, target)
     _process_clock_triggers(res)
+    cs = tm.get_session(_CLOCK_SESSION_ID)
+    res["is_running"] = cs.is_running if cs else False
+    return jsonify(res)
+
+
+@app.route("/api/clock/jump_day", methods=["POST"])
+def clock_jump_day():
+    """日期导航：切换 virtual_day（+1 下一天，-1 上一天），保持当天时间不变"""
+    data = request.get_json() or {}
+    delta = int(data.get("delta", 0))
+    tm = time_master.get_master()
+    res = tm.jump_day(_CLOCK_SESSION_ID, delta)
     cs = tm.get_session(_CLOCK_SESSION_ID)
     res["is_running"] = cs.is_running if cs else False
     return jsonify(res)
@@ -4735,9 +4765,13 @@ def clock_set_schedule():
 
 
 def _process_clock_triggers(res: dict):
-    """时钟事件产生后，调用 reminder_skill 处理并注入事件队列"""
+    """时钟事件产生后，调用 reminder_skill 处理并注入事件队列。
+    同时处理 WAKE_UP（防坑指南推送）和 BEDTIME（疲劳调研）事件。"""
     ticked = res.get("ticked_minutes_list", [])
     events = res.get("triggered_nodes", [])
+    current_date = res.get("current_date", "")
+    virtual_day = res.get("virtual_day", 0)
+
     # 读取个人信息，注入到提醒管线
     profile = _read_profile()
     personal = profile.get("personal", {})
@@ -4748,19 +4782,40 @@ def _process_clock_triggers(res: dict):
         emergency_contact = f"{emergency_contact_name}：{emergency_contact_phone}"
     else:
         emergency_contact = ""
+
+    # 分离提醒类事件和行程类事件
+    reminder_events = [e for e in events if isinstance(e, dict) and e.get("type") in ("WATER", "MED", "CUSTOM")]
+    trip_events = [e for e in events if isinstance(e, dict) and e.get("action") in ("WAKE_UP", "BEDTIME")]
+
     # 始终调用 process_reminder_pipeline：
     # - 有新事件时：处理它们（响铃 + 状态初始化）
     # - 无新事件时：检查挂起事件是否超时（催促链）
     alerts = reminder_skill.process_reminder_pipeline(
-        _CLOCK_SESSION_ID, ticked, events, time_master.get_master(),
+        _CLOCK_SESSION_ID, ticked, reminder_events, time_master.get_master(),
         elder_name=elder_name,
         emergency_contact=emergency_contact,
     )
+
     # 将 reminder alerts 注入到 time_master 的事件队列
-    # 前端通过 /api/clock/events 拉取后会渲染为交互式 Dialog
     _tm = time_master.get_master()
     for alert in alerts:
         _tm.push_triggered_event(_CLOCK_SESSION_ID, alert)
+
+    # ——— 处理行程事件：WAKE_UP → 防坑指南推送，BEDTIME → 疲劳调研 ———
+    for ev in trip_events:
+        action = ev.get("action", "")
+        if action == "WAKE_UP":
+            # 推送防坑指南
+            pitfall_event = _build_pitfall_guide_event(ev, current_date, virtual_day)
+            if pitfall_event:
+                _tm.push_triggered_event(_CLOCK_SESSION_ID, pitfall_event)
+                alerts.append(pitfall_event)
+        elif action == "BEDTIME":
+            # 推送疲劳调研
+            fatigue_event = _build_fatigue_survey_event(ev, current_date, virtual_day)
+            if fatigue_event:
+                _tm.push_triggered_event(_CLOCK_SESSION_ID, fatigue_event)
+                alerts.append(fatigue_event)
 
     # ——— 诊断日志 ———
     if events:
@@ -4770,6 +4825,67 @@ def _process_clock_triggers(res: dict):
 
     # ——— SSE 广播：通知所有连接的客户端 ———
     _broadcast_sse_events(alerts if alerts else events)
+
+
+def _build_pitfall_guide_event(ev: dict, current_date: str, virtual_day: int) -> dict:
+    """根据 WAKE_UP 事件构建防坑指南推送事件"""
+    trip_days = session_state.get("days", [])
+    day_index = ev.get("day_index", virtual_day)
+    memo = ev.get("memo", "")
+    # 尝试获取当天目的地信息
+    day_shops = []
+    if day_index < len(trip_days):
+        day_data = trip_days[day_index]
+        task_list = day_data.get("task_list", [])
+        day_shops = [t.get("name", "") for t in task_list if t.get("name")]
+    return {
+        "type": "PITFALL_GUIDE",
+        "id": f"pitfall_{current_date}",
+        "time": ev.get("time", ""),
+        "date": current_date,
+        "label": "今日防坑指南",
+        "memo": memo,
+        "day_index": virtual_day,
+        "destinations": day_shops,
+        "message": f"早上好！今天是{current_date}，出发前查看今日防坑指南，避开常见陷阱。",
+    }
+
+
+def _build_fatigue_survey_event(ev: dict, current_date: str, virtual_day: int) -> dict:
+    """根据 BEDTIME 事件构建疲劳程度调研事件"""
+    trip_days = session_state.get("days", [])
+    day_index = ev.get("day_index", virtual_day)
+    day_label = f"第{virtual_day + 1}天"
+    # 获取当天疲劳分析数据（如果有）
+    fatigue_info = {}
+    if day_index < len(trip_days):
+        day_data = trip_days[day_index]
+        fatigue_detail = day_data.get("fatigue_detail", {})
+        if fatigue_detail:
+            fatigue_info = {
+                "fatigue_level": fatigue_detail.get("fatigue_level", 100),
+                "fatigue_label": fatigue_detail.get("fatigue_label", ""),
+                "fatigue_pct": fatigue_detail.get("fatigue_pct", 0),
+            }
+    return {
+        "type": "FATIGUE_SURVEY",
+        "id": f"fatigue_{current_date}",
+        "time": ev.get("time", ""),
+        "date": current_date,
+        "label": "每日疲劳调研",
+        "memo": ev.get("memo", ""),
+        "day_index": virtual_day,
+        "day_label": day_label,
+        "fatigue_info": fatigue_info,
+        "message": f"一天的行程结束啦！来做个简单的疲劳评估吧~（{day_label}）",
+        "survey_options": [
+            {"value": 1, "emoji": "😊", "label": "轻松"},
+            {"value": 2, "emoji": "🙂", "label": "适中"},
+            {"value": 3, "emoji": "😐", "label": "有点累"},
+            {"value": 4, "emoji": "😫", "label": "很累"},
+            {"value": 5, "emoji": "🥱", "label": "极度疲劳"},
+        ],
+    }
 
 
 # ======================================================================
@@ -5151,10 +5267,35 @@ def reminder_user_action():
     接收用户对服药提醒的交互响应（五步强闭环状态机）。
     输入：{"med_id": "med_001", "action": "1"|"2"|"swallow"}
     其中 "1" = 确认去拿药, "2" = 延后30分钟, "swallow" = 我已吞服药片
+    额外：{"action": "fatigue_survey", "level": 1-5, "note": "...", "date": "...", "day_index": 0}
     """
     data = request.get_json(silent=True) or {}
-    med_id = data.get("med_id", "")
     action = data.get("action", "")
+
+    # —— 疲劳调研 action（独立处理，不走药物状态机）——
+    if action == "fatigue_survey":
+        level = data.get("level", 0)
+        note = data.get("note", "")
+        date_str = data.get("date", "")
+        day_index = data.get("day_index", 0)
+        # 存储到 session_state
+        if "fatigue_surveys" not in session_state:
+            session_state["fatigue_surveys"] = []
+        session_state["fatigue_surveys"].append({
+            "level": level,
+            "note": note,
+            "date": date_str,
+            "day_index": day_index,
+            "timestamp": datetime.now().isoformat(),
+        })
+        app.logger.info(f'[FatigueSurvey] level={level} note={note} date={date_str} day={day_index}')
+        return jsonify({
+            "status": "SUCCESS",
+            "message": "疲劳调研已记录",
+            "stored": len(session_state["fatigue_surveys"]),
+        })
+
+    med_id = data.get("med_id", "")
     if not med_id or not action:
         return jsonify({"status": "ERROR", "message": "缺少 med_id 或 action"}), 400
 
