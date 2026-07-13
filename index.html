@@ -1015,9 +1015,9 @@
     <div class="mb-3">
       <p class="text-xs font-bold text-gray-500 mb-2">🔁 重复方式</p>
       <div class="flex gap-2" id="reminder-repeat-opts">
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="daily" checked class="sr-only" onchange="onRepeatChange()">每天</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="weekly" class="sr-only" onchange="onRepeatChange()">每周</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="once" class="sr-only" onchange="onRepeatChange()">仅一次</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="daily" checked class="absolute inset-0 opacity-0" onchange="onRepeatChange()">每天</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="weekly" class="absolute inset-0 opacity-0" onchange="onRepeatChange()">每周</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="once" class="absolute inset-0 opacity-0" onchange="onRepeatChange()">仅一次</label>
       </div>
     </div>
     <!-- 日期选择 (repeat=once 时展开) -->
@@ -1030,22 +1030,22 @@
     <div id="reminder-weekdays-wrap" class="mb-3 hidden">
       <p class="text-xs font-bold text-gray-500 mb-2">📅 选择星期几</p>
       <div class="flex gap-1.5" id="reminder-weekdays">
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="mon" class="sr-only">一</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="tue" class="sr-only">二</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="wed" class="sr-only">三</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="thu" class="sr-only">四</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="fri" class="sr-only">五</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sat" class="sr-only">六</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sun" class="sr-only">日</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="mon" class="absolute inset-0 opacity-0">一</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="tue" class="absolute inset-0 opacity-0">二</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="wed" class="absolute inset-0 opacity-0">三</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="thu" class="absolute inset-0 opacity-0">四</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="fri" class="absolute inset-0 opacity-0">五</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sat" class="absolute inset-0 opacity-0">六</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sun" class="absolute inset-0 opacity-0">日</label>
       </div>
     </div>
     <!-- 响铃模式 (仅MED) -->
     <div id="reminder-ring-opts" class="mb-3">
       <p class="text-xs font-bold text-gray-500 mb-2">🔔 响铃模式</p>
       <div class="flex gap-2">
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="once" checked class="sr-only">响铃一次</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="triple" class="sr-only">响铃三次</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="continuous" class="sr-only">持续响铃</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="once" checked class="absolute inset-0 opacity-0">响铃一次</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="triple" class="absolute inset-0 opacity-0">响铃三次</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="continuous" class="absolute inset-0 opacity-0">持续响铃</label>
       </div>
     </div>
     <!-- 备注 -->
@@ -1114,6 +1114,8 @@ const mainEl = document.getElementById('dynamic-content');
 
 // 首屏原始内容（硬编码示例），用户输入后会被动态替换
 let firstRun = true;
+// Demo模式：每次刷新弹出偏好设置demo面板（不调API，不存管家记忆）。上线前改为 false
+const DEMO_PREF_MODE = true;
 // 当前活跃的聊天卡片容器（品类选择等交互卡片），追加历史不覆盖
 let activeChatCard = null;
 
@@ -1571,6 +1573,12 @@ async function doSearch() {
             };
           })
         }];
+        if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
+        if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
+       } else if (data.name === 'start_trip' && data.result && data.result.data && data.result.data.categories) {
+        // ★ start_trip 返回品类面板数据 → 静默缓冲，走消息队列
+        var categories = data.result.data.categories;
+        pendingSearchCategories = categories;
         if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
         if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
        } else if (data.status === 'confirm_required') {
@@ -2499,7 +2507,7 @@ async function sendTripMessage() {
   if (chatArea) {
     // 用户气泡：白色背景，与主聊天 _addChatBubble('user') 一致
     chatArea.innerHTML += '<div class="flex justify-end mb-2"><div class="max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.06);">' + _escHtml(msg) + '</div></div>';
-    chatArea.innerHTML += '<div id="trip-loading-bubble" class="bg-gray-50 rounded-2xl p-3 mb-2 mr-8"><span class="typing-dots-inline"><span></span><span></span><span></span></span></div>';
+    chatArea.innerHTML += '<div id="trip-loading-bubble" class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in"><p class="text-sm text-gray-800">🔍 正在为您检索店铺...</p></div>';
     scrollToBottom();
   }
 
@@ -2528,9 +2536,39 @@ async function sendTripMessage() {
       if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">' + _escHtml(data.error) + '</p></div>';
       tripChatHistory.push({role: 'ai', text: data.error});
     } else if (data.phase === 'need_shop_selection') {
-      // 用户只说了品类没提店名 → 弹出询问气泡
-      tripChatHistory.push({role: 'ai', text: data.message || '需要我推荐几个吗？'});
-      _showTripShopAskBubble(data);
+      // 用户只说了品类没提店名 → 直接展示店铺面板
+      tripChatHistory.push({role: 'ai', text: data.message || '为您找到以下店铺：'});
+      if (chatArea) {
+        chatArea.innerHTML += '<div id="trip-shop-msg" class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in"><p class="text-sm text-gray-800">' + _escHtml(data.message || '为您找到以下店铺：') + '</p></div>';
+        scrollToBottom();
+      }
+      setTimeout(function() {
+        if (document.getElementById('trip-shop-msg')) {
+          document.getElementById('trip-shop-msg').remove();
+        }
+        _showTripShopPanel(data);
+      }, 800);
+    } else if (data.phase === 'multi_shop_selection') {
+      // 多品类同时搜索（如"理发顺便带狗洗澡"）
+      var categories = data.categories || [];
+      tripChatHistory.push({role: 'ai', text: data.message || '已为您找到以下店铺：'});
+      if (chatArea) {
+        chatArea.innerHTML += '<div id="trip-multi-shop-msg" class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in"><p class="text-sm text-gray-800">' + _escHtml(data.message || '已为您找到以下店铺：') + '</p></div>';
+        scrollToBottom();
+      }
+      // 延迟展示各品类店铺面板（2000ms 后开始，各品类间隔 300ms）
+      setTimeout(function() {
+        if (document.getElementById('trip-multi-shop-msg')) {
+          document.getElementById('trip-multi-shop-msg').remove();
+        }
+        for (var ci = 0; ci < categories.length; ci++) {
+          (function(catData, delay) {
+            setTimeout(function() {
+              _showTripShopPanel(catData);
+            }, delay);
+          })(categories[ci], ci * 300);
+        }
+      }, 2000);
     } else if (data.phase === 'swap_selection') {
       // 用户想换店 → 展示候选店铺面板
       tripChatHistory.push({role: 'ai', text: data.message || '为您找到以下替代店铺：'});
@@ -6637,6 +6675,11 @@ function closeReminderDialog() {
 
 /** 首次访问：检查是否需要显示偏好引导弹窗 */
 function initOnboarding() {
+  // Demo模式：每次刷新都弹出demo偏好面板（不调API，不存管家记忆）
+  if (DEMO_PREF_MODE) {
+    showDemoPrefPanel();
+    return;
+  }
   if (localStorage.getItem('meituan_onboarding_complete') === 'true') return;
   // 双重门控：查服务器是否已有定制偏好（老用户保护）
   fetch(API_BASE + '/api/profile/get')
@@ -6674,6 +6717,237 @@ function openPrefEdit() {
     .catch(function() {
       toast('❌ 无法获取偏好，请稍后重试');
     });
+}
+
+/** Demo偏好面板：每次刷新弹出，样式=偏好设置，但不调API不存管家记忆。
+ *  空白字段（称呼+紧急联系人）点击展开建议chip → 点击chip填入。 */
+function showDemoPrefPanel() {
+  var existing = document.getElementById('onboarding-overlay');
+  if (existing) existing.remove();
+
+  // ── helper: radio pill ──
+  function rp(name, val, label, isChecked) {
+    var c = isChecked ? ' checked' : '';
+    return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#374151;cursor:pointer;background:white;border:1.5px solid #e5e7eb;border-radius:10px;padding:6px 12px;margin:2px;white-space:nowrap;"><input type="radio" name="' + name + '" value="' + val + '"' + c + ' style="accent-color:#facc15;"> ' + label + '</label>';
+  }
+  function cp(name, val, label, isChecked) {
+    var c = isChecked ? ' checked' : '';
+    return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#374151;cursor:pointer;background:white;border:1.5px solid #e5e7eb;border-radius:10px;padding:6px 12px;margin:2px;white-space:nowrap;"><input type="checkbox" name="' + name + '" value="' + val + '"' + c + ' style="accent-color:#facc15;"> ' + label + '</label>';
+  }
+
+  // ── 可点击展开的空白字段 ──
+  function blankWithSuggestion(fieldId, label, placeholder, suggestValue) {
+    return '<div style="margin-bottom:12px;">' +
+      '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">' + label + '</p>' +
+      '<div id="' + fieldId + '_wrap" style="position:relative;">' +
+        '<div id="' + fieldId + '_blank" onclick="showDemoSuggestion(\'' + fieldId + '\', \'' + suggestValue.replace(/'/g, "\\'") + '\')" ' +
+          'style="border:2px dashed #d1d5db;border-radius:12px;padding:10px 14px;text-align:center;cursor:pointer;background:#fafafa;transition:all 0.2s;" ' +
+          'onmouseover="this.style.borderColor=\'#facc15\';this.style.background=\'#fffbeb\';" ' +
+          'onmouseout="this.style.borderColor=\'#d1d5db\';this.style.background=\'#fafafa\';" title="点击查看建议值">' +
+          '<span style="font-size:13px;color:#9ca3af;">' + placeholder + '</span>' +
+          '<span style="font-size:10px;color:#d1d5db;margin-left:4px;">▾</span>' +
+        '</div>' +
+        '<div id="' + fieldId + '_suggest" style="display:none;margin-top:6px;"></div>' +
+        '<div id="' + fieldId + '_filled" style="display:none;margin-top:0;"></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // ── 各 section ──
+
+  // 👤 个人身份
+  var personalSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">👤 个人身份</h4>' +
+    blankWithSuggestion('demo_elder', '对您的称呼', '点击选择称呼', '张爷爷') +
+    '</div>';
+
+  // 🌶️ 口味
+  var tasteSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">🌶️ 口味偏好</h4>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">辣度接受</p>' +
+    '<div style="margin-bottom:8px;">' +
+      rp('demo_tol', '无辣', '无辣', false) +
+      rp('demo_tol', '微辣', '微辣', true) +
+      rp('demo_tol', '中辣', '中辣', false) +
+      rp('demo_tol', '重辣', '重辣', false) +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">忌口 / 过敏</p>' +
+    '<div style="margin-bottom:8px;">' +
+      cp('demo_diet', '香菜', '香菜', false) +
+      cp('demo_diet', '海鲜过敏', '海鲜过敏', false) +
+      cp('demo_diet', '花生过敏', '花生过敏', true) +
+      cp('demo_diet', '乳糖不耐', '乳糖不耐', false) +
+      cp('demo_diet', '素食', '素食', false) +
+      cp('demo_diet', '清真', '清真', false) +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">偏好菜系</p>' +
+    '<div>' +
+      cp('demo_cui', '日料', '日料', false) +
+      cp('demo_cui', '轻食', '轻食', false) +
+      cp('demo_cui', '火锅', '火锅', true) +
+      cp('demo_cui', '粤菜', '粤菜', false) +
+      cp('demo_cui', '川菜', '川菜', true) +
+      cp('demo_cui', '韩料', '韩料', false) +
+      cp('demo_cui', '西餐', '西餐', false) +
+      cp('demo_cui', '东南亚菜', '东南亚菜', false) +
+      cp('demo_cui', '烧烤', '烧烤', false) +
+    '</div>' +
+    '</div>';
+
+  // 🚶 通勤
+  var commuteSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">🚶 通勤偏好</h4>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">步行容忍距离</p>' +
+    '<div style="margin-bottom:8px;">' +
+      rp('demo_walk', '500', '500m', false) +
+      rp('demo_walk', '800', '800m', true) +
+      rp('demo_walk', '1500', '1.5km', false) +
+      rp('demo_walk', '3000', '3km', false) +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">出行方式优先</p>' +
+    '<div>' +
+      rp('demo_trans', '步行优先', '步行优先', false) +
+      rp('demo_trans', '打车优先', '打车优先', false) +
+      rp('demo_trans', '地铁优先', '地铁优先', true) +
+    '</div>' +
+    '</div>';
+
+  // 💰 预算
+  var budgetSec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">💰 预算偏好</h4>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">消费水平</p>' +
+    '<div style="margin-bottom:5px;">' +
+      rp('demo_price', '经济', '经济实惠 (¥0-50/人)', false) +
+      rp('demo_price', '中端', '中端消费 (¥50-150/人)', true) +
+      rp('demo_price', '高端', '高端精致 (¥150+/人)', false) +
+    '</div>' +
+    '<p style="font-size:11px;font-weight:700;color:#6b7280;margin-bottom:5px;">最低评分要求</p>' +
+    '<div>' +
+      rp('demo_rate', '3.5', '⭐ 3.5 以上', false) +
+      rp('demo_rate', '4.0', '⭐ 4.0 以上', true) +
+      rp('demo_rate', '4.5', '⭐ 4.5 以上', false) +
+    '</div>' +
+    '</div>';
+
+  // 📞 紧急联系人
+  var emergencySec = '<div style="margin-bottom:16px;padding:14px;background:#f9fafb;border-radius:16px;">' +
+    '<h4 style="font-size:14px;font-weight:900;color:#111827;margin-bottom:10px;">📞 紧急联系人</h4>' +
+    blankWithSuggestion('demo_emerg_name', '联系人姓名', '点击选择姓名', '张大壮') +
+    blankWithSuggestion('demo_emerg_phone', '联系人电话', '点击选择电话', '13912345678') +
+    '</div>';
+
+  // ── 组装 HTML ──
+  var topHint = '<div style="text-align:center;font-size:12px;color:#6b7280;line-height:1.7;margin-bottom:16px;padding:10px 14px;background:#fffbeb;border-radius:12px;border:1px solid #fde68a;">🎯 花 30 秒填写一下偏好设置，方便小美更了解您 ✨</div>';
+
+  var html = '<div style="display:flex;flex-direction:column;height:100%;">' +
+    '<!-- 顶部 header -->' +
+    '<div style="flex-shrink:0;padding:24px 20px 12px 20px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+        '<h3 style="font-size:18px;font-weight:900;color:#111827;">⚙️ 个性化偏好设置</h3>' +
+        '<span onclick="closeDemoPrefPanel()" style="font-size:13px;color:#9ca3af;cursor:pointer;font-weight:600;">跳过</span>' +
+      '</div>' +
+      topHint +
+    '</div>' +
+    '<!-- 可滚动内容 -->' +
+    '<div style="flex:1;overflow-y:auto;padding:0 20px 20px 20px;">' +
+      personalSec + tasteSec + commuteSec + budgetSec + emergencySec +
+    '</div>' +
+    '<!-- 底部固定按钮 -->' +
+    '<div style="flex-shrink:0;padding:16px 20px;border-top:1px solid #f3f4f6;">' +
+      '<button onclick="closeDemoPrefPanel()" style="width:100%;background:#facc15;color:#000;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:15px;cursor:pointer;box-shadow:0 10px 30px -10px rgba(255,208,0,0.3);">✨ 保存偏好，开始使用</button>' +
+      '<button onclick="closeDemoPrefPanel()" style="width:100%;background:#f3f4f6;color:#6b7280;font-weight:700;padding:10px 0;border-radius:16px;border:none;font-size:13px;cursor:pointer;margin-top:8px;">以后再说</button>' +
+    '</div>' +
+  '</div>';
+
+  // 创建 overlay
+  var phoneFace = document.getElementById('main-face-front');
+  var overlay = document.createElement('div');
+  overlay.id = 'onboarding-overlay';
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:40;background:white;border-radius:40px;overflow:hidden;animation:reminder-fade-in 0.3s ease-out;';
+  overlay.innerHTML = html;
+  phoneFace.appendChild(overlay);
+
+  // Escape 键关闭
+  overlay._onbEscHandler = function(e) {
+    if (e.key === 'Escape') closeDemoPrefPanel();
+  };
+  document.addEventListener('keydown', overlay._onbEscHandler);
+
+  // Pill 高亮 change 委托
+  overlay.addEventListener('change', function(e) {
+    var inp = e.target;
+    if (!inp || !inp.name) return;
+    if (inp.type === 'radio') {
+      var radios = overlay.querySelectorAll('input[name="' + inp.name + '"]');
+      for (var i = 0; i < radios.length; i++) {
+        var r = radios[i];
+        var lbl = r.closest('label');
+        if (lbl) {
+          if (r.checked) { lbl.style.borderColor = '#facc15'; lbl.style.background = '#fef9c3'; }
+          else { lbl.style.borderColor = '#e5e7eb'; lbl.style.background = 'white'; }
+        }
+      }
+    } else if (inp.type === 'checkbox') {
+      var lbl = inp.closest('label');
+      if (lbl) {
+        if (inp.checked) { lbl.style.borderColor = '#facc15'; lbl.style.background = '#fef9c3'; }
+        else { lbl.style.borderColor = '#e5e7eb'; lbl.style.background = 'white'; }
+      }
+    }
+  });
+
+  // 初始高亮已 checked 的 radio/checkbox
+  setTimeout(function() {
+    var initChecked = overlay.querySelectorAll('input[type=radio]:checked, input[type=checkbox]:checked');
+    for (var i = 0; i < initChecked.length; i++) {
+      var inp = initChecked[i];
+      var lbl = inp.closest('label');
+      if (lbl) { lbl.style.borderColor = '#facc15'; lbl.style.background = '#fef9c3'; }
+    }
+  }, 50);
+}
+
+/** 关闭demo偏好面板 */
+function closeDemoPrefPanel() {
+  var overlay = document.getElementById('onboarding-overlay');
+  if (!overlay) return;
+  if (overlay._onbEscHandler) {
+    document.removeEventListener('keydown', overlay._onbEscHandler);
+  }
+  overlay.remove();
+}
+
+/** Demo空白字段点击：展开建议chip → 点击chip填入 */
+function showDemoSuggestion(fieldId, suggestValue) {
+  var blankEl = document.getElementById(fieldId + '_blank');
+  var suggestEl = document.getElementById(fieldId + '_suggest');
+  var filledEl = document.getElementById(fieldId + '_filled');
+
+  // 如果已经确认填入，不做任何事
+  if (filledEl && filledEl.style.display !== 'none') return;
+
+  // 如果建议已经展示中，点击chip → 确认填入
+  if (suggestEl && suggestEl.style.display !== 'none') {
+    // 确认填入
+    if (blankEl) blankEl.style.display = 'none';
+    suggestEl.style.display = 'none';
+    filledEl.innerHTML = '<div style="border:2px solid #10b981;border-radius:12px;padding:10px 14px;text-align:center;background:#f0fdf4;">' +
+      '<span style="font-size:10px;color:#10b981;font-weight:700;">✅ 已选择</span>' +
+      '<div style="font-size:14px;font-weight:900;color:#111827;margin-top:2px;">' + suggestValue + '</div>' +
+      '</div>';
+    filledEl.style.display = 'block';
+    return;
+  }
+
+  // 第一次点击空白：展开建议chip
+  if (blankEl) blankEl.style.display = 'none';
+  suggestEl.innerHTML = '<div onclick="showDemoSuggestion(\'' + fieldId + '\', \'' + suggestValue.replace(/'/g, "\\'") + '\')" ' +
+    'style="border:2px solid #facc15;border-radius:12px;padding:10px 14px;text-align:center;cursor:pointer;background:#fef9c3;transition:all 0.2s;animation:reminder-fade-in 0.25s ease-out;" ' +
+    'onmouseover="this.style.background=\'#fef08a\';" onmouseout="this.style.background=\'#fef9c3\';" title="点击确认选择">' +
+    '<span style="font-size:10px;color:#f59e0b;font-weight:700;">✨ 建议值（点击确认）</span>' +
+    '<div style="font-size:14px;font-weight:900;color:#111827;margin-top:2px;">' + suggestValue + '</div>' +
+    '</div>';
+  suggestEl.style.display = 'block';
 }
 
 /** 构建并显示偏好引导/编辑弹窗

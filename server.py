@@ -2912,6 +2912,58 @@ def api_edit_trip():
     if session_state.get("phase") != "done" and not session_state.get("selected_pairs"):
         return jsonify({"error": "没有活跃行程，请先发起一个行程"}), 400
 
+    # ═══════════════════════════════════════════════════════════════
+    # 多品类快路径：用户一句话含多个品类（如"理发顺便带狗洗澡"）
+    # 跳过 LLM，直接搜索全部品类并返回 multi_shop_selection
+    # ═══════════════════════════════════════════════════════════════
+    _multi_cats = _try_fast_category_match(edit_text)
+    _looks_like_add = any(kw in edit_text for kw in [
+        "想", "要", "帮我", "推荐", "找", "搜", "加", "去", "安排",
+        "顺便", "还有", "以及", "另外", "再", "也", "带", "顺便带",
+    ])
+    _has_swap_signal = any(kw in edit_text for kw in [
+        "换", "不要", "取消", "删", "改", "代替", "替换", "换成",
+    ])
+    if len(_multi_cats) >= 2 and _looks_like_add and not _has_swap_signal:
+        print(f"[edit_trip] 多品类快路径: {_multi_cats}，跳过 LLM", flush=True)
+        rating_cutoff = 3.5
+        profile = _load_profile_memory()
+        if profile:
+            rating_cutoff = profile.get("budget", {}).get("rating_cutoff", 3.5)
+        all_category_results = []
+        for cat in _multi_cats:
+            try:
+                search_res = backend.skill_poi.search_poi_matrix(
+                    center_coord=DEFAULT_CENTER_COORD,
+                    categories=[cat],
+                    radius_meters=5000,
+                    min_rating=rating_cutoff,
+                )
+                if search_res.get("status") == "SUCCESS":
+                    for c, shops in search_res.get("search_results", {}).items():
+                        if shops:
+                            shop_list = []
+                            for s in shops[:3]:
+                                s["coord"] = f"{s.get('lat','')},{s.get('lng','')}"
+                                agent.poi_cache[s["shop_id"]] = s
+                                shop_list.append(s)
+                            all_category_results.append({
+                                "category": c,
+                                "label": backend.CATEGORY_NAME_CN.get(c, c),
+                                "shops": shop_list,
+                            })
+            except Exception as e:
+                print(f"[edit_trip] 多品类快路径搜索 {cat} 失败: {e}", flush=True)
+
+        if all_category_results:
+            return jsonify({
+                "phase": "multi_shop_selection",
+                "categories": all_category_results,
+                "message": "已为您找到以下店铺：",
+            })
+        else:
+            return jsonify({"error": "附近未找到相关店铺，请换个关键词试试"}), 404
+
     # 用 LLM 解析编辑意图
     # ── 确认回调：用户已确认之前缓存的待确认操作 ──
     confirm_action = data.get("confirm_action")
@@ -3364,7 +3416,7 @@ def api_edit_trip():
                             "category": c,
                             "label": backend.CATEGORY_NAME_CN.get(c, kw),
                             "shops": shop_list,
-                            "message": f"您有常去的{backend.CATEGORY_NAME_CN.get(c, '')}吗？还是我推荐几个？"
+                            "message": f"为您找到以下{backend.CATEGORY_NAME_CN.get(c, '')}店铺："
                         })
                     # 有具体店名 → 匹配并自动添加
                     best = max(shops, key=lambda s: s.get("rating", 0))
@@ -6941,21 +6993,22 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
             result = _search_poi(agent, reqs, profile, center_coord=_infer_center_coord())
             if "error" in result:
                 return {"status": "ERROR", "message": result["error"]}
-            # 自动选top1
-            auto_pairs = []
-            for cat, shops in agent.poi_cache_per_category.items():
-                if shops:
-                    best = max(shops, key=lambda s: s.get("rating", 0))
-                    auto_pairs.append((cat, best["shop_id"], best["name"]))
-            if auto_pairs:
-                session_state["selected_pairs"] = auto_pairs
-                session_state["phase"] = "done"
-                schedule = _run_schedule_from_session()
-                if hasattr(schedule, 'get_json'):
-                    schedule = schedule.get_json()
-                return {"status": "SUCCESS", "data": schedule,
-                        "message": f"行程已生成: {len(auto_pairs)}个目的地"}
-            return {"status": "ERROR", "message": "未找到匹配目的地"}
+            # 构建前端品类选择面板数据（不再自动选店排程）
+            categories_data = _build_categories_for_frontend(agent, profile)
+            if not categories_data:
+                return {"status": "ERROR", "message": "未找到匹配目的地"}
+            _fast_cats = _try_fast_category_match(reqs)
+            is_multi = len(_fast_cats) >= 2
+            # 暂存到 session_state，供后续 confirmShopSelection 使用
+            session_state["_pending_start_trip_categories"] = categories_data
+            session_state["phase"] = "shop_selection"
+            session_state["transport"] = transport
+            return {
+                "status": "SUCCESS",
+                "phase": "multi_shop_selection" if is_multi else "need_shop_selection",
+                "data": {"categories": categories_data},
+                "message": "已为您找到以下店铺：" if is_multi else f"为您找到以下{backend.CATEGORY_NAME_CN.get(categories_data[0]['category'], '')}店铺：",
+            }
 
         # ── 编辑行程 ──
         elif tool_name == "edit_trip":
@@ -7024,7 +7077,7 @@ def _execute_chat_tool(tool_name: str, arguments: dict) -> dict:
                                         "category": c,
                                         "label": backend.CATEGORY_NAME_CN.get(c, kw),
                                         "shops": shop_list,
-                                        "message": f"您有常去的{backend.CATEGORY_NAME_CN.get(c, '')}吗？还是我推荐几个？"}
+                                        "message": f"为您找到以下{backend.CATEGORY_NAME_CN.get(c, '')}店铺："}
                             # 有具体店名 → 匹配并自动添加
                             best = max(shops, key=lambda s: s.get("rating", 0))
                             agent.poi_cache[best["shop_id"]] = best
@@ -7364,7 +7417,7 @@ def chat_stream():
 
     # 组装成自然语言的「管家备忘录」
     profile_lines = []
-    profile_lines.append(f"用户的名字是{user_display}，你必须用这个名字自然称呼他，不要用笼统的「你」。")
+    profile_lines.append(f"用户的名字是{user_display}，用这个名字自然称呼他即可，不要用笼统的「你」；但不要在每条回复开头都喊名字，只在关键确认时用。")
     if emergency_name:
         profile_lines.append(f"紧急联系人：{emergency_name}（{emergency_phone}）。")
     profile_lines.append(f"口味：辣度偏好「{spicy}」")
@@ -7475,7 +7528,7 @@ def chat_stream():
         "# 语气规则\n\n"
         f"- 自然称呼{user_display}，不用「您」\n"
         "- 适量用「呀」「嘛」「哈」「～」和 emoji（1-3个/条），不要刷屏\n"
-        "- 工具搜索结果会以面板展示。回复格式：先用一句温暖的话确认搜索动作（如「好的，帮你搜搜～」），再简要提1-2家推荐，最后引导用户查看面板。**不要**在文字里逐条列出所有店铺。\n"
+        "- 当搜索结果以面板展示时，只需简短一句（≤15字）引导用户查看面板即可，如「帮你找到了，在下面挑挑看～」。严禁在文字中逐一列出店铺、排时间、生成行程预览——这些信息都在面板里\n"
         "- 不要说自己是「AI」「助手」「机器人」「管家」——你是「小美」\n"
         "- 当需要用户确认操作时，用温暖但清晰的方式说明将要做什么，等用户确认后再执行"
         f"# 多日行程专用操作\n\n"
