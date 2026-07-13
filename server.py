@@ -1997,6 +1997,79 @@ def _try_fast_category_match(user_text: str) -> list:
     return cats
 
 
+def _detect_trip_intent(user_text: str) -> list | None:
+    """
+    检测用户消息是否包含「行程发起意图 + 品类关键词」。
+    返回品类码列表（如 ["hair", "pet"]）或 None。
+
+    正例（拦截 — 纯找店铺意图，无位置参照，无编辑意图）:
+    - "我要去理发顺便带我的狗洗个澡" → ["hair", "pet"]
+    - "帮我找个咖啡店" → ["cafe"]
+    - "想去吃火锅" → ["hotpot"]
+    - "我想理发" → ["hair"]
+
+    反例（不拦截 — 透传给 LLM）:
+    - "故宫附近有什么好吃的" → None (有位置参照，交给 _detect_location_search)
+    - "帮我把理发加到行程" → None (编辑行程)
+    - "火锅好吃吗" → None (问意见)
+    - "你好" → None (寒暄)
+    """
+    if not user_text or len(user_text.strip()) < 2:
+        return None
+
+    text = user_text.strip()
+
+    # 1. 检查品类关键词（复用 _try_fast_category_match）
+    cats = _try_fast_category_match(text)
+    if not cats:
+        return None
+
+    # 2. 排除位置参照（交给 _detect_location_search 处理）
+    _location_markers = ["附近", "周边", "旁边", "一带", "那边", "这块", "跟前", "左右"]
+    for lm in _location_markers:
+        if lm in text:
+            return None
+
+    # 3. 排除编辑/修改意图
+    _edit_signals = ["加到行程", "添加行程", "修改行程", "删除行程", "取消行程",
+                     "加进行程", "加到计划", "加入行程", "换成", "替换", "不要", "取消"]
+    for es in _edit_signals:
+        if es in text:
+            return None
+
+    # 4. 必须有行程发起信号
+    _trip_signals = [
+        "想去", "要去", "帮我找", "我想", "我要", "帮我搜", "给我找",
+        "帮我推荐", "给我推荐", "推荐一下", "找一下", "搜一下",
+        "顺便", "还有", "以及", "另外", "再.*也", "也.*再",
+        "帮我安排", "给我安排", "安排一下",
+        "想找", "要去找", "带我去", "带我.*去",
+        "带.*洗", "带.*做", "带.*去", "带.*逛", "带.*玩",  # "带狗洗澡" "带猫做检查"
+        "想\\s*(理发|吃|喝|去|洗|做|逛|玩|买|找)",  # "想理发" "想吃火锅"
+    ]
+    has_signal = False
+    for ts in _trip_signals:
+        if re.search(ts, text):
+            has_signal = True
+            break
+
+    # "去理发" "去吃饭" "带狗洗澡" — 动词+品类也视为行程发起
+    if not has_signal and re.search(r'(去|带)\s*(理发|吃饭|洗|做|逛|玩|买|吃|喝|狗|猫)', text):
+        has_signal = True
+
+    if not has_signal:
+        return None
+
+    # 5. 排除纯疑问句
+    _question_patterns = ["好吃吗", "怎么样", "在哪", "多少钱", "贵不贵", "好不好"]
+    for qp in _question_patterns:
+        if qp in text:
+            return None
+
+    print(f"[TripIntent] 检测到行程发起意图: {cats}", flush=True)
+    return cats
+
+
 def _detect_location_search(user_text: str) -> dict | None:
     """
     检测用户消息是否包含「具体地名 + 搜索意图」。
@@ -7468,33 +7541,7 @@ def chat_stream():
             context_info = f"多日行程({len(days)}天，目的地{dest})"
 
     system_prompt = (
-        "# 🧠 工作方式：分解思维\n\n"
-        "你不是关键词匹配机器人。面对用户的每条消息，请你按以下步骤思考：\n\n"
-        "**第1步：理解问题结构**\n"
-        "用户想做什么？消息里包含哪些关键维度？\n"
-        "- 时间维度：有没有提到具体日期/时段（如「6号上午」「下午」「今天」）？\n"
-        "- 地点维度：有没有提到具体地名/位置（如「故宫附近」「东来顺饭店旁边」）？\n"
-        "- 活动维度：想找什么类型的店铺或活动（吃喝/玩乐/出行）？\n"
-        "- 行程维度：是否涉及已有行程的查询或修改？\n\n"
-        "**第2步：确定工具和调用顺序**\n"
-        "根据问题结构，列出需要的工具，并确定正确的调用顺序。\n"
-        "- 如果涉及具体地名 + 搜索商户 → 先 geocode(地名) 获取坐标，再 search_nearby(坐标,关键词)\n"
-        "- 如果涉及日期 + 行程 → 先 get_trip_status 查看当天安排\n"
-        "- 如果是要找店铺但没提具体位置 → 用 search_poi 在你已知的默认位置搜索\n"
-        "- 简单信息查询（天气/排队）→ 直接调对应工具\n\n"
-        "**第3步：逐步执行**\n"
-        "一次调用一个工具，根据返回结果决定下一步。不要试图一次调用完成所有事情。\n\n"
-        "# 📍 位置感知搜索（重要！）\n\n"
-        "当用户提到具体地名时（如「XX附近」「XX旁边」「XX周边」），你必须：\n"
-        "1. 先调用 geocode(address=\"用户提到的地名\") 获取经纬度\n"
-        "2. 再用 search_nearby(lng=坐标.lng, lat=坐标.lat, keywords=\"用户想找的内容\") 搜索周边\n"
-        "**严禁**在用户明确提到地名时直接用 search_poi 搜默认位置！那样会搜错地方！\n"
-        "如果 geocode 返回失败（地名不存在），告诉用户你无法识别该位置，请他确认地名。\n"
-        "📍 搜索结果过滤\n"
-        "当搜索「XX附近/周边」时，如果搜索结果中包含 XX 自身（如搜「故宫」结果里有「故宫博物院」），\n"
-        "必须在总结时排除——用户问的是「附近」，不是问这个地方本身有什么。\n"
-        "只推荐与搜索地名不同的周边商户/景点。\n\n"
-        "# ⚠️ 核心铁律\n\n"
+        "# ⚠️ 核心铁律（最高优先级）\n\n"
         "你有工具可以搜索真实商户数据。当用户想找/吃/喝/玩/去某类店铺时，**必须调用搜索工具**。\n"
         "**绝对禁止**凭你的训练数据直接推荐具体店铺名称——你记忆中的店可能已关门、评分不准、距离未知。\n"
         "**绝对禁止**用文字回复代替工具调用。用户说「想吃火锅」→ 调 search_poi(keywords=\"火锅\")，而不是直接说「xx火锅店不错」。\n"
@@ -7508,37 +7555,36 @@ def chat_stream():
         f"{profile_summary}\n\n"
         f"系统状态：{context_info}\n"
         f"默认搜索位置坐标：{DEFAULT_CENTER_COORD}（当用户没有指定具体位置时使用此坐标搜索）\n\n"
-        "# 工具速查\n\n"
-        "搜索店铺（无具体位置）→ search_poi\n"
-        "地名→坐标 → geocode\n"
-        "指定坐标周边搜索 → search_nearby（需先 geocode）\n"
-        "出行规划 → start_trip / plan_route / hail_taxi / plan_transit\n"
-        "行程管理 → edit_trip / cancel_trip / get_trip_status\n"
-        "多日行程专用:\n"
-        "  - 添加活动: edit_trip(action=\"add_stop\", params={keywords:\"...\", day_index:N, time:\"HH:MM\"})\n"
-        "  - 删除活动: edit_trip(action=\"remove_stop\", params={name:\"...\", day_index:N})\n"
-        "  - 跨天移动: edit_trip(action=\"move_to_day\", params={target_name:\"...\", to_day:N, to_time:\"HH:MM\"})\n"
-        "  - 调整时间: edit_trip(action=\"change_time\", params={target_name:\"...\", time:\"HH:MM\", day_index:N})\n"
-        "  - day_index 从 0 开始（0=第1天），修改前先口头确认再调用工具\n"
-        "提醒管理 → add_reminder / remove_reminder / list_reminders\n"
-        "信息查询 → check_weather / check_queue / read_profile\n"
-        "偏好更新 → update_profile\n"
+        "# 意图 → 工具映射\n\n"
+        "第一步永远是判断用户意图，然后调用对应工具：\n\n"
+        "用户想找店铺（吃/喝/玩/理发/宠物/电影/健身/购物等）→ **必须调 search_poi**，keywords 从用户消息中提取品类关键词\n"
+        "用户要出行规划（排行程/路线/叫车/多目的地）→ 调 start_trip / plan_route / hail_taxi / plan_transit\n"
+        "用户要编辑已有行程（加/删/改/移动目的地）→ 调 edit_trip\n"
+        "用户表达个人信息（过敏/忌口/口味/预算）→ 调 update_profile\n"
+        "用户要提醒（喝水/吃药/自定义）→ 调 add_reminder / remove_reminder / list_reminders\n"
+        "用户查信息（天气/排队/行程）→ 调 check_weather / check_queue / get_trip_status\n"
         "纯问候/闲聊（仅限「你好」「谢谢」「晚安」等寒暄，无任何实质需求）→ 不调工具，温暖回应 1-3 句\n"
         "⚠️ 涉及地名+搜索意图（如「XX附近有什么」「帮我找XX周边的店」）不是闲聊！必须先调 geocode→search_nearby 实际搜索！\n\n"
+        "# 📍 位置感知搜索\n\n"
+        "当用户提到具体地名时（如「XX附近」「XX旁边」「XX周边」），你必须：\n"
+        "1. 先调用 geocode(address=\"用户提到的地名\") 获取经纬度\n"
+        "2. 再用 search_nearby(lng=坐标.lng, lat=坐标.lat, keywords=\"用户想找的内容\") 搜索周边\n"
+        "**严禁**在用户明确提到地名时直接用 search_poi 搜默认位置！\n"
+        "搜索结果中排除搜索地名本身（如搜「故宫附近」要排除「故宫博物院」），只推荐周边商户。\n\n"
+        "# 多日行程专用操作\n\n"
+        f"- 添加活动: edit_trip(action=\"add_stop\", params={{keywords: \"...\", day_index: N, time: \"HH:MM\"}})\n"
+        f"- 删除活动: edit_trip(action=\"remove_stop\", params={{name: \"...\", day_index: N}})\n"
+        f"- 移动活动跨天: edit_trip(action=\"move_to_day\", params={{target_name: \"...\", to_day: N, to_time: \"HH:MM\"}})\n"
+        f"- 调整时间: edit_trip(action=\"change_time\", params={{target_name: \"...\", time: \"HH:MM\", day_index: N}})\n"
+        f"- 替换活动: edit_trip(action=\"replace_stop\", params={{target_name: \"...\", keywords: \"...\", day_index: N}})\n"
+        f"- day_index 从0开始（0=第1天）；用户说「第2天」→ day_index=1\n"
+        f"- 修改前先口头确认，用户同意后再调用工具\n\n"
         "# 语气规则\n\n"
         f"- 自然称呼{user_display}，不用「您」\n"
         "- 适量用「呀」「嘛」「哈」「～」和 emoji（1-3个/条），不要刷屏\n"
         "- 当搜索结果以面板展示时，只需简短一句（≤15字）引导用户查看面板即可，如「帮你找到了，在下面挑挑看～」。严禁在文字中逐一列出店铺、排时间、生成行程预览——这些信息都在面板里\n"
         "- 不要说自己是「AI」「助手」「机器人」「管家」——你是「小美」\n"
-        "- 当需要用户确认操作时，用温暖但清晰的方式说明将要做什么，等用户确认后再执行"
-        f"# 多日行程专用操作\n\n"
-        f"- 添加活动 → edit_trip(action=\"add_stop\", params={{keywords: \"...\", day_index: N, time: \"HH:MM\"}})\n"
-        f"- 删除活动 → edit_trip(action=\"remove_stop\", params={{name: \"...\", day_index: N}})\n"
-        f"- 移动活动跨天 → edit_trip(action=\"move_to_day\", params={{target_name: \"...\", to_day: N, to_time: \"HH:MM\"}})\n"
-        f"- 调整某活动时间 → edit_trip(action=\"change_time\", params={{target_name: \"...\", time: \"HH:MM\", day_index: N}})\n"
-        f"- 替换活动 → edit_trip(action=\"replace_stop\", params={{target_name: \"...\", keywords: \"...\", day_index: N}})\n"
-        f"- 修改型操作前先口头确认，用户同意后再调用 edit_trip\n"
-        f"- day_index 从0开始（0=第1天）；用户说「第2天」→ day_index=1\n\n"
+        "- 当需要用户确认操作时，用温暖但清晰的方式说明将要做什么，等用户确认后再执行\n\n"
     )
 
     # ── 将多日上下文追加到 system prompt ──
@@ -7681,6 +7727,91 @@ def chat_stream():
                     yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': f'抱歉，没找到「{place}」的位置，换个说法试试～'}, ensure_ascii=False)}\n\n"
                     yield f"event: done\ndata: {json.dumps({'session_id': chat_session_id, 'status': 'complete'}, ensure_ascii=False)}\n\n"
                     return
+
+            # ═══════════════════════════════════════════════════════════════
+            # 预拦截：检测行程发起意图（品类关键词 + 发起信号），
+            # 直接搜索 POI 返回店铺选择面板（绕过 LLM tool calling）
+            # ═══════════════════════════════════════════════════════════════
+            _trip_cats = _detect_trip_intent(message)
+            if _trip_cats:
+                print(f"[TripIntercept] 检测到行程发起意图: {_trip_cats}，跳过 LLM 直接搜索", flush=True)
+                # 1. 重置会话状态
+                _reset_session()
+                agent.context_memory = []
+                session_state["user_input"] = message
+                session_state["transport"] = "步行"
+
+                # 2. 发射"正在搜索"文本
+                yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': '🔍 正在为您检索店铺...'}, ensure_ascii=False)}\n\n"
+
+                # 3. 模拟 search_poi tool_call（前端会显示 tool 状态气泡）
+                spo_call_id = f"call_direct_spo_{int(_time.time())}"
+                yield f"event: tool_call\ndata: {json.dumps({'id': spo_call_id, 'name': 'search_poi', 'arguments': {'keywords': message}, 'status': 'started'}, ensure_ascii=False)}\n\n"
+
+                # 4. 直接搜索 POI（复用 _search_poi 快路径）
+                profile = _read_profile()
+                session_state["_profile"] = profile
+                result = _search_poi(agent, message, profile, center_coord=_infer_center_coord())
+                if "error" in result:
+                    yield f"event: tool_result\ndata: {json.dumps({'id': spo_call_id, 'name': 'search_poi', 'status': 'failed', 'result': {'status': 'ERROR', 'message': result['error']}}, ensure_ascii=False)}\n\n"
+                    yield f"event: done\ndata: {json.dumps({'session_id': chat_session_id, 'status': 'complete'}, ensure_ascii=False)}\n\n"
+                    return
+
+                # 5. 构建前端品类选择面板数据
+                categories_data = _build_categories_for_frontend(agent, profile)
+                if not categories_data:
+                    yield f"event: tool_result\ndata: {json.dumps({'id': spo_call_id, 'name': 'search_poi', 'status': 'failed', 'result': {'status': 'ERROR', 'message': '未找到匹配目的地'}}, ensure_ascii=False)}\n\n"
+                    yield f"event: done\ndata: {json.dumps({'session_id': chat_session_id, 'status': 'complete'}, ensure_ascii=False)}\n\n"
+                    return
+
+                is_multi = len(_trip_cats) >= 2
+                # 暂存到 session_state，供后续 confirmShopSelection 使用
+                session_state["_pending_start_trip_categories"] = categories_data
+                session_state["phase"] = "shop_selection"
+
+                # 6. 发射 search_poi tool_result（带 categories 数据，前端 pendingSearchCategories 会捕获）
+                spo_result = {
+                    "status": "SUCCESS",
+                    "phase": "multi_shop_selection" if is_multi else "need_shop_selection",
+                    "data": {"categories": categories_data},
+                    "message": "已为您找到以下店铺：" if is_multi else f"为您找到以下{backend.CATEGORY_NAME_CN.get(categories_data[0]['category'], '')}店铺：",
+                }
+                yield f"event: tool_result\ndata: {json.dumps({'id': spo_call_id, 'name': 'search_poi', 'status': 'completed', 'result': spo_result}, ensure_ascii=False)}\n\n"
+
+                # 7. 保存搜索结果到历史
+                _append_chat_message("assistant", content="🔍 正在为您检索店铺...")
+                _append_chat_message("tool", tool_call_id=spo_call_id, name="search_poi",
+                                     content=json.dumps(spo_result, ensure_ascii=False))
+
+                # 8. 追加 system message 指示 LLM 仅做简短文本回复
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "[系统已自动搜索] 店铺选择面板已在下方展示。"
+                        "你现在是纯文本模式，只需回复≤10字引导用户查看面板，如「帮你找到了～」。"
+                        "⚠️ 你现在没有工具可用。只输出普通文本，禁止输出任何工具调用语法。"
+                        "严禁在文字中逐一列出店铺、排时间、生成行程预览——这些信息都在面板里。"
+                    )
+                })
+
+                # 9. 调用 LLM 纯文本回复（不带工具）
+                assistant_full_response = ""
+                generator2 = agent.chat_stream(messages, tools=None, max_tool_rounds=1)
+                for event_dict in generator2:
+                    evt = event_dict["event"]
+                    payload = event_dict["data"]
+                    if evt == "message":
+                        assistant_full_response += payload["content"]
+                        yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': payload['content']}, ensure_ascii=False)}\n\n"
+                    elif evt == "done":
+                        _sanitized = _sanitize_llm_text(assistant_full_response)
+                        if _sanitized:
+                            _append_chat_message("assistant", content=_sanitized)
+                    elif evt == "error":
+                        yield f"event: error\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+                yield f"event: done\ndata: {json.dumps({'session_id': chat_session_id, 'status': 'complete'}, ensure_ascii=False)}\n\n"
+                return  # 拦截完成，不走原来的 LLM 路径
 
             # ═══════════════════════════════════════════════════════════════
             # LLM 路径：所有消息统一由 LLM 决定是聊天还是调工具
