@@ -4612,15 +4612,14 @@ def clock_init():
     start_date = data.get("start_date", datetime.now().strftime("%Y-%m-%d"))
     nodes = data.get("schedule_nodes", [])
     clock = tm.get_or_create_session(_CLOCK_SESSION_ID, initial_time=initial_time, start_date=start_date)
-    # 更新已有 session 的 start_date（如果之前未设置）
-    if not clock.start_date:
-        clock.start_date = start_date
+    # 始终更新 start_date（每次 init 都重置为传入日期，防止 session 残留旧日期）
+    clock.start_date = start_date
     # 保留现有 WATER/MED 提醒节点，合并前端传的非提醒节点
     existing = list(clock.schedule_nodes) if clock.schedule_nodes else []
     reminder_nodes = [n for n in existing if n.get("type") in ("WATER", "MED")]
     merged = reminder_nodes + [n for n in nodes if n.get("type") not in ("WATER", "MED")]
     tm.set_schedule(_CLOCK_SESSION_ID, merged, initial_time=initial_time)
-    h, m = initial_time.split(":")
+    h, m = initial_time.split(":")[:2]
     clock.virtual_minutes = float(int(h) * 60 + int(m))
     clock.virtual_day = 0
     clock.is_running = False
@@ -4732,11 +4731,17 @@ def clock_pop_events():
     tm = time_master.get_master()
     cs = tm.get_session(_CLOCK_SESSION_ID)
     raw_events = tm.pop_triggered_events(_CLOCK_SESSION_ID)
-    # 筛选提醒类节点走管线处理（格式化 + SSE广播弹窗）
+    # 筛选提醒类节点 + 行程类节点（WAKE_UP→防坑指南, BEDTIME→疲劳调研）走管线处理
     reminder_nodes = [e for e in raw_events if isinstance(e, dict) and e.get("type") in ("WATER", "MED", "CUSTOM")]
-    other_events = [e for e in raw_events if e not in reminder_nodes]
-    if reminder_nodes:
-        fake_res = {"ticked_minutes_list": [], "triggered_nodes": reminder_nodes}
+    trip_nodes = [e for e in raw_events if isinstance(e, dict) and e.get("action") in ("WAKE_UP", "BEDTIME")]
+    other_events = [e for e in raw_events if e not in reminder_nodes and e not in trip_nodes]
+    if reminder_nodes or trip_nodes:
+        fake_res = {
+            "ticked_minutes_list": [],
+            "triggered_nodes": reminder_nodes + trip_nodes,
+            "current_date": cs.current_date_str if cs else "",
+            "virtual_day": cs.virtual_day if cs else 0,
+        }
         _process_clock_triggers(fake_res)
         # 管线处理后的事件已在 SSE 广播 + 推回队列，取出来
         processed = tm.pop_triggered_events(_CLOCK_SESSION_ID)
@@ -4827,17 +4832,144 @@ def _process_clock_triggers(res: dict):
     _broadcast_sse_events(alerts if alerts else events)
 
 
+def _load_pitfall_cache() -> dict:
+    """加载北京景点防坑缓存数据库"""
+    import os as _os
+    _cache_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "cache", "pitfall")
+    _cache_file = _os.path.join(_cache_dir, "beijing_pitfall_cache.json")
+    if _os.path.exists(_cache_file):
+        try:
+            with open(_cache_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _lookup_pitfall_cache(shops: list) -> dict:
+    """在缓存中查找店铺的防坑建议，返回 {shop_name: {tips, transport, ...}}"""
+    cache = _load_pitfall_cache()
+    attractions = cache.get("attractions", [])
+    matched = {}
+    for cat, sid, sname in shops:
+        sname_clean = sname.strip()
+        for att in attractions:
+            keywords = att.get("keywords", [])
+            # 模糊匹配：店铺名含有关键词，或关键词含有店铺名
+            for kw in keywords:
+                if kw in sname_clean or sname_clean in kw:
+                    matched[sname_clean] = {
+                        "name": att.get("name", sname_clean),
+                        "tips": att.get("pitfall_tips", []),
+                        "transport": att.get("transport_tips", ""),
+                        "best_time": att.get("best_time", ""),
+                    }
+                    break
+            if sname_clean in matched:
+                break
+    return matched
+
+
+def _generate_pitfall_insights_for_day(day_index: int, virtual_day: int) -> dict:
+    """为指定天生成防坑指南内容，缓存数据优先，补充品类级提示"""
+    trip_days = session_state.get("days", [])
+    result = {
+        "global_reminders": [],
+        "destination_tips": [],
+        "day_shops": [],
+    }
+
+    # 加载全局提醒
+    cache = _load_pitfall_cache()
+    for r in cache.get("global_reminders", []):
+        result["global_reminders"].append(r.get("text", ""))
+
+    if day_index < len(trip_days):
+        day_data = trip_days[day_index]
+        shops = day_data.get("selected_pairs", [])  # [(cat, sid, sname), ...]
+
+        # 1. 查缓存
+        cached = _lookup_pitfall_cache(shops)
+
+        # 2. 对未命中缓存的店铺，尝试使用 anti-pitfall skill 的品类规则
+        try:
+            from skills.destination_anti_pitfall import destination_anti_pitfall as skill_pitfall
+            pipeline_nodes = []
+            missed_shops = [(c, s, n) for c, s, n in shops if n.strip() not in cached]
+            for cat, sid, sname in (missed_shops or shops):
+                info = agent.poi_cache.get(sid, {}) if hasattr(agent, 'poi_cache') else {}
+                pipeline_nodes.append({
+                    "node_id": sid,
+                    "node_name": sname,
+                    "category": cat,
+                    "coordinate": info.get("coord", "39.93,116.45"),
+                })
+            if pipeline_nodes:
+                skill_input = {
+                    "trip_id": f"pitfall_day{day_index}",
+                    "current_node_index": 0,
+                    "pipeline_nodes": pipeline_nodes,
+                    "transport": "步行",
+                    "walking_tolerance_meters": 800,
+                    "environmental_context": {
+                        "timestamp": int(time.time()),
+                        "weather_summary": "今日多云",
+                        "client_platform": "WECHAT",
+                    },
+                }
+                skill_output = skill_pitfall.execute_anti_pitfall_skill(input_payload=skill_input)
+                # 品类级 global_reminders 追加（去重）
+                for r in skill_output.get("global_reminders", []):
+                    text = r.get("display_text", "")
+                    if text and text not in result["global_reminders"]:
+                        result["global_reminders"].append(text)
+                # 未命中缓存的店铺使用品类级提示
+                for insight in skill_output.get("localized_insights", []):
+                    for cat, sid, sname in shops:
+                        if sname.strip() not in cached:
+                            cached[sname.strip()] = {
+                                "name": sname,
+                                "tips": [insight.get("content", "")],
+                                "transport": "",
+                                "best_time": "",
+                            }
+                            break
+        except Exception:
+            pass
+
+        # 3. 组装结果
+        for cat, sid, sname in shops:
+            sname_clean = sname.strip()
+            result["day_shops"].append(sname_clean)
+            if sname_clean in cached:
+                result["destination_tips"].append(cached[sname_clean])
+            else:
+                result["destination_tips"].append({
+                    "name": sname_clean,
+                    "tips": ["预计游玩1-2小时，请注意保管随身物品。"],
+                    "transport": "",
+                    "best_time": "",
+                })
+
+    return result
+
+
 def _build_pitfall_guide_event(ev: dict, current_date: str, virtual_day: int) -> dict:
-    """根据 WAKE_UP 事件构建防坑指南推送事件"""
+    """根据 WAKE_UP 事件构建防坑指南推送事件（含缓存防坑数据）"""
     trip_days = session_state.get("days", [])
     day_index = ev.get("day_index", virtual_day)
     memo = ev.get("memo", "")
-    # 尝试获取当天目的地信息
+
+    # 生成防坑内容（优先缓存）
+    insights = _generate_pitfall_insights_for_day(day_index, virtual_day)
+
+    # 构建当天目的地列表（用于兼容旧前端）
     day_shops = []
     if day_index < len(trip_days):
         day_data = trip_days[day_index]
         task_list = day_data.get("task_list", [])
         day_shops = [t.get("name", "") for t in task_list if t.get("name")]
+
     return {
         "type": "PITFALL_GUIDE",
         "id": f"pitfall_{current_date}",
@@ -4848,6 +4980,8 @@ def _build_pitfall_guide_event(ev: dict, current_date: str, virtual_day: int) ->
         "day_index": virtual_day,
         "destinations": day_shops,
         "message": f"早上好！今天是{current_date}，出发前查看今日防坑指南，避开常见陷阱。",
+        "global_reminders": insights.get("global_reminders", []),
+        "destination_tips": insights.get("destination_tips", []),
     }
 
 

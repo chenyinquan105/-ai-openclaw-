@@ -243,6 +243,7 @@ class TimeMaster:
         """
         模式 1：QUICK_FORWARD（快进按钮 +10/+20/+30）
         相对偏移 delta 分钟，支持跨天，返回统一输出。
+        跨天时拆分为两段扫描：当天 old→23:59 + 次日 00:00→new。
         """
         with self._lock:
             cs = self._get_or_create_session_nolock(session_id)
@@ -256,7 +257,20 @@ class TimeMaster:
             cs.virtual_minutes = new_raw % 1440
             cs.virtual_day += days_passed
 
-            triggered = self._slice_triggered(cs, old_minutes, old_day, cs.virtual_minutes, cs.virtual_day)
+            triggered = []
+            if days_passed > 0:
+                # ── 跨天：分段扫描 ──
+                # 段1: old_minutes → 23:59（当天，old_day 日期）
+                old_date = cs.current_date_str  # virtual_day 已更新，需回退计算
+                from datetime import datetime as _dt, timedelta as _td
+                base = _dt.strptime(cs.start_date, "%Y-%m-%d") if cs.start_date else _dt.now()
+                seg1_date = (base + _td(days=old_day)).strftime("%Y-%m-%d")
+                triggered += self._slice_triggered(cs, old_minutes, old_day, 1439, old_day, current_date_override=seg1_date)
+                # 段2: 00:00 → cs.virtual_minutes（次日，new_day 日期）
+                seg2_date = (base + _td(days=cs.virtual_day)).strftime("%Y-%m-%d")
+                triggered += self._slice_triggered(cs, 0, cs.virtual_day, cs.virtual_minutes, cs.virtual_day, current_date_override=seg2_date)
+            else:
+                triggered = self._slice_triggered(cs, old_minutes, old_day, cs.virtual_minutes, cs.virtual_day)
 
             return _build_output(
                 previous_virtual_time=old_time,
@@ -452,7 +466,7 @@ class TimeMaster:
 
     # ---------- 内部方法 ----------
 
-    def _slice_triggered(self, cs: ClockState, start_m: float, start_day: int, end_m: float, end_day: int) -> list:
+    def _slice_triggered(self, cs: ClockState, start_m: float, start_day: int, end_m: float, end_day: int, current_date_override: str = "") -> list:
         """
         时间切片扫描器（多日版本）。
         从 (start_day, start_m) 推进到 (end_day, end_m)，找出在此区间内触发的节点。
@@ -460,13 +474,18 @@ class TimeMaster:
         - repeat=once 且有 date 字段：仅当 cs.current_date_str == node.date 时触发，触发后移除
         - repeat=once 无 date 字段（legacy）：当作当天一次性
         - WATER 多时间点：逐个检查 sub_times，每个命中子时间生成独立触发事件
+        - 支持跨午夜 wrap-around：当 s_today > e_today 时用 OR 逻辑
+        - once 节点兜底：若 nm <= e_today（即使 start 已超过 nm），也触发（防止跳过头漏触发）
         """
         triggered = []
         remaining = []
 
         s_today = int(start_m) % 1440
         e_today = int(end_m) % 1440
-        current_date = cs.current_date_str  # 用于 date-aware 匹配
+        current_date = current_date_override or cs.current_date_str  # 用于 date-aware 匹配
+        # 跨午夜 wrap-around 检测
+        same_day = (start_day == end_day)
+        crossing_midnight = (not same_day)
 
         for nt in cs.schedule_nodes:
             sub_times = nt.get("sub_times", []) if nt.get("type") == "WATER" else []
@@ -490,15 +509,29 @@ class TimeMaster:
                 remaining.append(nt)
                 continue
 
+            # ── 时间区间命中判断 ──
+            def _in_range(nm_minutes: float) -> bool:
+                """判断 nm 是否在 [start, end] 区间内（支持跨午夜 wrap-around）"""
+                if crossing_midnight:
+                    # 跨午夜：(start, 1440) ∪ (0, end]
+                    return nm_minutes > s_today or nm_minutes <= e_today
+                else:
+                    # 同一天内：start < nm <= end
+                    return s_today < nm_minutes <= e_today
+
+            # ── once 节点兜底触发：即使 start 已超过 nm，只要 nm <= e_today 就触发 ──
+            def _once_fallback(nm_minutes: float) -> bool:
+                """once 节点兜底：时间已越过节点但仍需补触发"""
+                return node_repeat == "once" and node_date and nm_minutes <= e_today
+
             if sub_times:
                 # WATER 多时间点：逐个检查 sub_times
                 any_triggered = False
                 for st in sub_times:
                     sm = _parse_minutes(st)
-                    if s_today < sm <= e_today:
+                    if _in_range(sm):
                         triggered_node = dict(nt)
                         triggered_node["time"] = st
-                        # 注入触发日期信息
                         if current_date:
                             triggered_node["trigger_date"] = current_date
                         triggered.append(triggered_node)
@@ -511,21 +544,21 @@ class TimeMaster:
                     remaining.append(nt)
             else:
                 nm = _parse_minutes(nt["time"])
-                if s_today < nm <= e_today:
+                did_trigger = False
+                if _in_range(nm) or _once_fallback(nm):
                     triggered_node = dict(nt)
-                    # 注入触发日期信息
                     if current_date:
                         triggered_node["trigger_date"] = current_date
                     triggered.append(triggered_node)
+                    did_trigger = True
                     # daily 节点保留，次日继续提醒
-                    # WATER/MED 类型默认 daily（除非显式设为 once）；CUSTOM 按显式字段
                     is_daily = node_repeat == "daily"
                     if not is_daily and nt.get("type") in ("WATER", "MED") and node_repeat != "once":
-                        is_daily = True  # 兜底：WATER/MED 无 repeat 字段时默认每天
+                        is_daily = True
                     if is_daily:
                         remaining.append(nt)
                     # once 节点不保留（已触发，移除）
-                else:
+                if not did_trigger:
                     remaining.append(nt)
 
         cs.schedule_nodes = remaining

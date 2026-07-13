@@ -5126,8 +5126,12 @@ function clockTogglePower() {
     clockFetch('POST', '/api/clock/speed', {speed: 1/60}).catch(() => {});
     // 开启虚拟时钟时保留已有提醒节点，避免清空
     var existingNodes = window._clockScheduleNodes || [];
+    // 始终用今天的日期作为默认，防止 session 残留旧日期
+    var nowDate = new Date();
+    var todayStr = nowDate.getFullYear() + '-' + String(nowDate.getMonth()+1).padStart(2,'0') + '-' + String(nowDate.getDate()).padStart(2,'0');
     clockFetch('POST', '/api/clock/init', {
       initial_time: initTime,
+      start_date: todayStr,
       schedule_nodes: existingNodes
     }).then(function() {
       // 如果还有后端持久化的提醒节点，同步回来
@@ -5320,16 +5324,11 @@ function clockUpdateUI(data) {
       }
     }
   }
-  // 更新日期显示
+  // 更新日期显示（只显示纯日期，不拼接"第X天"）
   if (dateDisplay && (data.current_date || data.current_date_display)) {
     var dateStr = data.current_date_display || data.current_date || '';
-    var dayLabel = '';
-    if (data.virtual_day !== undefined) {
-      dayLabel = ' · 第' + (data.virtual_day + 1) + '天';
-    }
-    var newDateText = dateStr + dayLabel;
-    if (dateDisplay.textContent !== newDateText) {
-      dateDisplay.textContent = newDateText;
+    if (dateDisplay.textContent !== dateStr) {
+      dateDisplay.textContent = dateStr;
     }
   }
   // 暂停/继续按钮状态（防频闪：比较后再写）
@@ -5505,7 +5504,10 @@ setInterval(async function() {
   if (st.is_running) {
     const evData = await clockFetch('GET', '/api/clock/events');
     if (evData.events && evData.events.length) {
-      evData.events.forEach(e => clockLogEvent('📡 事件: ' + JSON.stringify(e), 'alert'));
+      evData.events.forEach(e => {
+        clockLogEvent('📡 事件: ' + (e.type || '?') + ' ' + (e.label || ''), 'alert');
+        handleReminderEvent(e);
+      });
     }
   }
   // 弹窗倒计时检查（跟随虚拟时间）
@@ -6096,6 +6098,11 @@ function handleReminderEvent(ev) {
 
   console.log('[handleReminderEvent] type=' + type + ' medId=' + medId + ' msg=' + (msg||'').substring(0,50));
 
+  // —— 新事件到达时自动关闭上一个持久化弹窗（防坑指南/疲劳调研）——
+  if (type !== 'REMINDER_ACTION_RESULT' && type !== 'MED_DUPLICATE_BLOCK') {
+    _dismissActiveOverlay();
+  }
+
   // —— 喝水提醒：中央弹窗 ——
   if (type === 'WATER_RINGING_ALERT' || type === 'WATER_UI_ALERT') {
     console.log('[handleReminderEvent] → renderWaterDialog');
@@ -6407,34 +6414,107 @@ function _playNotificationSound() {
   } catch(e) {}
 }
 
-// ===== 防坑指南推送弹窗 =====
+// ===== 弹窗持久化管理 =====
+var _activeOverlayEl = null;
+
+function _dismissActiveOverlay() {
+  if (_activeOverlayEl && _activeOverlayEl.parentNode) {
+    _activeOverlayEl.parentNode.removeChild(_activeOverlayEl);
+  }
+  _activeOverlayEl = null;
+}
+
+// ===== 防坑指南推送弹窗（富内容版）=====
 function renderPitfallGuide(ev) {
+  // 新弹窗自动替换旧弹窗
+  _dismissActiveOverlay();
+
   var msg = ev.message || '';
+  var globalReminders = ev.global_reminders || [];
+  var destinationTips = ev.destination_tips || [];
   var destinations = ev.destinations || [];
+
+  // —— 全局提醒区 ——
+  var remindersHtml = '';
+  if (globalReminders.length > 0) {
+    remindersHtml = '<div style="background:#fef3c7;border-radius:16px;padding:12px;margin-bottom:12px;text-align:left;">';
+    remindersHtml += '<div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:6px;">🧳 出门必带 & 通用提醒</div>';
+    for (var ri = 0; ri < globalReminders.length; ri++) {
+      remindersHtml += '<div style="font-size:11px;color:#78350f;line-height:1.5;margin-bottom:3px;">• ' + _escHtml(globalReminders[ri]) + '</div>';
+    }
+    remindersHtml += '</div>';
+  }
+
+  // —— 目的地防坑卡片区 ——
+  var tipsHtml = '';
+  if (destinationTips.length > 0) {
+    tipsHtml = '<div style="max-height:280px;overflow-y:auto;text-align:left;margin-bottom:12px;">';
+    for (var di = 0; di < destinationTips.length; di++) {
+      var dt = destinationTips[di];
+      var dtName = dt.name || ('目的地' + (di + 1));
+      var dtTips = dt.tips || [];
+      var dtTransport = dt.transport || '';
+      var dtBestTime = dt.best_time || '';
+
+      tipsHtml += '<div style="background:#f9fafb;border-radius:16px;padding:12px;margin-bottom:8px;border-left:3px solid #f59e0b;">';
+      tipsHtml += '<div style="font-size:13px;font-weight:700;color:#1f2937;margin-bottom:6px;">📍 ' + _escHtml(dtName) + '</div>';
+
+      if (dtTips.length > 0) {
+        var showTips = dtTips.slice(0, 4);
+        for (var ti = 0; ti < showTips.length; ti++) {
+          tipsHtml += '<div style="font-size:11px;color:#4b5563;line-height:1.5;margin-bottom:2px;padding-left:8px;">⚠️ ' + _escHtml(showTips[ti]) + '</div>';
+        }
+        if (dtTips.length > 4) {
+          tipsHtml += '<div style="font-size:10px;color:#9ca3af;">...还有' + (dtTips.length - 4) + '条提示</div>';
+        }
+      }
+
+      if (dtTransport) {
+        tipsHtml += '<div style="font-size:11px;color:#6b7280;margin-top:4px;padding-left:8px;">🚇 ' + _escHtml(dtTransport) + '</div>';
+      }
+
+      if (dtBestTime) {
+        tipsHtml += '<div style="font-size:11px;color:#6b7280;margin-top:2px;padding-left:8px;">⏰ ' + _escHtml(dtBestTime) + '</div>';
+      }
+
+      tipsHtml += '</div>';
+    }
+    tipsHtml += '</div>';
+  }
+
+  // —— 目的地列表兜底（旧版兼容）——
   var destList = '';
-  if (destinations.length > 0) {
+  if (destinationTips.length === 0 && destinations.length > 0) {
     destList = '<div style="margin-top:10px;font-size:12px;color:#6b7280;">' +
       '📍 今日目的地：' + destinations.slice(0, 5).join(' · ') +
       (destinations.length > 5 ? ' 等' + destinations.length + '个' : '') +
       '</div>';
   }
+
   var html =
-    '<div style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);" onclick="this.remove()">' +
-      '<div style="background:white;border-radius:24px;padding:24px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;" onclick="event.stopPropagation()">' +
-        '<div style="font-size:48px;margin-bottom:12px;">🛡️</div>' +
-        '<h3 style="font-size:18px;font-weight:900;color:#1f2937;margin-bottom:8px;">今日防坑指南</h3>' +
-        '<p style="font-size:14px;color:#4b5563;line-height:1.6;margin-bottom:12px;">' + msg + '</p>' +
+    '<div id="pitfall-guide-overlay" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);">' +
+      '<div style="background:white;border-radius:24px;padding:20px;max-width:400px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">' +
+        '<div style="font-size:40px;margin-bottom:8px;">🛡️</div>' +
+        '<h3 style="font-size:18px;font-weight:900;color:#1f2937;margin-bottom:4px;">今日防坑指南</h3>' +
+        '<p style="font-size:13px;color:#6b7280;margin-bottom:12px;">' + msg + '</p>' +
+        remindersHtml +
+        tipsHtml +
         destList +
-        '<button onclick="this.closest(\'div[style]\').parentElement.remove()" style="margin-top:16px;width:100%;background:#f59e0b;color:white;font-weight:700;padding:12px;border-radius:16px;border:none;font-size:15px;cursor:pointer;">知道了，出发！</button>' +
+        '<button onclick="_dismissActiveOverlay()" style="width:100%;background:#f59e0b;color:white;font-weight:700;padding:12px;border-radius:16px;border:none;font-size:15px;cursor:pointer;">知道了，出发！</button>' +
       '</div>' +
     '</div>';
   var div = document.createElement('div');
   div.innerHTML = html;
-  document.body.appendChild(div.firstElementChild);
+  var el = div.firstElementChild;
+  document.body.appendChild(el);
+  _activeOverlayEl = el;
 }
 
 // ===== 每日疲劳程度调研弹窗 =====
 function renderFatigueSurvey(ev) {
+  // 新弹窗自动替换旧弹窗
+  _dismissActiveOverlay();
+
   var msg = ev.message || '';
   var dayLabel = ev.day_label || '';
   var options = ev.survey_options || [
@@ -6458,8 +6538,8 @@ function renderFatigueSurvey(ev) {
     '</button>';
   }).join('');
   var html =
-    '<div id="fatigue-survey-dlg" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);" onclick="event.target===this && this.remove()">' +
-      '<div style="background:white;border-radius:24px;padding:24px;max-width:380px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;" onclick="event.stopPropagation()">' +
+    '<div id="fatigue-survey-dlg" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);">' +
+      '<div style="background:white;border-radius:24px;padding:24px;max-width:380px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">' +
         '<div style="font-size:40px;margin-bottom:8px;">🌙</div>' +
         '<h3 style="font-size:18px;font-weight:900;color:#1f2937;margin-bottom:4px;">每日疲劳程度调研</h3>' +
         '<p style="font-size:13px;color:#6b7280;margin-bottom:4px;">' + dayLabel + '</p>' +
@@ -6472,7 +6552,9 @@ function renderFatigueSurvey(ev) {
     '</div>';
   var div = document.createElement('div');
   div.innerHTML = html;
-  document.body.appendChild(div.firstElementChild);
+  var el = div.firstElementChild;
+  document.body.appendChild(el);
+  _activeOverlayEl = el;
 }
 
 function submitFatigueSurvey(level, date, dayIndex) {
@@ -6489,6 +6571,7 @@ function submitFatigueSurvey(level, date, dayIndex) {
   // 关闭弹窗
   var dlg = document.getElementById('fatigue-survey-dlg');
   if (dlg) dlg.remove();
+  _activeOverlayEl = null;
   // toast 确认
   var levelLabels = {0: '已记录', 1: '轻松', 2: '适中', 3: '有点累', 4: '很累', 5: '极度疲劳'};
   var label = levelLabels[level] || '已记录';
@@ -8905,6 +8988,7 @@ async function executeSmartSchedule(overcrowdedAction) {
     }
     if (data.status === 'SUCCESS') {
       multiDayScheduleResult = data; multiActiveDayIndex = 0;
+      _syncMultiDayTimelineToClock();
       renderMultiDayCards(data);
       isInTripMode = true;
       if (typeof switchBottomBarToTripMode === 'function') switchBottomBarToTripMode();
@@ -8997,6 +9081,7 @@ async function _handleOvercrowdedChoice(action, days) {
 
     if (schedData.status === 'SUCCESS') {
       multiDayScheduleResult = schedData; multiActiveDayIndex = 0;
+      _syncMultiDayTimelineToClock();
       renderMultiDayCards(schedData);
       isInTripMode = true;
       if (typeof switchBottomBarToTripMode === 'function') switchBottomBarToTripMode();
@@ -9085,6 +9170,7 @@ async function _submitReviewAnswers(scheduleData) {
     if (data.phase === 'schedule_review' && data.questions && data.questions.length > 0) {
       if (hasValidTimeline) {
         multiDayScheduleResult.days = data.days;
+        _syncMultiDayTimelineToClock();
       } else if (data.days && data.days.length > 0) {
         console.warn('[ReviewQA] 返回的 days timeline 全部为空，保留原有行程');
       }
@@ -9095,6 +9181,7 @@ async function _submitReviewAnswers(scheduleData) {
     } else {
       if (hasValidTimeline) {
         multiDayScheduleResult.days = data.days;
+        _syncMultiDayTimelineToClock();
       } else if (data.days && data.days.length > 0) {
         console.warn('[ReviewQA] 返回的 days timeline 全部为空，保留原有行程');
       }
@@ -9273,6 +9360,11 @@ function renderMultiDayCards(data) {
   }
   html += '</div></div>';
 
+  // ── 确认并执行按钮 ──
+  html += '<div id="plan-confirm-btn-wrap" class="flex justify-center mt-4">';
+  html += '<button id="plan-confirm-btn" onclick="confirmAndExecutePlan()" class="bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-3 px-8 rounded-2xl transition-all shadow-lg shadow-green-200">✅ 确认并执行</button>';
+  html += '</div>';
+
   // ── 排程问题反馈面板：横向滑动下方底部选择框 ──
   var overflowNotifications = data.overflow_notifications || [];
   var closedConflicts = data.closed_conflicts || [];
@@ -9329,6 +9421,157 @@ function renderMultiDayCards(data) {
   html += '<p class="text-center text-xs text-gray-400 mt-2">💬 在下方聊天框修改行程</p></div>';
   dc.innerHTML = html;
   if (typeof scrollToBottom === 'function') scrollToBottom();
+}
+
+// —— 将多日行程 timeline 同步到虚拟时钟 schedule_nodes ——
+function _syncMultiDayTimelineToClock() {
+  if (!multiDayScheduleResult || !multiDayScheduleResult.days) return;
+
+  // 保留现有提醒节点（WATER/MED/CUSTOM），不清掉
+  var existing = window._clockScheduleNodes || [];
+  var reminderNodes = existing.filter(function(n) {
+    return n.type === 'WATER' || n.type === 'MED' || n.type === 'CUSTOM';
+  });
+
+  // 从多日行程所有天的 timeline 提取节点
+  var tripNodes = [];
+  var baseDate = '';
+  if (typeof multiStartDate !== 'undefined' && multiStartDate) {
+    baseDate = multiStartDate.getFullYear() + '-' +
+      String(multiStartDate.getMonth()+1).padStart(2,'0') + '-' +
+      String(multiStartDate.getDate()).padStart(2,'0');
+  } else {
+    var td = new Date();
+    baseDate = td.getFullYear() + '-' + String(td.getMonth()+1).padStart(2,'0') + '-' + String(td.getDate()).padStart(2,'0');
+  }
+
+  for (var di = 0; di < multiDayScheduleResult.days.length; di++) {
+    var day = multiDayScheduleResult.days[di];
+    // 每天的日期：优先用服务器返回的 date 字段，否则 baseDate + di 天
+    var dayDate = day.date || '';
+    if (!dayDate && baseDate) {
+      var d = new Date(baseDate);
+      d.setDate(d.getDate() + di);
+      dayDate = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+
+    var timeline = day.timeline || [];
+    for (var ti = 0; ti < timeline.length; ti++) {
+      var node = timeline[ti];
+      tripNodes.push({
+        time: node.time || '09:00',
+        action: node.action || '',
+        type: node.action || '',
+        label: node.label || node.header || node.memo || '',
+        memo: node.memo || node.header || '',
+        repeat: 'once',
+        date: dayDate,
+        day_index: di
+      });
+    }
+  }
+
+  // 合并提醒节点 + 行程节点
+  window._clockScheduleNodes = reminderNodes.concat(tripNodes);
+  console.log('[SyncTimeline] 同步 ' + tripNodes.length + ' 个行程节点到时钟，总计 ' + window._clockScheduleNodes.length + ' 节点');
+
+  // 如果时钟已开启，同步到后端
+  if (clockPowerOn && window._clockScheduleNodes.length > 0) {
+    clockFetch('POST', '/api/clock/set_schedule', {nodes: window._clockScheduleNodes}).catch(function(){});
+  }
+}
+
+function confirmAndExecutePlan() {
+  var btn = document.getElementById('plan-confirm-btn');
+  var wrap = document.getElementById('plan-confirm-btn-wrap');
+  if (!btn) return;
+
+  // 更新按钮文字和样式
+  btn.textContent = '✅ 已执行计划';
+  btn.className = 'bg-green-600 text-white text-sm font-bold py-3 px-8 rounded-2xl transition-all shadow-lg shadow-green-300';
+  btn.onclick = null;  // 禁止重复点击
+
+  // —— 跳转到第一天起床前1分钟，保持暂停 ——
+  var wakeUpTime = '07:30';
+  if (multiDayScheduleResult && multiDayScheduleResult.days) {
+    var day0 = multiDayScheduleResult.days[0];
+    if (day0 && day0.timeline) {
+      for (var i = 0; i < day0.timeline.length; i++) {
+        if (day0.timeline[i].action === 'WAKE_UP') {
+          wakeUpTime = day0.timeline[i].time || '07:30';
+          break;
+        }
+      }
+    }
+  }
+  // 计算起床前1分钟
+  var parts = wakeUpTime.split(':');
+  var totalMins = (parseInt(parts[0]) || 7) * 60 + (parseInt(parts[1]) || 30) - 1;
+  if (totalMins < 0) totalMins = 0;
+  var initH = String(Math.floor(totalMins / 60)).padStart(2, '0');
+  var initM = String(totalMins % 60).padStart(2, '0');
+  var initTime = initH + ':' + initM + ':00';
+
+  // ★ start_date 使用多日行程选择的出发日期（multiStartDate），而非今天
+  var startDate = '';
+  if (typeof multiStartDate !== 'undefined' && multiStartDate) {
+    startDate = multiStartDate.getFullYear() + '-' +
+      String(multiStartDate.getMonth()+1).padStart(2,'0') + '-' +
+      String(multiStartDate.getDate()).padStart(2,'0');
+  } else {
+    var today = new Date();
+    startDate = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  }
+
+  // 如果虚拟时钟没开，手动开启 UI 并直接跳到行程日期+起床前1分钟
+  if (!clockPowerOn) {
+    clockPowerOn = true;
+    _realTimeUpdatePaused = true;
+    clockCurrentSpeed = 1/60;
+    var knob = document.getElementById('clock-power-knob');
+    var powerBtn = document.getElementById('clock-power-btn');
+    var panelBody = document.getElementById('clock-panel-body');
+    var playBtn = document.getElementById('clock-play-btn');
+    var slider = document.getElementById('clock-slider');
+    var sliderLabel = document.getElementById('clock-slider-label');
+    if (knob) knob.style.left = '20px';
+    if (powerBtn) powerBtn.style.backgroundColor = '#22c55e';
+    if (panelBody) { panelBody.style.opacity = '1'; panelBody.style.pointerEvents = 'auto'; }
+    if (playBtn) { playBtn.classList.remove('hidden'); playBtn.textContent = '▶'; }
+    if (slider) slider.classList.remove('hidden');
+    if (sliderLabel) sliderLabel.classList.remove('hidden');
+  }
+
+  // 直接跳到多日行程 Day1 日期 + WAKE_UP-1min，保持暂停（不经过 12:00 中间态）
+  clockFetch('POST', '/api/clock/init', {
+    initial_time: initTime,
+    start_date: startDate,
+    schedule_nodes: window._clockScheduleNodes || []
+  }).then(function(data) {
+    clockUpdateUI({
+      virtual_time: data.virtual_time || initTime,
+      current_date: data.current_date || startDate,
+      current_date_display: data.current_date_display || startDate,
+      is_running: false,
+      speed: 1/60
+    });
+    clockLogEvent('📍 已就绪 → ' + (data.current_date_display || startDate) + ' ' + (data.virtual_time || initTime) + '（暂停中，点 ▶ 开始）', 'info');
+  }).catch(function(e) {
+    console.error('[confirmAndExecutePlan] clock init error:', e);
+  });
+
+  // 渐变消失
+  setTimeout(function() {
+    if (wrap) {
+      wrap.style.transition = 'opacity 0.8s ease-out';
+      wrap.style.opacity = '0';
+      setTimeout(function() {
+        if (wrap && wrap.parentNode) {
+          wrap.parentNode.removeChild(wrap);
+        }
+      }, 800);
+    }
+  }, 600);
 }
 
 function expandDayDetail(dayIndex) {
