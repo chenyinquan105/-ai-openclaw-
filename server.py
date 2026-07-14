@@ -7735,9 +7735,15 @@ def chat_stream():
             _trip_cats = _detect_trip_intent(message)
             if _trip_cats:
                 print(f"[TripIntercept] 检测到行程发起意图: {_trip_cats}，跳过 LLM 直接搜索", flush=True)
-                # 1. 重置会话状态
+                # 1. 重置会话状态 + 清空历史消息（避免旧 tool 消息缺少前置 tool_calls 导致 400）
                 _reset_session()
                 agent.context_memory = []
+                # 清空持久化会话历史，重建干净 messages
+                _hist_db, _chat_sess = _get_active_session()
+                _chat_sess["messages"] = []
+                _save_chat_history(_hist_db)
+                # 重建 messages 为仅含 system prompt + 当前用户消息
+                messages = [messages[0], {"role": "user", "content": message}]
                 session_state["user_input"] = message
                 session_state["transport"] = "步行"
 
@@ -7778,10 +7784,8 @@ def chat_stream():
                 }
                 yield f"event: tool_result\ndata: {json.dumps({'id': spo_call_id, 'name': 'search_poi', 'status': 'completed', 'result': spo_result}, ensure_ascii=False)}\n\n"
 
-                # 7. 保存搜索结果到历史
-                _append_chat_message("assistant", content="🔍 正在为您检索店铺...")
-                _append_chat_message("tool", tool_call_id=spo_call_id, name="search_poi",
-                                     content=json.dumps(spo_result, ensure_ascii=False))
+                # 7. 不保存 tool 消息到历史（避免后续 LLM 调用时 tool 消息缺少前置 tool_calls 导致 400 错误）
+                # 与 location interceptor 保持一致：只保存最终文本回复
 
                 # 8. 追加 system message 指示 LLM 仅做简短文本回复
                 messages.append({
