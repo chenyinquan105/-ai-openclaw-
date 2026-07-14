@@ -5550,6 +5550,8 @@ def reminder_remove_task():
         e for e in cs.triggered_queue
         if not (e.get("med_id") == task_id or e.get("task_id") == task_id or e.get("id") == task_id)
     ]
+    # 3. 清除 _REMINDER_MANAGER 中该提醒的状态记录（防止残留状态干扰新提醒）
+    reminder_skill._REMINDER_MANAGER.remove_med_state(_CLOCK_SESSION_ID, task_id)
     # 如果删除的是自定义提醒，同步持久化
     _persist_custom_reminders(current)
     return jsonify({"status": "SUCCESS"})

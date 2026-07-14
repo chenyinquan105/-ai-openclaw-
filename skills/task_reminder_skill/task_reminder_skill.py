@@ -48,7 +48,8 @@ class ReminderStateManager:
         # 结构: { session_id: { med_id: { status, original_time, last_action_time, miss_count, med_name } } }
         self._states: Dict[str, Dict[str, Dict[str, Any]]] = {}
         # 记录已成功吞服的历史，用于【防重复吃药】拦截
-        self._history: Dict[str, Dict[str, List[str]]] = {}
+        # 结构: { session_id: { med_name: { date: [time1, time2, ...] } } }
+        self._history: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
 
     def init_session(self, session_id: str):
         if session_id not in self._states:
@@ -56,19 +57,35 @@ class ReminderStateManager:
         if session_id not in self._history:
             self._history[session_id] = {}
 
-    def record_swallowed(self, session_id: str, med_name: str, current_time: str):
+    def record_swallowed(self, session_id: str, med_name: str, current_time: str, current_date: str = ""):
         self.init_session(session_id)
         if med_name not in self._history[session_id]:
-            self._history[session_id][med_name] = []
-        self._history[session_id][med_name].append(current_time)
+            self._history[session_id][med_name] = {}
+        date_key = current_date or "_no_date"
+        if date_key not in self._history[session_id][med_name]:
+            self._history[session_id][med_name][date_key] = []
+        self._history[session_id][med_name][date_key].append(current_time)
 
-    def check_duplicate_attempt(self, session_id: str, med_name: str) -> Optional[str]:
-        """检查老人家今天是否已经吃过这个药，返回吃过的最后时间"""
+    def check_duplicate_attempt(self, session_id: str, med_name: str, check_date: str = "") -> Optional[str]:
+        """检查老人家今天（按虚拟日期）是否已经吃过这个药，返回吃过的最后时间"""
         self.init_session(session_id)
-        history_list = self._history[session_id].get(med_name, [])
-        if history_list:
-            return history_list[-1]
+        med_history = self._history[session_id].get(med_name, {})
+        date_key = check_date or "_no_date"
+        # 先查当天
+        day_list = med_history.get(date_key, [])
+        if day_list:
+            return day_list[-1]
+        # 兜底：如果没有日期信息（legacy 数据），查旧格式
+        legacy_list = med_history.get("_no_date", [])
+        if legacy_list and not check_date:
+            return legacy_list[-1]
         return None
+
+    def remove_med_state(self, session_id: str, med_id: str):
+        """删除指定药物的状态机记录（提醒被删除时调用）"""
+        self.init_session(session_id)
+        if med_id in self._states.get(session_id, {}):
+            del self._states[session_id][med_id]
 
     def set_med_state(self, session_id: str, med_id: str, state_dict: dict):
         self.init_session(session_id)
@@ -107,6 +124,10 @@ def process_reminder_pipeline(
     mgr = _REMINDER_MANAGER
     mgr.init_session(session_id)
     output_notifications = []
+
+    # 获取当前虚拟日期（用于按日期区分服药历史，防止跨天误拦截）
+    _cs = time_master.get_session(session_id)
+    _current_date = _cs.current_date_str if _cs else ""
 
     # 占位符兜底
     _elder = elder_name or "【对您的称呼（需要在偏好设置里完善）】"
@@ -151,8 +172,8 @@ def process_reminder_pipeline(
             })
 
         elif ev_type == "MED":
-            # 防重复：今天是否已吃过
-            last_taken = mgr.check_duplicate_attempt(session_id, med_name)
+            # 防重复：今天（按虚拟日期）是否已吃过
+            last_taken = mgr.check_duplicate_attempt(session_id, med_name, _current_date)
             if last_taken:
                 output_notifications.append({
                     "type": "MED_DUPLICATE_BLOCK",
@@ -210,8 +231,8 @@ def process_reminder_pipeline(
             })
 
     # ----------- 2. 基于时间差判定"超时未响应" -----------
-    # 获取当前虚拟时间（从 time_master 读）
-    cs = time_master.get_session(session_id)
+    # 获取当前虚拟时间（从 time_master 读；复用前面获取的 _cs）
+    cs = _cs
     if not cs:
         return output_notifications
     now_minutes = _t_to_m(cs.virtual_time)
@@ -389,9 +410,10 @@ def handle_user_action(
             pending_med["status"] = "COMPLETED"
             cs = time_master.get_session(session_id)
             now_time = cs.virtual_time if cs else current_time
+            now_date = cs.current_date_str if cs else ""
             pending_med["last_action_time"] = now_time
-            # 永固锁定至防重复服用历史库
-            mgr.record_swallowed(session_id, med_name, now_time)
+            # 永固锁定至防重复服用历史库（按日期隔离）
+            mgr.record_swallowed(session_id, med_name, now_time, now_date)
             return {
                 "status": "SUCCESS_CLOSED",
                 "message": (
