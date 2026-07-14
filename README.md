@@ -143,13 +143,34 @@
 
 ---
 
-## 🛠️ 快速启动
+## 📥 从零开始（演示电脑一键部署）
 
-### 1. 环境准备
+```bash
+# 1. 克隆项目
+git clone git@github.com:chenyinquan105/-ai-openclaw-.git
+cd -ai-openclaw-
 
-- Python 3.9+
-- Node.js 18+（用于 meituan-bridge TypeScript 插件）
-- OpenClaw Gateway（`>=2026.5.17`）
+# 2. 一键配置（安装 Python 依赖 + 构建插件）
+chmod +x setup.sh && ./setup.sh
+
+# 3. 一键启动
+chmod +x start.sh && ./start.sh
+
+# 4. 浏览器打开 index.html 即可使用
+```
+
+> ⚠️ **环境要求**：Python 3.9+、Node.js 18+
+> `.env` 已预配置 API Key（DeepSeek + 高德地图），clone 后无需额外配置，开箱即用。
+
+---
+
+## 🛠️ 快速启动（手动分步）
+
+### 1. 安装 Python 依赖
+
+```bash
+pip3 install -r requirements.txt
+```
 
 ### 2. 启动 Python 后端
 
@@ -158,18 +179,17 @@ chmod +x start.sh
 ./start.sh
 ```
 
-`start.sh` 自动清理 5000 端口占用，以 `gunicorn -w 4` 启动 Flask 服务。
+`start.sh` 自动清理 5000 端口占用，以 `gunicorn -w 1 --threads 4` 启动 Flask 服务。
 
 控制台输出 `✅ 服务已启动: http://localhost:5000` 即表示后端就绪。
 
 ### 3. 部署 OpenClaw 桥接插件
 
-将 `skills/meituan-bridge/` 放入 OpenClaw 的 plugins 目录：
-
 ```bash
 cd skills/meituan-bridge
 npm install
 npm run build
+cd ../..
 ```
 
 插件将 14 个 Agent Tool 注册到 OpenClaw Gateway，通过 HTTP Bridge 桥接到 Python 后端。

@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "/Users/kaijimima1234/项目/美团ai openclaw版本"
+cd "$(dirname "$0")"
 lsof -ti :5000 | xargs kill -9 2>/dev/null
 sleep 1
 
