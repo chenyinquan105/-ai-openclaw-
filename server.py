@@ -3575,7 +3575,7 @@ def _run_schedule_from_session():
         "routes": {}
     }
 
-    for cat, sid, sname in session_state["selected_pairs"]:
+    for cat, sid, sname in _apairs():
         info = agent.poi_cache.get(sid, {})
         raw = info.get('coord', '')
         if raw and ',' in raw:
@@ -3882,7 +3882,7 @@ def _run_schedule():
                 "client_platform": "WECHAT"
             }
         }
-        for cat, sid, sname in session_state["selected_pairs"]:
+        for cat, sid, sname in _apairs():
             info = agent.poi_cache.get(sid, {})
             pitfall_input["pipeline_nodes"].append({
                 "node_id": sid,
@@ -4090,9 +4090,19 @@ def api_insert_shelter():
     """
     下暴雨避雨：由前端传入 shop_id 指定饮品店，插入行程第一个目的地后重算排程。
     输入: { shop_id: "..." }  可选，不传则自动找最近的 cafe
+    支持单日模式和多日模式（自动适配当前活跃天的 selected_pairs）。
     """
-    if not session_state.get("task_list"):
-        return jsonify({"error": "无行程数据"}), 400
+    # 检查是否有活跃的行程数据（单日模式查顶层 task_list，多日模式查当天）
+    active_pairs = _apairs()
+    if not active_pairs and not session_state.get("task_list"):
+        # 多日模式下也检查当天 task_list
+        if session_state.get("trip_mode") == "multi":
+            idx = session_state.get("active_day_index", 0)
+            days = session_state.get("days", [])
+            if idx < len(days) and not days[idx].get("task_list"):
+                return jsonify({"error": "无行程数据"}), 400
+        else:
+            return jsonify({"error": "无行程数据"}), 400
 
     data = request.get_json(silent=True) or {}
     forced_shop_id = data.get("shop_id", "")
@@ -4140,10 +4150,9 @@ def api_insert_shelter():
     if not cafe_shop_id:
         return jsonify({"error": "未找到附近的避雨店铺"}), 404
 
-    # 构造避雨节点，插入 selected_pairs 第0位
-    selected_pairs = session_state.get("selected_pairs", [])
+    # 构造避雨节点，插入 selected_pairs 第0位（自动适配单日/多日模式）
+    selected_pairs = _apairs()
     selected_pairs.insert(0, ("cafe", cafe_shop_id, cafe_name))
-    session_state["selected_pairs"] = selected_pairs
 
     # 重跑完整排程链路（含时间重算 + 交通模式 + 防踩坑 + 异常传感器）
     result = _run_schedule_from_session()
@@ -4280,6 +4289,13 @@ def api_get_nearby_cafes():
         if result and result.get("shops"):
             shops = result["shops"]
             source = "amap_realtime"
+            # ★ 将实时搜索到的饮品店写入 agent.poi_cache，确保后续 insert_shelter 能查到
+            for _s in shops:
+                _sid = _s.get("shop_id", "")
+                if _sid and _sid not in agent.poi_cache:
+                    # 补充 coord 字段（排程需要）
+                    _s["coord"] = f"{_s.get('lat',0)},{_s.get('lng',0)}"
+                    agent.poi_cache[_sid] = _s
     except Exception:
         pass
 
@@ -4932,9 +4948,32 @@ def clock_set_schedule():
     return jsonify({"status": "SUCCESS", "count": len(nodes)})
 
 
+@app.route("/api/confirm_wakeup", methods=["POST"])
+def api_confirm_wakeup():
+    """用户在前端确认起床后，推送今日防坑指南"""
+    pending = session_state.pop("pending_wakeup_pitfall", None)
+    if not pending:
+        return jsonify({"status": "SKIPPED", "reason": "no_pending_pitfall"})
+    # 重建 ev dict（从 session_state 中恢复关键字段）
+    ev = {
+        "time": pending.get("ev_time", ""),
+        "label": pending.get("ev_label", ""),
+        "day_index": pending.get("virtual_day", 0),
+    }
+    pitfall_event = _build_pitfall_guide_event(
+        ev, pending["current_date"], pending["virtual_day"]
+    )
+    if pitfall_event:
+        _tm = time_master.get_master()
+        _tm.push_triggered_event(_CLOCK_SESSION_ID, pitfall_event)
+        _broadcast_sse_events([pitfall_event])
+        app.logger.info(f'[WakeupConfirm] pitfall_guide pushed, sse_clients={len(_sse_clients)}')
+    return jsonify({"status": "SUCCESS"})
+
+
 def _process_clock_triggers(res: dict):
     """时钟事件产生后，调用 reminder_skill 处理并注入事件队列。
-    同时处理 WAKE_UP（防坑指南推送）和 BEDTIME（疲劳调研）事件。"""
+    同时处理 WAKE_UP（起床弹窗，防坑指南延后到用户确认）和 BEDTIME（疲劳调研）事件。"""
     ticked = res.get("ticked_minutes_list", [])
     events = res.get("triggered_nodes", [])
     current_date = res.get("current_date", "")
@@ -4969,21 +5008,32 @@ def _process_clock_triggers(res: dict):
     for alert in alerts:
         _tm.push_triggered_event(_CLOCK_SESSION_ID, alert)
 
-    # ——— 处理行程事件：WAKE_UP → 防坑指南推送，BEDTIME → 疲劳调研 ———
+    # ——— 处理行程事件：WAKE_UP → 起床弹窗（防坑指南延后到用户确认），BEDTIME → 疲劳调研 ———
+    _pending_wakeup = None
     for ev in trip_events:
         action = ev.get("action", "")
         if action == "WAKE_UP":
-            # 推送防坑指南
-            pitfall_event = _build_pitfall_guide_event(ev, current_date, virtual_day)
-            if pitfall_event:
-                _tm.push_triggered_event(_CLOCK_SESSION_ID, pitfall_event)
-                alerts.append(pitfall_event)
+            # 暂存防坑指南参数，等用户在前端确认起床后再推送
+            _pending_wakeup = {"ev": ev, "current_date": current_date, "virtual_day": virtual_day}
+            session_state["pending_wakeup_pitfall"] = {
+                "ev_time": ev.get("time", ""),
+                "ev_label": ev.get("label", ""),
+                "current_date": current_date,
+                "virtual_day": virtual_day,
+            }
         elif action == "BEDTIME":
             # 推送疲劳调研
             fatigue_event = _build_fatigue_survey_event(ev, current_date, virtual_day)
             if fatigue_event:
                 _tm.push_triggered_event(_CLOCK_SESSION_ID, fatigue_event)
                 alerts.append(fatigue_event)
+
+    # 如果本轮有 WAKE_UP，给对应的 CUSTOM_RINGING_ALERT 打上 pending_pitfall 标记
+    if _pending_wakeup:
+        for alert in alerts:
+            if alert.get("type") == "CUSTOM_RINGING_ALERT":
+                alert["pending_pitfall"] = True
+                break
 
     # ——— 诊断日志 ———
     if events:
@@ -7747,10 +7797,8 @@ def chat_stream():
                 session_state["user_input"] = message
                 session_state["transport"] = "步行"
 
-                # 2. 发射"正在搜索"文本
-                yield f"event: message\ndata: {json.dumps({'role': 'assistant', 'content': '🔍 正在为您检索店铺...'}, ensure_ascii=False)}\n\n"
-
-                # 3. 模拟 search_poi tool_call（前端会显示 tool 状态气泡）
+                # 2. 直接搜索 POI（复用 _search_poi 快路径）
+                # 注：不抛初始 message 事件，tool_call 已触发前端加载状态显示
                 spo_call_id = f"call_direct_spo_{int(_time.time())}"
                 yield f"event: tool_call\ndata: {json.dumps({'id': spo_call_id, 'name': 'search_poi', 'arguments': {'keywords': message}, 'status': 'started'}, ensure_ascii=False)}\n\n"
 

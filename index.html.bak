@@ -1015,9 +1015,9 @@
     <div class="mb-3">
       <p class="text-xs font-bold text-gray-500 mb-2">🔁 重复方式</p>
       <div class="flex gap-2" id="reminder-repeat-opts">
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="daily" checked class="sr-only" onchange="onRepeatChange()">每天</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="weekly" class="sr-only" onchange="onRepeatChange()">每周</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="once" class="sr-only" onchange="onRepeatChange()">仅一次</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="daily" checked class="absolute inset-0 opacity-0" onchange="onRepeatChange()">每天</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="weekly" class="absolute inset-0 opacity-0" onchange="onRepeatChange()">每周</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-repeat" value="once" class="absolute inset-0 opacity-0" onchange="onRepeatChange()">仅一次</label>
       </div>
     </div>
     <!-- 日期选择 (repeat=once 时展开) -->
@@ -1030,22 +1030,22 @@
     <div id="reminder-weekdays-wrap" class="mb-3 hidden">
       <p class="text-xs font-bold text-gray-500 mb-2">📅 选择星期几</p>
       <div class="flex gap-1.5" id="reminder-weekdays">
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="mon" class="sr-only">一</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="tue" class="sr-only">二</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="wed" class="sr-only">三</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="thu" class="sr-only">四</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="fri" class="sr-only">五</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sat" class="sr-only">六</label>
-        <label class="weekday-opt flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sun" class="sr-only">日</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="mon" class="absolute inset-0 opacity-0">一</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="tue" class="absolute inset-0 opacity-0">二</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="wed" class="absolute inset-0 opacity-0">三</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="thu" class="absolute inset-0 opacity-0">四</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="fri" class="absolute inset-0 opacity-0">五</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sat" class="absolute inset-0 opacity-0">六</label>
+        <label class="weekday-opt relative flex-1 bg-gray-50 border border-gray-200 rounded-lg py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="checkbox" value="sun" class="absolute inset-0 opacity-0">日</label>
       </div>
     </div>
     <!-- 响铃模式 (仅MED) -->
     <div id="reminder-ring-opts" class="mb-3">
       <p class="text-xs font-bold text-gray-500 mb-2">🔔 响铃模式</p>
       <div class="flex gap-2">
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="once" checked class="sr-only">响铃一次</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="triple" class="sr-only">响铃三次</label>
-        <label class="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="continuous" class="sr-only">持续响铃</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="once" checked class="absolute inset-0 opacity-0">响铃一次</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="triple" class="absolute inset-0 opacity-0">响铃三次</label>
+        <label class="relative flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 text-xs text-center font-bold text-gray-600 cursor-pointer hover:border-blue-300 transition has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400 has-[:checked]:text-blue-600"><input type="radio" name="rem-ring" value="continuous" class="absolute inset-0 opacity-0">持续响铃</label>
       </div>
     </div>
     <!-- 备注 -->
@@ -1531,6 +1531,10 @@ async function doSearch() {
          _ensureAiBubble();
          aiBubble.innerHTML = '<span>' + _escHtml(fullResponse).replace(/\n/g, '<br>') + '</span>';
          scrollToBottom();
+        } else if (aiBubble) {
+         // 有品类面板待展示时，仍更新已有气泡的文字（避免空白）
+         aiBubble.innerHTML = '<span>' + _escHtml(fullResponse).replace(/\n/g, '<br>') + '</span>';
+         scrollToBottom();
         }
        }
       } else if (currentEvent === 'tool_call') {
@@ -1551,8 +1555,10 @@ async function doSearch() {
         // 静默缓冲品类数据，SSE流结束后通过消息队列延迟展示
         pendingSearchCategories = categories;
         if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
-        // 移除 tool_call 阶段创建的 AI 气泡（避免残留"正在为您..."）
-        if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
+        // 保留 AI 气泡，更新为整理结果状态（桥接 LLM 延迟，避免空白间隙）
+        if (aiBubble) {
+          aiBubble.innerHTML = '<span>🔍 正在为您整理结果...</span>';
+        }
        } else if (data.name === 'search_nearby' && data.result && data.result.data && data.result.data.shops && data.result.data.shops.length > 0) {
         // ★ search_nearby 结果也走品类面板 — 构造伪 category 结构
         var shops = data.result.data.shops;
@@ -1573,6 +1579,12 @@ async function doSearch() {
             };
           })
         }];
+        if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
+        if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
+       } else if (data.name === 'start_trip' && data.result && data.result.data && data.result.data.categories) {
+        // ★ start_trip 返回品类面板数据 → 静默缓冲，走消息队列
+        var categories = data.result.data.categories;
+        pendingSearchCategories = categories;
         if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
         if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
        } else if (data.status === 'confirm_required') {
@@ -1638,8 +1650,7 @@ async function doSearch() {
  if (pendingSearchCategories) {
   var cats = pendingSearchCategories;
   pendingSearchCategories = null;
-  // 使用消息队列实现延时展示：第二句文字 → 加载 → 面板
-  enqueueMessage({ type: 'text', content: '帮你找到了几家，在下方面板里挑挑看～', delay: 0 });
+  // AI 气泡已由 LLM 流式文字更新，直接展示面板
   enqueueMessage({ type: 'panel', content: function() {
     renderCategorySelection(cats);
   }, delay: 800 });
@@ -2501,7 +2512,7 @@ async function sendTripMessage() {
   if (chatArea) {
     // 用户气泡：白色背景，与主聊天 _addChatBubble('user') 一致
     chatArea.innerHTML += '<div class="flex justify-end mb-2"><div class="max-w-[75%] px-3.5 py-2.5 text-sm text-gray-900 leading-relaxed" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.06);">' + _escHtml(msg) + '</div></div>';
-    chatArea.innerHTML += '<div id="trip-loading-bubble" class="bg-gray-50 rounded-2xl p-3 mb-2 mr-8"><span class="typing-dots-inline"><span></span><span></span><span></span></span></div>';
+    chatArea.innerHTML += '<div id="trip-loading-bubble" class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in"><p class="text-sm text-gray-800">🔍 正在为您检索店铺...</p></div>';
     scrollToBottom();
   }
 
@@ -2530,9 +2541,39 @@ async function sendTripMessage() {
       if (chatArea) chatArea.innerHTML += '<div class="bg-red-50 border border-red-200 rounded-2xl p-3 mb-2 mr-8"><p class="text-sm text-red-700">' + _escHtml(data.error) + '</p></div>';
       tripChatHistory.push({role: 'ai', text: data.error});
     } else if (data.phase === 'need_shop_selection') {
-      // 用户只说了品类没提店名 → 弹出询问气泡
-      tripChatHistory.push({role: 'ai', text: data.message || '需要我推荐几个吗？'});
-      _showTripShopAskBubble(data);
+      // 用户只说了品类没提店名 → 直接展示店铺面板
+      tripChatHistory.push({role: 'ai', text: data.message || '为您找到以下店铺：'});
+      if (chatArea) {
+        chatArea.innerHTML += '<div id="trip-shop-msg" class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in"><p class="text-sm text-gray-800">' + _escHtml(data.message || '为您找到以下店铺：') + '</p></div>';
+        scrollToBottom();
+      }
+      setTimeout(function() {
+        if (document.getElementById('trip-shop-msg')) {
+          document.getElementById('trip-shop-msg').remove();
+        }
+        _showTripShopPanel(data);
+      }, 800);
+    } else if (data.phase === 'multi_shop_selection') {
+      // 多品类同时搜索（如"理发顺便带狗洗澡"）
+      var categories = data.categories || [];
+      tripChatHistory.push({role: 'ai', text: data.message || '已为您找到以下店铺：'});
+      if (chatArea) {
+        chatArea.innerHTML += '<div id="trip-multi-shop-msg" class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-2 mr-8 animate-fade-in"><p class="text-sm text-gray-800">' + _escHtml(data.message || '已为您找到以下店铺：') + '</p></div>';
+        scrollToBottom();
+      }
+      // 延迟展示各品类店铺面板（2000ms 后开始，各品类间隔 300ms）
+      setTimeout(function() {
+        if (document.getElementById('trip-multi-shop-msg')) {
+          document.getElementById('trip-multi-shop-msg').remove();
+        }
+        for (var ci = 0; ci < categories.length; ci++) {
+          (function(catData, delay) {
+            setTimeout(function() {
+              _showTripShopPanel(catData);
+            }, delay);
+          })(categories[ci], ci * 300);
+        }
+      }, 2000);
     } else if (data.phase === 'swap_selection') {
       // 用户想换店 → 展示候选店铺面板
       tripChatHistory.push({role: 'ai', text: data.message || '为您找到以下替代店铺：'});

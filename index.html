@@ -555,7 +555,9 @@
     <!-- 顶部固定：搜索区 -->
     <header class="flex-shrink-0 px-4 py-4 bg-white rounded-b-[40px] shadow-sm z-10">
      <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1>
+	      <div class="flex items-center">
+	       <button id="trip-end-btn" onclick="endTrip()" class="hidden bg-red-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg hover:bg-red-600 transition mr-2 flex-shrink-0">结束行程</button>
+      <h1 class="text-2xl font-black italic text-gray-900">Meituan <span class="text-yellow-400">AI</span></h1></div>
       <div class="flex items-center gap-2">
        <span style="position:relative; display:inline-block; flex-shrink:0;">
         <span id="weather-temp-badge" style="position:absolute; top:-4px; right:-12px; background:#1f2937; color:#fbbf24; font-size:10px; font-weight:700; padding:1px 4px; border-radius:6px; line-height:1.3; z-index:10; white-space:nowrap;">21°</span>
@@ -1531,6 +1533,10 @@ async function doSearch() {
          _ensureAiBubble();
          aiBubble.innerHTML = '<span>' + _escHtml(fullResponse).replace(/\n/g, '<br>') + '</span>';
          scrollToBottom();
+        } else if (aiBubble) {
+         // 有品类面板待展示时，仍更新已有气泡的文字（避免空白）
+         aiBubble.innerHTML = '<span>' + _escHtml(fullResponse).replace(/\n/g, '<br>') + '</span>';
+         scrollToBottom();
         }
        }
       } else if (currentEvent === 'tool_call') {
@@ -1551,8 +1557,10 @@ async function doSearch() {
         // 静默缓冲品类数据，SSE流结束后通过消息队列延迟展示
         pendingSearchCategories = categories;
         if (activeChatCard) { activeChatCard.remove(); activeChatCard = null; }
-        // 移除 tool_call 阶段创建的 AI 气泡（避免残留"正在为您..."）
-        if (aiBubbleRow) { aiBubbleRow.remove(); aiBubbleRow = null; aiBubble = null; }
+        // 保留 AI 气泡，更新为整理结果状态（桥接 LLM 延迟，避免空白间隙）
+        if (aiBubble) {
+          aiBubble.innerHTML = '<span>🔍 正在为您整理结果...</span>';
+        }
        } else if (data.name === 'search_nearby' && data.result && data.result.data && data.result.data.shops && data.result.data.shops.length > 0) {
         // ★ search_nearby 结果也走品类面板 — 构造伪 category 结构
         var shops = data.result.data.shops;
@@ -1644,8 +1652,7 @@ async function doSearch() {
  if (pendingSearchCategories) {
   var cats = pendingSearchCategories;
   pendingSearchCategories = null;
-  // 使用消息队列实现延时展示：第二句文字 → 加载 → 面板
-  enqueueMessage({ type: 'text', content: '帮你找到了几家，在下方面板里挑挑看～', delay: 0 });
+  // AI 气泡已由 LLM 流式文字更新，直接展示面板
   enqueueMessage({ type: 'panel', content: function() {
     renderCategorySelection(cats);
   }, delay: 800 });
@@ -2471,6 +2478,8 @@ function switchBottomBarToTripMode() {
   if (sendBtn) { sendBtn.onclick = sendTripMessage; }
   var headerTitle = document.querySelector('#main-face-front header h1');
   if (headerTitle) headerTitle.innerHTML = 'Meituan <span class="text-yellow-400">AI</span> <span class="text-xs text-gray-400 font-normal">· 行程中</span>';
+  var endBtn = document.getElementById('trip-end-btn');
+  if (endBtn) endBtn.classList.remove('hidden');
 }
 
 function switchBottomBarToSearchMode() {
@@ -2486,6 +2495,8 @@ function switchBottomBarToSearchMode() {
   if (sendBtn) { sendBtn.onclick = doSearch; }
   var headerTitle = document.querySelector('#main-face-front header h1');
   if (headerTitle) headerTitle.innerHTML = 'Meituan <span class="text-yellow-400">AI</span>';
+  var endBtn = document.getElementById('trip-end-btn');
+  if (endBtn) endBtn.classList.add('hidden');
 }
 
 async function sendTripMessage() {
@@ -3783,6 +3794,11 @@ async function sendExecMessage() {
 }
 
 function endTrip() {
+ // 隐藏结束行程按钮
+ var endBtn = document.getElementById('trip-end-btn');
+ if (endBtn) endBtn.classList.add('hidden');
+ // 通知后端取消行程
+ fetch(API_BASE + '/api/cancel_trip', { method: 'POST' });
  // 关闭地图（如已打开）
  closeMapPanel();
  // 清理地图资源
@@ -3923,8 +3939,10 @@ function triggerDemoException(type, description) {
      return;
    }
  }
- // 只有计划正在执行时才能触发异常控制器
- if (!lastScheduleData || !lastScheduleData.timeline || lastScheduleData.timeline.length === 0) {
+ // 只有计划正在执行时才能触发异常控制器（单日模式查 lastScheduleData，多日模式查 multiDayScheduleResult）
+ var _hasActivePlan = (lastScheduleData && lastScheduleData.timeline && lastScheduleData.timeline.length > 0)
+   || (multiDayScheduleResult && multiDayScheduleResult.days && multiDayScheduleResult.days.length > 0);
+ if (!_hasActivePlan) {
    _showToast('⚠️ 无法触发异常状态<br><span style="font-size:12px;opacity:0.8">当前没有正在执行的计划，请先创建并执行一个出行计划后再试。</span>');
    return;
  }
@@ -4484,21 +4502,28 @@ function executePlanB() {
 
   // ---- 2. 避雨：告知最近饮品店 + 询问三选一（去避雨 / 打车 / 取消）----
   if (optId === 'find_shelter') {
+    activeExceptions.push({ ...pendingDemoException });
     renderActiveExceptions();
     closeDemoExceptionModal();
 
-    // 提取当前行程第一个节点的坐标，传给后端以精准搜索
+    // 提取当前行程第一个节点的坐标，传给后端以精准搜索（单日/多日均支持）
     var shelterPayload = {};
+    var _firstTimelineNode = null;
     if (lastScheduleData && lastScheduleData.timeline && lastScheduleData.timeline.length > 0) {
-      var firstNode = lastScheduleData.timeline[0];
-      if (firstNode && shopCoordMap) {
-        var coordKey = firstNode.task_id || firstNode.shop_id;
-        if (coordKey && shopCoordMap[coordKey] && shopCoordMap[coordKey].coord) {
-          var parts = shopCoordMap[coordKey].coord.split(',');
-          if (parts.length === 2) {
-            shelterPayload.lat = parseFloat(parts[0].trim());
-            shelterPayload.lng = parseFloat(parts[1].trim());
-          }
+      _firstTimelineNode = lastScheduleData.timeline[0];
+    } else if (multiDayScheduleResult && multiDayScheduleResult.days) {
+      var _activeDay = multiDayScheduleResult.days[multiActiveDayIndex || 0];
+      if (_activeDay && _activeDay.timeline && _activeDay.timeline.length > 0) {
+        _firstTimelineNode = _activeDay.timeline[0];
+      }
+    }
+    if (_firstTimelineNode && shopCoordMap) {
+      var coordKey = _firstTimelineNode.task_id || _firstTimelineNode.shop_id;
+      if (coordKey && shopCoordMap[coordKey] && shopCoordMap[coordKey].coord) {
+        var parts = shopCoordMap[coordKey].coord.split(',');
+        if (parts.length === 2) {
+          shelterPayload.lat = parseFloat(parts[0].trim());
+          shelterPayload.lng = parseFloat(parts[1].trim());
         }
       }
     }
@@ -4510,38 +4535,85 @@ function executePlanB() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var allShops = (data.shops && data.shops.length) ? data.shops : [];
-      var isCacheFallback = (data.source === 'cache_fallback');
-      var fallbackNote = isCacheFallback ? '（数据来自本地缓存，可能不是最新的）' : '';
 
-      // 无店铺：通知并自动打车
+      // 辅助函数：插入避雨店
+      function _doInsertShelter(shopId, shopName) {
+        fetch(API_BASE + '/api/insert_shelter', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ shop_id: shopId })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(insRes) {
+          var name = insRes.shelter_name || shopName || '附近饮品店';
+          if (!insRes.timeline) { appendTripNotification('避雨店铺添加失败，请稍后重试。'); return; }
+          // ★ 先更新全局数据，确保后续逻辑使用新行程
+          lastScheduleData = insRes;
+          // 1. 消息通知：告知用户现在前往避雨
+          appendTripNotification('已将 <b>' + name + '</b> 添加至行程，现在前往避雨 ☕。雨停后可通过聊天框说「雨停了继续行程」恢复计划。');
+          // 2. 只更新顶部横向计划栏（#trip-timeline-bar）：饮品店作为 DEPART 后第一个 MOVE_AND_EXEC 节点
+          renderMetroTimelineForMainFace(insRes);
+          // 注意：不调 _refreshTripView() / renderSchedule()，避免在执行界面重复推送整个行程方案
+          // 多日模式：同步更新当前天的 timeline + 重新渲染日卡片 + 同步时钟
+          if (multiDayScheduleResult && multiDayScheduleResult.days) {
+            var _mdActiveIdx = multiActiveDayIndex || 0;
+            var _mdDay = multiDayScheduleResult.days[_mdActiveIdx];
+            if (_mdDay) {
+              _mdDay.timeline = insRes.timeline;
+              _mdDay.pairs = insRes.pairs || _mdDay.pairs || [];
+              if (!_mdDay.selected_pairs) _mdDay.selected_pairs = [];
+              _mdDay.selected_pairs.unshift(['cafe', insRes.shelter_id || shopId, name]);
+            }
+            renderMultiDayCards(multiDayScheduleResult);
+            _syncMultiDayTimelineToClock();
+          }
+        })
+        .catch(function() {
+          appendTripNotification('已为您更换行程前往避雨点 ☕。雨停后可通过聊天框说「雨停了继续行程」恢复计划。');
+        });
+      }
+
+      // 无店铺：告知 + 二选一（打车 / 取消），打车需确认
       if (data.error || allShops.length === 0) {
-        appendTripNotification('⚠️ 附近暂无可避雨的饮品店，已为您切换为打车。');
-        _confirmThenCallTaxi('暴雨天气，附近无避雨饮品店，建议打车');
+        appendTripNotification('⚠️ 附近暂无可避雨的饮品店。');
+        showSecondModal(
+          '☔ 附近无饮品店',
+          '附近未找到饮品店，请选择替代方案：',
+          [
+            { value: 'taxi', emoji: '🚕', title: '打车离开', subtitle: '切换为打车接驳' },
+            { value: 'cancel', emoji: '❌', title: '取消', subtitle: '关闭不做更改' }
+          ],
+          function(val) {
+            if (val === 'taxi') {
+              _confirmThenCallTaxi('暴雨天气，附近无避雨饮品店，建议打车');
+            }
+          }
+        );
         return;
       }
 
-      // 自动选最近店铺，不弹二级弹窗，不二次确认
+      // 有店铺：取最近的一家，展示店名+距离+三选一
       var nearest = allShops[0];
+      var distText = nearest.distance || (nearest.distance_km ? nearest.distance_km + 'km' : '未知');
       var shopName = nearest.name;
       var shopId = nearest.shop_id;
 
-      fetch(API_BASE + '/api/insert_shelter', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ shop_id: shopId })
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(insRes) {
-        var name = insRes.shelter_name || shopName || '附近饮品店';
-        if (insRes.timeline) {
-          lastScheduleData = insRes;
-          _refreshTripView();
+      showSecondModal(
+        '☔ 突发暴雨，就近避雨',
+        '最近饮品店：<b>' + shopName + '</b>，距离 <b>' + distText + '</b>',
+        [
+          { value: 'shelter', emoji: '☕', title: '去 ' + shopName + ' 避雨', subtitle: '距离 ' + distText + '，前往暂避' },
+          { value: 'taxi', emoji: '🚕', title: '打车离开', subtitle: '切换为打车接驳离开' },
+          { value: 'cancel', emoji: '❌', title: '取消', subtitle: '关闭不做更改' }
+        ],
+        function(chosenVal) {
+          if (chosenVal === 'shelter') {
+            _doInsertShelter(shopId, shopName);
+          } else if (chosenVal === 'taxi') {
+            _confirmThenCallTaxi('暴雨天气，打车离开');
+          }
         }
-        appendTripNotification('检测到<b>暴雨</b>，已为您添加避雨点 <b>' + name + '</b> ☕' + fallbackNote + '。雨停后可通过聊天框说「雨停了继续行程」恢复计划。');
-      })
-      .catch(function() {
-        appendTripNotification('避雨店插入失败，请稍后重试。');
-      });
+      );
     })
     .catch(function() {
       appendTripNotification('获取附近饮品店失败，请稍后重试。');
@@ -6157,7 +6229,8 @@ function handleReminderEvent(ev) {
     _reminderActiveMedId = ev.med_id || ev.task_id || '';
     _reminderActiveState = type;
     var customRingMode = ev.ring_mode || 'once';
-    renderCustomDialog(msg, ev.label || '自定义提醒', ev.time || '', ev.content || '', customRingMode);
+    var isWakeupPending = ev.pending_pitfall === true;
+    renderCustomDialog(msg, ev.label || '自定义提醒', ev.time || '', ev.content || '', customRingMode, isWakeupPending);
     return true;
   }
 
@@ -6329,7 +6402,15 @@ function renderWaterDialog(type, msg, label, time, ringMode) {
 }
 
 /** 渲染自定义提醒弹窗 */
-function renderCustomDialog(msg, label, time, content, ringMode) {
+/** 起床确认：停止响铃 + 关闭弹窗 + 请求后端推送防坑指南 */
+function confirmWakeupAndClose() {
+  _stopRinging();
+  closeReminderDialog();
+  fetch(API_BASE + '/api/confirm_wakeup', { method: 'POST' })
+    .catch(function(e) { console.log('[confirmWakeup] 请求失败:', e); });
+}
+
+function renderCustomDialog(msg, label, time, content, ringMode, pendingPitfall) {
   ringMode = ringMode || 'once';
   _stopRinging();
   if (ringMode === 'continuous') {
@@ -6346,16 +6427,32 @@ function renderCustomDialog(msg, label, time, content, ringMode) {
   var closeWrap = document.getElementById('reminder-dialog-close-wrap');
   var iconEl = document.getElementById('reminder-dialog-icon');
 
-  titleEl.textContent = '📝 ' + (label || '自定义提醒');
+  var isWakeup = pendingPitfall === true;
+  if (isWakeup) {
+    // —— 起床弹窗专属样式 ——
+    titleEl.textContent = '⏰ 起床啦';
+    iconEl.innerHTML = '<span style="font-size:28px;">⏰</span>';
+    iconEl.style.background = '#fef3c7';
+    closeWrap.style.display = 'none';
+    actionsEl.innerHTML =
+      '<button onclick="confirmWakeupAndClose()" style="width:100%;background:#f59e0b;color:white;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:16px;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background=\'#d97706\'" onmouseout="this.style.background=\'#f59e0b\'">' +
+        '✅ 起床了，查看今日安排！' +
+      '</button>';
+    // 覆盖 msg：不用 pipeline 生成的冗余文案
+    msg = '新的一天，准备出发吧！';
+    content = '';
+  } else {
+    titleEl.textContent = '📝 ' + (label || '自定义提醒');
+    iconEl.innerHTML = '<span style="font-size:28px;">📝</span>';
+    iconEl.style.background = '#ede9fe';
+    closeWrap.style.display = 'none';
+    actionsEl.innerHTML =
+      '<button onclick="closeReminderDialog()" style="width:100%;background:#8b5cf6;color:white;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:16px;cursor:pointer;">' +
+        '✅ 知道了' +
+      '</button>';
+  }
   bodyEl.innerHTML = '<p class="text-sm text-gray-700">' + (msg || '') + '</p>' +
     (content ? '<p class="text-xs text-gray-500 mt-2">📋 ' + content.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>' : '');
-  iconEl.innerHTML = '<span style="font-size:28px;">📝</span>';
-  iconEl.style.background = '#ede9fe';
-  closeWrap.style.display = 'none';
-  actionsEl.innerHTML =
-    '<button onclick="closeReminderDialog()" style="width:100%;background:#8b5cf6;color:white;font-weight:900;padding:14px 0;border-radius:16px;border:none;font-size:16px;cursor:pointer;">' +
-      '✅ 知道了' +
-    '</button>';
 
   dlg.style.display = 'flex';
   var card = dlg.querySelector('div > div');
@@ -9758,10 +9855,12 @@ function renderMultiDayCards(data) {
 function _syncMultiDayTimelineToClock() {
   if (!multiDayScheduleResult || !multiDayScheduleResult.days) return;
 
-  // 保留现有提醒节点（WATER/MED/CUSTOM），不清掉
+  // 保留现有提醒节点（WATER/MED/CUSTOM），但排除旧的 WAKE_UP/BEDTIME（每次从 timeline 重新生成，防止重复累积）
   var existing = window._clockScheduleNodes || [];
   var reminderNodes = existing.filter(function(n) {
-    return n.type === 'WATER' || n.type === 'MED' || n.type === 'CUSTOM';
+    if (n.type === 'WATER' || n.type === 'MED') return true;
+    if (n.type === 'CUSTOM' && n.action !== 'WAKE_UP' && n.action !== 'BEDTIME') return true;
+    return false;
   });
 
   // 从多日行程所有天的 timeline 提取节点
@@ -9789,15 +9888,19 @@ function _syncMultiDayTimelineToClock() {
     var timeline = day.timeline || [];
     for (var ti = 0; ti < timeline.length; ti++) {
       var node = timeline[ti];
+      var isWakeOrBed = node.action === 'WAKE_UP' || node.action === 'BEDTIME';
       tripNodes.push({
+        id: isWakeOrBed ? ('multi_' + node.action + '_' + di) : void 0,
         time: node.time || '09:00',
         action: node.action || '',
-        type: node.action || '',
+        type: isWakeOrBed ? 'CUSTOM' : (node.action || ''),
         label: node.label || node.header || node.memo || '',
         memo: node.memo || node.header || '',
         repeat: 'once',
         date: dayDate,
-        day_index: di
+        day_index: di,
+        ring_mode: isWakeOrBed ? 'persistent_ring' : 'once',
+        alarm_type: isWakeOrBed ? 'persistent_ring' : void 0
       });
     }
   }

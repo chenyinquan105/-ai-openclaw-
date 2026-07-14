@@ -142,6 +142,7 @@ def process_reminder_pipeline(
             output_notifications.append({
                 "type": "CUSTOM_RINGING_ALERT",
                 "time": ev_time,
+                "med_id": ev_id,
                 "label": ev_label or "自定义提醒",
                 "message": "⏰ " + (event.get("content") or ev_label or "自定义提醒"),
                 "content": event.get("content", ""),
