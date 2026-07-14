@@ -145,22 +145,44 @@
 
 ## 📥 从零开始（演示电脑一键部署）
 
+> 🎯 **演示方只需 3 步，开箱即用，和开发者环境完全一致。**
+
+### 完整部署（Web 控制台 + OpenClaw 聊天）
+
 ```bash
 # 1. 克隆项目
 git clone git@github.com:chenyinquan105/-ai-openclaw-.git
 cd -ai-openclaw-
 
-# 2. 一键配置（安装 Python 依赖 + 构建插件）
+# 2. 一键配置（自动安装 Python/Node.js 依赖 + OpenClaw Gateway + 插件 + 配置）
 chmod +x setup.sh && ./setup.sh
 
-# 3. 一键启动
-chmod +x start.sh && ./start.sh
-
-# 4. 浏览器打开 index.html 即可使用
+# 3. 一键启动所有服务
+chmod +x start-all.sh && ./start-all.sh
 ```
 
-> ⚠️ **环境要求**：Python 3.9+、Node.js 18+
-> `.env` 已预配置 API Key（DeepSeek + 高德地图），clone 后无需额外配置，开箱即用。
+启动后：
+- 🌐 **Web 控制台**：浏览器打开 **http://localhost:5000**
+- 💬 **OpenClaw 聊天**：通过 OpenClaw 客户端连接 Gateway（port 18789）
+
+### 仅 Web 控制台（无需 OpenClaw）
+
+如果你只需要 Web 沙盒控制台（排程/时钟/提醒/异常模拟），不需要 IM 聊天功能：
+
+```bash
+chmod +x setup.sh && ./setup.sh
+chmod +x start.sh && ./start.sh
+# 浏览器打开 http://localhost:5000
+```
+
+### 环境要求
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| Python | 3.9+ | Flask 后端 + LLM 调用 |
+| Node.js | 22.19+ | OpenClaw Gateway（仅完整部署需要） |
+
+> ✅ `.env` 已预配置 DeepSeek + 高德地图 API Key，`openclaw-config.template.json` 已预配置 OpenClaw 全部设置，**clone 后无需任何手动配置**。
 
 ---
 

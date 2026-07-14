@@ -1,0 +1,108 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "__OPENCLAW_HOME__/workspace",
+      "model": "deepseek/deepseek-v4-pro",
+      "imageModel": "zhipu/glm-4v-plus",
+      "models": {
+        "zhipu/glm-5": {
+          "alias": "GLM"
+        }
+      },
+      "compaction": {
+        "reserveTokens": 100000,
+        "keepRecentTokens": 50000,
+        "reserveTokensFloor": 0
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "77204dbabed291ad91edaddad9f1faf96c90faba1b0d41fd"
+    },
+    "port": 18789,
+    "bind": "loopback",
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "tools": {
+    "profile": "coding"
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "deepseek": {
+        "baseUrl": "https://api.deepseek.com",
+        "apiKey": "sk-41bd9c72ccd54c09a6f5cc450c04a0a6",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "deepseek-v4-pro",
+            "name": "deepseek-v4-pro",
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheWrite": 0,
+              "cacheRead": 0
+            },
+            "contextWindow": 1048576,
+            "input": ["text"],
+            "maxTokens": 131072,
+            "reasoning": false
+          }
+        ]
+      },
+      "zhipu": {
+        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+        "api": "openai-completions",
+        "apiKey": "9e75201649de4c10b63ae5058a906418.4K5DY2atC2Os0xhP",
+        "models": [
+          {
+            "id": "glm-4v-plus",
+            "name": "glm-4v-plus",
+            "contextWindow": 131072,
+            "maxTokens": 4096,
+            "input": ["text", "image"],
+            "cost": {
+              "input": 0,
+              "output": 0
+            }
+          }
+        ]
+      },
+      "glm": {
+        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+        "apiKey": "9e75201649de4c10b63ae5058a906418.4K5DY2atC2Os0xhP",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "glm-4.7",
+            "name": "glm-4.7",
+            "cost": {
+              "input": 0.001,
+              "output": 0.001
+            },
+            "contextWindow": 128000
+          }
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "deepseek": {
+        "enabled": true
+      },
+      "meituan-bridge": {
+        "enabled": true
+      }
+    }
+  }
+}
