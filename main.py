@@ -414,10 +414,6 @@ class MeituanAgent:
                 "action": item["action"],
                 "target_location_id": item.get("target_location_id"),
             })
-        # 额外注册一个水任务作为演示
-        schedule_nodes.append({"time": "10:00", "type": "WATER", "id": "wat_1", "name": "喝水提醒"})
-        schedule_nodes.append({"time": "15:00", "type": "WATER", "id": "wat_2", "name": "喝水提醒"})
-        schedule_nodes.append({"time": "08:30", "type": "MED", "id": "med_hypertension", "name": "高血压阿司匹林"})
 
         tm.set_schedule(session_id, schedule_nodes)
 
