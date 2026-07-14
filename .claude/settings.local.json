@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3 list *)",
+      "Bash(pip3 install *)",
+      "Bash(python3 -c \"from dotenv import load_dotenv; load_dotenv\\(\\); import os; print\\('DEEPSEEK_API_KEY:', os.getenv\\('DEEPSEEK_API_KEY'\\)[:10] + '...'\\); from openai import OpenAI; from skills import generic_poi_searcher, concurrent_pipeline_scheduler; print\\('All imports OK'\\)\")"
+    ]
+  }
+}
