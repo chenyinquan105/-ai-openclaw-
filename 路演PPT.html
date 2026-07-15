@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>美团AI时空管家 — 路演PPT</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #1a1a2e; color: #eee; overflow: hidden; height: 100vh;
+  }
+  .slide-container { width: 100%; height: 100vh; position: relative; }
+  .slide {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; padding: 60px 80px;
+    opacity: 0; transition: opacity 0.4s ease;
+  }
+  .slide.active { opacity: 1; }
+  .slide-num { position: absolute; bottom: 30px; right: 40px; font-size: 14px; color: #888; }
+
+  /* Navigation */
+  .nav { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 12px; z-index: 100; }
+  .nav button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid #555;
+    background: #2a2a3e; color: #eee; cursor: pointer; font-size: 18px; transition: all 0.2s; }
+  .nav button:hover { background: #e67e22; border-color: #e67e22; }
+  .nav .dots { display: flex; gap: 8px; align-items: center; }
+  .nav .dot { width: 10px; height: 10px; border-radius: 50%; background: #444; transition: all 0.3s; }
+  .nav .dot.active { background: #e67e22; width: 24px; border-radius: 5px; }
+
+  /* Slide 1 - Cover */
+  .slide-1 { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+  .slide-1 h1 { font-size: 56px; font-weight: 800; margin-bottom: 16px;
+    background: linear-gradient(135deg, #e67e22, #f39c12); -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent; }
+  .slide-1 .subtitle { font-size: 24px; color: #ccc; margin-bottom: 32px; }
+  .slide-1 .tagline { font-size: 20px; color: #999; max-width: 600px; text-align: center;
+    line-height: 1.6; border-top: 1px solid #333; padding-top: 24px; }
+
+  /* Slide 2 - Pain & Solution */
+  .slide-2 { background: #1a1a2e; }
+  .slide-2 h2 { font-size: 36px; margin-bottom: 48px; color: #e67e22; }
+  .slide-2 .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; width: 100%; max-width: 1000px; }
+  .slide-2 .col h3 { font-size: 22px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .slide-2 .col.pain h3 { color: #e74c3c; }
+  .slide-2 .col.solution h3 { color: #2ecc71; }
+  .slide-2 .item { background: #2a2a3e; border-radius: 12px; padding: 18px 20px; margin-bottom: 12px;
+    font-size: 15px; line-height: 1.5; }
+  .slide-2 .pain .item { border-left: 3px solid #e74c3c; }
+  .slide-2 .solution .item { border-left: 3px solid #2ecc71; }
+  .slide-2 .item strong { color: #f39c12; }
+
+  /* Slide 3 - Four Features */
+  .slide-3 { background: #1a1a2e; }
+  .slide-3 h2 { font-size: 36px; margin-bottom: 40px; color: #e67e22; }
+  .slide-3 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+    width: 100%; max-width: 1000px; }
+  .slide-3 .card { background: #2a2a3e; border-radius: 16px; padding: 28px 24px;
+    border-top: 4px solid; transition: transform 0.2s; }
+  .slide-3 .card:nth-child(1) { border-color: #e74c3c; }
+  .slide-3 .card:nth-child(2) { border-color: #3498db; }
+  .slide-3 .card:nth-child(3) { border-color: #2ecc71; }
+  .slide-3 .card:nth-child(4) { border-color: #f39c12; }
+  .slide-3 .card h3 { font-size: 20px; margin-bottom: 12px; }
+  .slide-3 .card ul { list-style: none; font-size: 14px; line-height: 1.8; color: #bbb; }
+  .slide-3 .card ul li::before { content: "▸ "; color: #e67e22; }
+
+  /* Slide 4 - Tech */
+  .slide-4 { background: #1a1a2e; }
+  .slide-4 h2 { font-size: 36px; margin-bottom: 40px; color: #e67e22; }
+  .slide-4 .tech-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+    width: 100%; max-width: 1000px; }
+  .slide-4 .tech-block { background: #2a2a3e; border-radius: 16px; padding: 28px 24px; }
+  .slide-4 .tech-block h3 { font-size: 22px; margin-bottom: 16px; color: #f39c12; }
+  .slide-4 .tech-block ul { list-style: none; font-size: 14px; line-height: 1.8; color: #bbb; }
+  .slide-4 .tech-block ul li::before { content: "▸ "; color: #e67e22; }
+
+  /* Slide 5 - Demo */
+  .slide-5 { background: linear-gradient(135deg, #0f3460, #1a1a2e); text-align: center; }
+  .slide-5 h2 { font-size: 40px; color: #e67e22; margin-bottom: 24px; }
+  .slide-5 .demo-quote { font-size: 20px; color: #ccc; max-width: 700px; line-height: 1.8;
+    font-style: italic; margin-bottom: 36px; }
+  .slide-5 .demo-scenes { display: flex; gap: 40px; }
+  .slide-5 .scene { background: #2a2a3e; border-radius: 16px; padding: 24px 28px;
+    width: 280px; text-align: left; }
+  .slide-5 .scene .num { font-size: 36px; color: #e67e22; font-weight: 800; }
+  .slide-5 .scene p { font-size: 14px; color: #bbb; margin-top: 8px; line-height: 1.6; }
+
+  /* Keyboard hint */
+  .hint { position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: #555; z-index: 100; }
+</style>
+</head>
+<body>
+
+<div class="hint">← → 键翻页 | 点击底部按钮跳转</div>
+
+<div class="slide-container">
+
+  <!-- Slide 1: Cover -->
+  <div class="slide slide-1 active">
+    <h1>美团AI时空管家</h1>
+    <div class="subtitle">全天候本地生活数字管家</div>
+    <div class="tagline">从商户搜索、多任务排程、路径规划到实时提醒<br>一站式AI智能决策</div>
+    <div class="slide-num">1 / 5</div>
+  </div>
+
+  <!-- Slide 2: Why + What (总) -->
+  <div class="slide slide-2">
+    <h2>一个懂你、守护你的AI管家</h2>
+    <div class="compare">
+      <div class="col pain">
+        <h3>😞 痛点</h3>
+        <div class="item">本地生活碎片化：选餐厅、排时间、查路线分散在多个App</div>
+        <div class="item">每次不记得偏好：口味、忌口、预算反复设置</div>
+        <div class="item">突发异常手忙脚乱：暴雨、堵车、排队全凭手动重排</div>
+        <div class="item">健康提醒形同虚设：错过无人知，缺乏有效督促</div>
+      </div>
+      <div class="col solution">
+        <h3>✅ 我们的方案</h3>
+        <div class="item"><strong>一站式闭环</strong>：搜索→排程→路径→提醒，全程AI接管</div>
+        <div class="item"><strong>长期记忆驱动</strong>：口味/通勤/预算/健康自动注入</div>
+        <div class="item"><strong>自动容灾Plan B</strong>：异常感知→替换/跳过/推迟一键确认</div>
+        <div class="item"><strong>五步强闭环</strong>：提醒→确认→再催→45分无响应→紧急联络人</div>
+      </div>
+    </div>
+    <div class="slide-num">2 / 5</div>
+  </div>
+
+  <!-- Slide 3: Four Features (分-功能) -->
+  <div class="slide slide-3">
+    <h2>四大能力，覆盖全场景</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>🍜 智能商户搜索</h3>
+        <ul>
+          <li>多维约束：品类/评分/距离/价格/忌口</li>
+          <li>偏好自动注入：偏好菜系置顶、忌口隐藏</li>
+          <li>超预算降权 + 店名模糊纠偏</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>🗓️ 出行排程规划</h3>
+        <ul>
+          <li>多任务并发时间线 + 空间重心路径优化</li>
+          <li>含：出行指南 + 多日景点排程 + 防坑校验</li>
+          <li>步行超3000m自动建议打车</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>💊 健康监督提醒</h3>
+        <ul>
+          <li>喝水/吃药定时推送（间隔可配）</li>
+          <li>五步强闭环：提醒→确认准备→确认服用→延时再催→紧急联络人</li>
+          <li>SSE实时推送 + 守护线程独立轮询</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>🛡️ 异常容灾Plan B</h3>
+        <ul>
+          <li>实时监测：暴雨/堵车/停电/排号异常</li>
+          <li>SWAP替换 / BYPASS跳过 / POSTPONE推迟</li>
+          <li>弹窗确认 → 一键执行</li>
+        </ul>
+      </div>
+    </div>
+    <div class="slide-num">3 / 5</div>
+  </div>
+
+  <!-- Slide 4: Tech (分-技术) -->
+  <div class="slide slide-4">
+    <h2>两个核心技术支柱</h2>
+    <div class="tech-grid">
+      <div class="tech-block">
+        <h3>🧠 记忆驱动 — 怎么「懂你」</h3>
+        <ul>
+          <li>四维度偏好谱：口味/通勤/预算/健康</li>
+          <li>Markdown存储：人类可读+LLM可解析，零数据库</li>
+          <li>交互前自动读取注入 → 交互后LLM语义检测 → 自动更新</li>
+          <li>景点排程模板：用户调整后自动学习，下次直接复用</li>
+        </ul>
+      </div>
+      <div class="tech-block">
+        <h3>🏗️ 架构设计 — 怎么「可靠」</h3>
+        <ul>
+          <li>三层解耦：OpenClaw网关 + Python 9大Skill + HTML5沙盒</li>
+          <li>时空沙盒：虚拟时钟+拖拽快进+异常注入面板</li>
+          <li>双轨并行：静态排程 + 沙盒仿真共享同一Skill矩阵</li>
+          <li>Mock数据封闭：Demo零外部依赖，稳定可复现</li>
+        </ul>
+      </div>
+    </div>
+    <div class="slide-num">4 / 5</div>
+  </div>
+
+  <!-- Slide 5: Demo transition -->
+  <div class="slide slide-5">
+    <h2>让它自己说话</h2>
+    <div class="demo-quote">
+      「张爷爷说"帮我安排下午理发+喝咖啡+宠物洗澡"——<br>
+      管家自动搜索、排程、规划路径。<br>
+      突降暴雨？Plan B自动弹出一键切换室内商户。」
+    </div>
+    <div class="demo-scenes">
+      <div class="scene">
+        <div class="num">01</div>
+        <p><strong>日常排程</strong><br>多任务自动搜索→排程→路径规划全流程</p>
+      </div>
+      <div class="scene">
+        <div class="num">02</div>
+        <p><strong>异常容灾</strong><br>注入暴雨→Plan B自动生成→一键确认</p>
+      </div>
+    </div>
+    <div class="slide-num">5 / 5</div>
+  </div>
+
+</div>
+
+<div class="nav">
+  <button onclick="prevSlide()" title="上一页">◀</button>
+  <div class="dots" id="dots"></div>
+  <button onclick="nextSlide()" title="下一页">▶</button>
+</div>
+
+<script>
+let current = 0;
+const slides = document.querySelectorAll('.slide');
+const dotsContainer = document.getElementById('dots');
+
+// Create dots
+slides.forEach((_, i) => {
+  const dot = document.createElement('div');
+  dot.className = 'dot' + (i === 0 ? ' active' : '');
+  dot.onclick = () => goTo(i);
+  dotsContainer.appendChild(dot);
+});
+
+function update() {
+  slides.forEach((s, i) => s.classList.toggle('active', i === current));
+  document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === current));
+}
+
+function goTo(i) { if (i >= 0 && i < slides.length) { current = i; update(); } }
+function nextSlide() { goTo(current + 1); }
+function prevSlide() { goTo(current - 1); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextSlide();
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') prevSlide();
+});
+</script>
+</body>
+</html>
