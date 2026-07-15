@@ -7701,7 +7701,8 @@ def chat_stream():
 
                 geo_result = _amap_client.geocode(address=place, city="北京")
                 if geo_result:
-                    yield f"event: tool_result\ndata: {json.dumps({'id': geo_call_id, 'name': 'geocode', 'status': 'completed', 'result': {'status': 'SUCCESS', 'data': geo_result, 'message': f"已定位: {geo_result.get('formatted_address', place)}"}}, ensure_ascii=False)}\n\n"
+                    _geo_msg = f"已定位: {geo_result.get('formatted_address', place)}"
+                    yield f"event: tool_result\ndata: {json.dumps({'id': geo_call_id, 'name': 'geocode', 'status': 'completed', 'result': {'status': 'SUCCESS', 'data': geo_result, 'message': _geo_msg}}, ensure_ascii=False)}\n\n"
 
                     # 3. search_nearby
                     sn_call_id = f"call_direct_sn_{int(_time.time())}"
